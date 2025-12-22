@@ -1,9 +1,0 @@
-fix: resolve ESLint errors in transaction components
-
-- Fix unescaped quotes in TransactionTable.tsx
-- Wrap transactions array in useMemo to fix React hooks dependency warning
-- All ESLint checks now pass with 0 errors
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>

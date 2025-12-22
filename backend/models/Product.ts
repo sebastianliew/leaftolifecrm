@@ -437,7 +437,6 @@ productSchema.methods.populateReferences = async function() {
 
     return this;
   } catch (error) {
-    console.error('Error populating references:', error);
     throw error;
   }
 };
@@ -515,7 +514,6 @@ productSchema.methods.generateSKU = async function() {
     this.sku = `${brandPrefix}-${productAbbr}-${nextNumber.toString().padStart(3, '0')}`;
     return this.sku;
   } catch (error) {
-    console.error('Error generating SKU:', error);
     this.sku = `GEN-${Date.now()}`;
     return this.sku;
   }

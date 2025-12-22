@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Request, Response } from 'express';
-import { User, IUser } from '../models/User.js';
+import { User, IUser } from '@models/User.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../auth/jwt.js';
 
 // Request body interfaces
@@ -72,8 +72,23 @@ export const login = async (req: Request<object, object, LoginRequest>, res: Res
       return;
     }
     
+    // Debug login attempt (remove in production)
+    console.log('Login attempt debug:', {
+      email,
+      userId: user._id,
+      username: user.username,
+      passwordLength: password.length,
+      storedHashPrefix: user.password.substring(0, 10),
+      storedHashLength: user.password.length
+    });
+    
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
+    
+    console.log('Password comparison result:', {
+      isValid: isPasswordValid,
+      email
+    });
     
     if (!isPasswordValid) {
       // Update failed login attempts
@@ -116,7 +131,7 @@ export const login = async (req: Request<object, object, LoginRequest>, res: Res
       { _id: user._id },
       { 
         $set: { 
-          failedLoginAttempts: 0, 
+          failedLoginAttempts: 0,
           lastLogin: new Date() 
         } 
       }

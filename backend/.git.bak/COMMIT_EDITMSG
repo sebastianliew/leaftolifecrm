@@ -1,8 +1,0 @@
-Update pnpm-lock.yaml with tsc-alias dependency
-
-- Added tsc-alias to devDependencies in lock file
-- Fixes pnpm frozen-lockfile error during deployment
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>

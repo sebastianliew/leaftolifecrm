@@ -230,7 +230,6 @@ export const createProduct = async (
   res: Response
 ): Promise<void> => {
   try {
-    console.log('🔍 Backend received data:', req.body);
     const {
       name,
       sku,
@@ -249,7 +248,6 @@ export const createProduct = async (
       containerCapacity = 1
     } = req.body;
     
-    console.log('📊 Stock values extracted:', { quantity, currentStock, reorderPoint });
 
     // Validate references exist
     const [categoryExists, unitExists] = await Promise.all([
@@ -543,7 +541,6 @@ export const addStock = async (
     // Log the stock addition
     const authReq = req as AuthenticatedRequest;
     if (authReq.user) {
-      console.log(`Stock added by ${authReq.user.email}: ${quantity} units of ${product.name}`);
     }
 
     res.json({
@@ -638,7 +635,6 @@ export const bulkDeleteProducts = async (
 
     // Log admin activity for bulk deletion
     if (authReq.user) {
-      console.log(`Bulk delete by ${authReq.user.email}: ${result.modifiedCount} products deleted`);
     }
 
     res.json({

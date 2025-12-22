@@ -413,11 +413,41 @@ export const updateUserPassword = async (req: Request, res: Response): Promise<R
     // Use findByIdAndUpdate to directly update the password field
     // This avoids issues with the password field having select: false
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await User.findByIdAndUpdate(
+    
+    // Debug: Log password update details (remove in production)
+    console.log('Password update debug:', {
+      userId: id,
+      username: user.username,
+      passwordLength: newPassword.length,
+      hashLength: hashedPassword.length,
+      hashPrefix: hashedPassword.substring(0, 10)
+    });
+    
+    const updateResult = await User.findByIdAndUpdate(
       id,
       { password: hashedPassword },
-      { runValidators: true }
+      { runValidators: true, new: true }
     );
+
+    if (!updateResult) {
+      console.error('Password update failed - no result returned');
+      return res.status(500).json({ error: 'Failed to update password' });
+    }
+
+    // Verify the update worked
+    const verifyUser = await User.findById(id).select('+password');
+    if (verifyUser) {
+      const isValid = await bcrypt.compare(newPassword, verifyUser.password);
+      console.log('Password verification after update:', {
+        userId: id,
+        updateSuccessful: isValid,
+        storedHashPrefix: verifyUser.password.substring(0, 10)
+      });
+      
+      if (!isValid) {
+        console.error('WARNING: Password verification failed after update!');
+      }
+    }
 
     return res.json({
       message: 'Password updated successfully',
