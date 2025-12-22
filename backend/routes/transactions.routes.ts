@@ -1,0 +1,53 @@
+import express, { type IRouter } from 'express';
+import { authenticateToken } from '../middlewares/auth.middleware.js';
+import { requirePermission } from '../middlewares/permission.middleware.js';
+import {
+  getTransactions,
+  getTransactionById,
+  createTransaction,
+  updateTransaction,
+  deleteTransaction,
+  generateTransactionInvoice,
+  sendInvoiceEmail,
+  saveDraft,
+  getDrafts,
+  deleteDraft
+} from '../controllers/transactions.controller.js';
+
+const router: IRouter = express.Router();
+
+// Apply authentication middleware to all routes
+router.use(authenticateToken);
+
+// GET /api/transactions - Get all transactions
+router.get('/', requirePermission('transactions', 'canViewTransactions'), getTransactions);
+
+// Draft-related routes (must come before /:id to avoid conflicts)
+// GET /api/transactions/drafts - Get user's drafts
+router.get('/drafts', requirePermission('transactions', 'canViewTransactions'), getDrafts);
+
+// POST /api/transactions/drafts/autosave - Save transaction as draft
+router.post('/drafts/autosave', requirePermission('transactions', 'canCreateTransactions'), saveDraft);
+
+// DELETE /api/transactions/drafts/:draftId - Delete a specific draft
+router.delete('/drafts/:draftId', requirePermission('transactions', 'canDeleteTransactions'), deleteDraft);
+
+// GET /api/transactions/:id - Get transaction by ID
+router.get('/:id', requirePermission('transactions', 'canViewTransactions'), getTransactionById);
+
+// POST /api/transactions - Create new transaction
+router.post('/', requirePermission('transactions', 'canCreateTransactions'), createTransaction);
+
+// POST /api/transactions/:id/invoice - Generate invoice for transaction
+router.post('/:id/invoice', requirePermission('transactions', 'canViewTransactions'), generateTransactionInvoice);
+
+// POST /api/transactions/:id/send-invoice-email - Send or resend invoice email
+router.post('/:id/send-invoice-email', requirePermission('transactions', 'canViewTransactions'), sendInvoiceEmail);
+
+// PUT /api/transactions/:id - Update transaction
+router.put('/:id', requirePermission('transactions', 'canEditTransactions'), updateTransaction);
+
+// DELETE /api/transactions/:id - Delete transaction
+router.delete('/:id', requirePermission('transactions', 'canDeleteTransactions'), deleteTransaction);
+
+export default router;

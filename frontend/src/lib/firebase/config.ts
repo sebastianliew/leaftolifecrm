@@ -1,0 +1,1 @@
+// This file has been removed - Firebase replaced with NextAuth.js

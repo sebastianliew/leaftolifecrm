@@ -1,0 +1,107 @@
+# Internal Git repositories
+backend/.git/
+frontend/.git/
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+.nyc_output
+
+# Next.js
+.next/
+out/
+build/
+
+# Production
+dist/
+
+# Misc
+.DS_Store
+*.pem
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Local env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Vercel
+.vercel
+
+# Typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Logs
+logs/
+*.log
+dev.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Server
+server.pid
+
+# Uploads (keep directory structure but not files)
+uploads/*
+!uploads/.gitkeep
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Invoices (sensitive data)
+invoices/*.pdf
+backend/invoices/*.pdf
+!backend/invoices/README.txt
+
+# Build artifacts
+*.map
+.turbo/
+
+# Database dumps
+*.sql
+*.dump
+
+# Certificates
+*.crt
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+
+# Lock files (keep package.json but ignore lock files for cleaner diffs)
+# Uncomment if you don't want to track lock files
+# package-lock.json
+# pnpm-lock.yaml
+# yarn.lock

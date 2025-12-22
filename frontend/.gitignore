@@ -1,0 +1,57 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Next.js
+/.next/
+/out/
+
+# Production
+/build
+
+# Environment variables
+.env*
+!.env.example
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Testing
+/coverage
+
+# IDE
+.vscode/
+.idea/
+.claude/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# Sensitive documentation (should not be committed)
+/docs/LOGIN_CREDENTIALS.md
+/docs/*CREDENTIALS*
+/docs/*.local.md
+/scripts/test-*
+/scripts/check-*
+/scripts/verify-*
