@@ -179,115 +179,110 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
 
     const savedTransaction = await transaction.save();
 
-    // Auto-generate invoice and send email
-    let invoiceGenerated = false;
-    let emailSent = false;
-    let invoiceError = null;
-
-    try {
-      console.log('[Transaction] Auto-generating invoice for new transaction:', savedTransaction._id);
-
-      // Generate invoice number
-      const invoiceNumber = savedTransaction.transactionNumber;
-
-      // Ensure invoices directory exists
-      // Use process.cwd() for consistent path in both dev and production
-      const invoicesDir = path.join(process.cwd(), 'invoices');
-      if (!fs.existsSync(invoicesDir)) {
-        fs.mkdirSync(invoicesDir, { recursive: true });
-      }
-
-      // Prepare invoice data
-      const subtotal = savedTransaction.items.reduce((sum, item) => sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)), 0);
-      const totalDiscounts = savedTransaction.items.reduce((sum, item) => sum + (item.discountAmount ?? 0), 0);
-
-      const invoiceData = {
-        invoiceNumber,
-        transactionNumber: savedTransaction.transactionNumber,
-        transactionDate: savedTransaction.transactionDate,
-        customerName: savedTransaction.customerName,
-        customerEmail: savedTransaction.customerEmail,
-        customerPhone: savedTransaction.customerPhone,
-        items: savedTransaction.items.map(item => ({
-          name: item.name,
-          quantity: item.quantity ?? 0,
-          unitPrice: item.unitPrice ?? 0,
-          totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
-          discountAmount: item.discountAmount,
-          itemType: item.itemType
-        })),
-        subtotal,
-        discountAmount: totalDiscounts,
-        additionalDiscount: savedTransaction.discountAmount ?? 0,
-        totalAmount: savedTransaction.totalAmount,
-        paymentMethod: savedTransaction.paymentMethod,
-        paymentStatus: savedTransaction.paymentStatus,
-        notes: savedTransaction.notes,
-        currency: savedTransaction.currency || 'SGD',
-        dueDate: savedTransaction.dueDate || undefined,
-        paidDate: savedTransaction.paidDate,
-        paidAmount: savedTransaction.paidAmount,
-        status: savedTransaction.paymentStatus
-      };
-
-      // Generate PDF
-      const invoiceFileName = `${invoiceNumber}-LeafToLife.pdf`;
-      const invoiceFilePath = path.join(invoicesDir, invoiceFileName);
-      const relativeInvoicePath = `invoices/${invoiceFileName}`;
-
-      const generator = new InvoiceGenerator();
-      await generator.generateInvoice(invoiceData, invoiceFilePath);
-
-      // Upload to Azure Blob Storage (or keep local if not configured)
-      await blobStorageService.uploadFile(invoiceFilePath, invoiceFileName);
-
-      // Update transaction with invoice info
-      savedTransaction.invoiceGenerated = true;
-      savedTransaction.invoiceNumber = invoiceNumber;
-      savedTransaction.invoicePath = relativeInvoicePath;
-      await savedTransaction.save();
-
-      invoiceGenerated = true;
-      console.log('[Transaction] Invoice generated successfully');
-
-      // Auto-send email if customer email exists and email service is configured
-      if (savedTransaction.customerEmail && emailService.isEnabled()) {
-        try {
-          console.log('[Transaction] Sending invoice email to:', savedTransaction.customerEmail);
-
-          emailSent = await emailService.sendInvoiceEmail(
-            savedTransaction.customerEmail,
-            savedTransaction.customerName,
-            invoiceNumber,
-            invoiceFilePath,
-            savedTransaction.totalAmount,
-            savedTransaction.transactionDate,
-            savedTransaction.paymentStatus || 'pending'
-          );
-
-          if (emailSent) {
-            savedTransaction.invoiceEmailSent = true;
-            savedTransaction.invoiceEmailSentAt = new Date();
-            savedTransaction.invoiceEmailRecipient = savedTransaction.customerEmail;
-            await savedTransaction.save();
-            console.log('[Transaction] Invoice email sent successfully');
-          }
-        } catch (emailError) {
-          console.error('[Transaction] Failed to send invoice email:', emailError);
-          // Don't fail the transaction creation if email fails
-        }
-      }
-    } catch (error) {
-      console.error('[Transaction] Error during invoice generation:', error);
-      invoiceError = error instanceof Error ? error.message : 'Unknown error';
-      // Don't fail the transaction creation if invoice generation fails
-    }
-
+    // Return response immediately - don't block on invoice generation
     res.status(201).json({
       ...savedTransaction.toObject(),
-      _invoiceGenerated: invoiceGenerated,
-      _emailSent: emailSent,
-      _invoiceError: invoiceError
+      _invoiceGenerated: false,
+      _emailSent: false,
+      _invoiceGenerating: true
+    });
+
+    // Auto-generate invoice and send email asynchronously (non-blocking)
+    // This runs AFTER the response is sent to the client
+    setImmediate(async () => {
+      try {
+        console.log('[Transaction] Auto-generating invoice for new transaction (async):', savedTransaction._id);
+
+        // Generate invoice number
+        const invoiceNumber = savedTransaction.transactionNumber;
+
+        // Ensure invoices directory exists
+        const invoicesDir = path.join(process.cwd(), 'invoices');
+        if (!fs.existsSync(invoicesDir)) {
+          fs.mkdirSync(invoicesDir, { recursive: true });
+        }
+
+        // Prepare invoice data
+        const subtotal = savedTransaction.items.reduce((sum, item) => sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)), 0);
+        const totalDiscounts = savedTransaction.items.reduce((sum, item) => sum + (item.discountAmount ?? 0), 0);
+
+        const invoiceData = {
+          invoiceNumber,
+          transactionNumber: savedTransaction.transactionNumber,
+          transactionDate: savedTransaction.transactionDate,
+          customerName: savedTransaction.customerName,
+          customerEmail: savedTransaction.customerEmail,
+          customerPhone: savedTransaction.customerPhone,
+          items: savedTransaction.items.map(item => ({
+            name: item.name,
+            quantity: item.quantity ?? 0,
+            unitPrice: item.unitPrice ?? 0,
+            totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
+            discountAmount: item.discountAmount,
+            itemType: item.itemType
+          })),
+          subtotal,
+          discountAmount: totalDiscounts,
+          additionalDiscount: savedTransaction.discountAmount ?? 0,
+          totalAmount: savedTransaction.totalAmount,
+          paymentMethod: savedTransaction.paymentMethod,
+          paymentStatus: savedTransaction.paymentStatus,
+          notes: savedTransaction.notes,
+          currency: savedTransaction.currency || 'SGD',
+          dueDate: savedTransaction.dueDate || undefined,
+          paidDate: savedTransaction.paidDate,
+          paidAmount: savedTransaction.paidAmount,
+          status: savedTransaction.paymentStatus
+        };
+
+        // Generate PDF
+        const invoiceFileName = `${invoiceNumber}-LeafToLife.pdf`;
+        const invoiceFilePath = path.join(invoicesDir, invoiceFileName);
+        const relativeInvoicePath = `invoices/${invoiceFileName}`;
+
+        const generator = new InvoiceGenerator();
+        await generator.generateInvoice(invoiceData, invoiceFilePath);
+
+        // Upload to Azure Blob Storage (or keep local if not configured)
+        await blobStorageService.uploadFile(invoiceFilePath, invoiceFileName);
+
+        // Update transaction with invoice info
+        savedTransaction.invoiceGenerated = true;
+        savedTransaction.invoiceNumber = invoiceNumber;
+        savedTransaction.invoicePath = relativeInvoicePath;
+        await savedTransaction.save();
+
+        console.log('[Transaction] Invoice generated successfully (async)');
+
+        // Auto-send email if customer email exists and email service is configured
+        if (savedTransaction.customerEmail && emailService.isEnabled()) {
+          try {
+            console.log('[Transaction] Sending invoice email to:', savedTransaction.customerEmail);
+
+            const emailSent = await emailService.sendInvoiceEmail(
+              savedTransaction.customerEmail,
+              savedTransaction.customerName,
+              invoiceNumber,
+              invoiceFilePath,
+              savedTransaction.totalAmount,
+              savedTransaction.transactionDate,
+              savedTransaction.paymentStatus || 'pending'
+            );
+
+            if (emailSent) {
+              savedTransaction.invoiceEmailSent = true;
+              savedTransaction.invoiceEmailSentAt = new Date();
+              savedTransaction.invoiceEmailRecipient = savedTransaction.customerEmail;
+              await savedTransaction.save();
+              console.log('[Transaction] Invoice email sent successfully (async)');
+            }
+          } catch (emailError) {
+            console.error('[Transaction] Failed to send invoice email (async):', emailError);
+          }
+        }
+      } catch (error) {
+        console.error('[Transaction] Error during async invoice generation:', error);
+      }
     });
   } catch (error) {
     console.error('Error creating transaction:', error);

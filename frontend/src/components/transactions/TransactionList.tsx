@@ -11,6 +11,7 @@ import { TransactionDeleteDialog } from './transaction-delete-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { useInventory } from '@/hooks/useInventory'
 import { useTransactions as useTransactionsHook } from '@/hooks/useTransactions'
+import { usePermissions } from '@/hooks/usePermissions'
 import type { Transaction, TransactionFormData } from '@/types/transaction'
 
 interface InvoiceGenerationResult {
@@ -30,6 +31,11 @@ export function TransactionList() {
   const { toast } = useToast()
   const { products, getProducts } = useInventory()
   const { generateInvoice } = useTransactionsHook()
+  const { hasPermission } = usePermissions()
+  
+  // Get transaction permissions
+  const canEditTransactions = hasPermission('transactions', 'canEditTransactions')
+  const canDeleteTransactions = hasPermission('transactions', 'canDeleteTransactions')
 
   // Handle search input change (only updates UI, no API call)
   const handleSearchChange = useCallback((value: string) => {
@@ -305,6 +311,8 @@ export function TransactionList() {
         onPageChange={handlePageChange}
         onItemsPerPageChange={handleItemsPerPageChange}
         activeSearchTerm={searchTerm}
+        canEditTransactions={canEditTransactions}
+        canDeleteTransactions={canDeleteTransactions}
       />
 
       {/* Edit Transaction Dialog */}

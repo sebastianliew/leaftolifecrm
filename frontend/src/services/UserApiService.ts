@@ -55,6 +55,14 @@ export class UserApiService {
   }
 
   static async updateUser(id: string, userData: UpdateUserData): Promise<User> {
+    // Debug logging
+    console.log('[UserApiService] Updating user:', {
+      userId: id,
+      userData: userData,
+      featurePermissions: userData.featurePermissions,
+      discountPermissions: userData.discountPermissions
+    });
+    
     const response = await api.put<{ user: User }>(`${this.baseUrl}/${id}`, userData);
     
     if (!response.ok) {

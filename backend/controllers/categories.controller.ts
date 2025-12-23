@@ -39,7 +39,7 @@ export const getCategories = async (
   res: Response
 ): Promise<void> => {
   try {
-    console.log('🏷️ GET /api/inventory/categories endpoint hit');
+    // console.log('🏷️ GET /api/inventory/categories endpoint hit');
     const { 
       page = '1', 
       limit = '10', 
@@ -48,7 +48,7 @@ export const getCategories = async (
       sortOrder = 'asc',
       isActive 
     } = req.query;
-    console.log('🔍 Categories query params:', { page, limit, search, sortBy, sortOrder, isActive });
+    // console.log('🔍 Categories query params:', { page, limit, search, sortBy, sortOrder, isActive });
     
     // Build query
     interface CategoryQuery {
@@ -78,7 +78,7 @@ export const getCategories = async (
     const skip = (pageNum - 1) * limitNum;
     
     // Execute query
-    console.log('📋 Categories query object:', query);
+    // console.log('📋 Categories query object:', query);
     const [categories, total] = await Promise.all([
       Category.find(query)
         .sort({ [sortBy]: sortOrder === 'asc' ? 1 : -1 })
@@ -87,7 +87,7 @@ export const getCategories = async (
         .lean<ICategory[]>(),
       Category.countDocuments(query)
     ]);
-    console.log(`📊 Found ${categories.length} categories, total: ${total}`);
+    // console.log(`📊 Found ${categories.length} categories, total: ${total}`);
     
     // Add product count to each category
     const categoriesWithCount: CategoryWithCount[] = await Promise.all(
@@ -109,7 +109,7 @@ export const getCategories = async (
         pages: Math.ceil(total / limitNum)
       }
     };
-    console.log('✅ Categories response:', JSON.stringify(response, null, 2));
+    // console.log('✅ Categories response:', JSON.stringify(response, null, 2));
     res.json(response);
   } catch (error) {
     console.error('Error fetching categories:', error);

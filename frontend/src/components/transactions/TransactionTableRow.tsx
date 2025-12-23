@@ -16,6 +16,8 @@ interface TransactionTableRowProps {
   onEdit: (transaction: Transaction) => void
   onDelete: (transactionId: string) => void
   onGenerateInvoice: (transactionId: string) => void
+  canEdit?: boolean
+  canDelete?: boolean
 }
 
 const getStatusColor = (status: string) => {
@@ -64,7 +66,9 @@ export const TransactionTableRow = React.memo(({
   onSelect,
   onEdit,
   onDelete,
-  onGenerateInvoice
+  onGenerateInvoice,
+  canEdit = false,
+  canDelete = false
 }: TransactionTableRowProps) => {
   const itemCount = transaction.items.reduce((sum, item) => sum + item.quantity, 0)
   
@@ -109,14 +113,16 @@ export const TransactionTableRow = React.memo(({
               <FaEye className="h-4 w-4" />
             </Button>
           </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onEdit(transaction)}
-            title="Edit transaction"
-          >
-            <FaEdit className="h-4 w-4" />
-          </Button>
+          {canEdit && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onEdit(transaction)}
+              title="Edit transaction"
+            >
+              <FaEdit className="h-4 w-4" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -125,14 +131,16 @@ export const TransactionTableRow = React.memo(({
           >
             <FaReceipt className="h-4 w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onDelete(transaction._id)}
-            title="Delete transaction"
-          >
-            <FaTrash className="h-4 w-4 text-red-600" />
-          </Button>
+          {canDelete && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onDelete(transaction._id)}
+              title="Delete transaction"
+            >
+              <FaTrash className="h-4 w-4 text-red-600" />
+            </Button>
+          )}
         </div>
       </TableCell>
     </TableRow>

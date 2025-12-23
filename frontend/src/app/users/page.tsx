@@ -178,6 +178,15 @@ export default function UsersPage() {
       if (data.role) {
         updateData.role = data.role as UserRole
       }
+      
+      // Debug logging
+      console.log('[Frontend] User update data:', {
+        userId: selectedUser._id,
+        formData: data,
+        convertedFeaturePermissions: updateData.featurePermissions,
+        discountPermissions: updateData.discountPermissions
+      })
+      
       await updateUser(selectedUser._id, updateData)
       setShowEditDialog(false)
       setSelectedUser(null)

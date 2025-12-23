@@ -32,6 +32,8 @@ interface TransactionTableProps {
   onPageChange?: (page: number) => void
   onItemsPerPageChange?: (limit: number) => void
   activeSearchTerm?: string
+  canEditTransactions?: boolean
+  canDeleteTransactions?: boolean
 }
 
 export function TransactionTable({
@@ -46,7 +48,9 @@ export function TransactionTable({
   pagination,
   onPageChange,
   onItemsPerPageChange,
-  activeSearchTerm
+  activeSearchTerm,
+  canEditTransactions = false,
+  canDeleteTransactions = false
 }: TransactionTableProps) {
   const [selectedTransactions, setSelectedTransactions] = useState<string[]>([])
 
@@ -119,7 +123,7 @@ export function TransactionTable({
             <span className="text-sm text-muted-foreground">
               {selectedTransactions.length} selected
             </span>
-            {onBulkDelete && (
+            {onBulkDelete && canDeleteTransactions && (
               <Button
                 variant="destructive"
                 size="sm"
@@ -172,6 +176,8 @@ export function TransactionTable({
                   onEdit={onEdit}
                   onDelete={onDelete}
                   onGenerateInvoice={onGenerateInvoice}
+                  canEdit={canEditTransactions}
+                  canDelete={canDeleteTransactions}
                 />
               ))
             )}

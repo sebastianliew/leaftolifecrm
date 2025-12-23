@@ -68,6 +68,14 @@ export function UserForm({ initialData, onSubmit, onCancel }: UserFormProps) {
     if (initialData) {
       const roleDefaults = permissionService.getRoleDefaults(initialData.role || 'staff')
 
+      // Debug logging for initial data
+      console.log('[UserForm] Initial data:', {
+        role: initialData.role,
+        hasFeaturePermissions: !!initialData.featurePermissions,
+        featurePermissions: initialData.featurePermissions,
+        roleDefaults: roleDefaults
+      })
+
       // Merge discount permissions from both sources, preferring featurePermissions.discounts
       // This ensures consistency between the legacy discountPermissions and new featurePermissions.discounts
       const featureDiscounts = initialData.featurePermissions?.discounts
@@ -82,12 +90,37 @@ export function UserForm({ initialData, onSubmit, onCancel }: UserFormProps) {
         canApplyBillDiscounts: featureDiscounts?.canApplyBillDiscounts ?? legacyDiscounts?.canApplyBillDiscounts ?? true
       }
 
-      // Ensure featurePermissions.discounts is synced with discountPermissions
-      const featurePermissions = initialData.featurePermissions || roleDefaults
+      // Deep merge: start with role defaults, then overlay user's existing permissions
+      // This ensures all permission categories exist even if user data is incomplete
+      const existingPermissions = initialData.featurePermissions || {}
+
+      // Helper function to deep merge permission categories
+      const deepMergePermissions = (
+        defaults: Partial<FeaturePermissions>,
+        existing: Partial<FeaturePermissions>
+      ): Partial<FeaturePermissions> => {
+        const result: Partial<FeaturePermissions> = { ...defaults }
+
+        // Merge each category from existing permissions
+        for (const key of Object.keys(existing) as Array<keyof FeaturePermissions>) {
+          if (existing[key]) {
+            result[key] = {
+              ...(defaults[key] || {}),
+              ...existing[key]
+            } as never // Type assertion needed for dynamic key assignment
+          }
+        }
+
+        return result
+      }
+
+      const mergedFeaturePermissions = deepMergePermissions(roleDefaults, existingPermissions)
+
+      // Sync discounts with the merged discount permissions
       const syncedFeaturePermissions = {
-        ...featurePermissions,
+        ...mergedFeaturePermissions,
         discounts: {
-          ...featurePermissions.discounts,
+          ...mergedFeaturePermissions.discounts,
           ...mergedDiscountPermissions
         }
       }
@@ -155,6 +188,14 @@ export function UserForm({ initialData, onSubmit, onCancel }: UserFormProps) {
       if (initialData && !formData.password) {
         delete submitData.password
       }
+      
+      // Debug logging for form submission
+      console.log('[UserForm] Submitting data:', {
+        isEdit: !!initialData,
+        featurePermissions: submitData.featurePermissions,
+        discountPermissions: submitData.discountPermissions,
+        role: submitData.role
+      })
       
       await onSubmit(submitData)
     } catch (error) {
@@ -238,10 +279,29 @@ export function UserForm({ initialData, onSubmit, onCancel }: UserFormProps) {
 
   const updateFeaturePermissions = (category: keyof FeaturePermissions, field: string, value: boolean | number) => {
     setFormData(prev => {
+      // Ensure we have a complete featurePermissions object
+      // If it's partial, merge with role defaults to ensure all categories exist
+      const currentPermissions = prev.featurePermissions || {};
+      const roleDefaults = permissionService.getRoleDefaults(prev.role);
+      
+      // Create a deep merge of role defaults with current permissions
+      // We use type assertion because roleDefaults provides complete permission objects at runtime
+      const basePermissions = { ...roleDefaults } as Record<string, Record<string, boolean | number>>;
+      Object.keys(currentPermissions).forEach(cat => {
+        const categoryKey = cat as keyof typeof currentPermissions;
+        const currentCategory = currentPermissions[categoryKey];
+        if (basePermissions[cat] && currentCategory) {
+          basePermissions[cat] = {
+            ...basePermissions[cat],
+            ...currentCategory
+          };
+        }
+      });
+
       const newFeaturePermissions = {
-        ...prev.featurePermissions,
+        ...basePermissions,
         [category]: {
-          ...prev.featurePermissions?.[category],
+          ...basePermissions[category],
           [field]: value
         }
       }
@@ -390,12 +450,15 @@ export function UserForm({ initialData, onSubmit, onCancel }: UserFormProps) {
         </CardHeader>
         <CardContent>
           <Tabs defaultValue="discounts" className="w-full">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="flex flex-wrap gap-1 h-auto p-1">
               <TabsTrigger value="discounts">Discounts</TabsTrigger>
               <TabsTrigger value="inventory">Inventory</TabsTrigger>
               <TabsTrigger value="patients">Patients</TabsTrigger>
               <TabsTrigger value="reports">Reports</TabsTrigger>
               <TabsTrigger value="blends">Blends</TabsTrigger>
+              <TabsTrigger value="bundles">Bundles</TabsTrigger>
+              <TabsTrigger value="management">Management</TabsTrigger>
+              <TabsTrigger value="appointments">Appointments</TabsTrigger>
               <TabsTrigger value="system">System</TabsTrigger>
             </TabsList>
 
@@ -532,6 +595,101 @@ export function UserForm({ initialData, onSubmit, onCancel }: UserFormProps) {
               </div>
             </TabsContent>
 
+            <TabsContent value="bundles" className="space-y-4">
+              <div className="space-y-4">
+                <h4 className="font-medium">Bundle Management</h4>
+                {[
+                  { key: 'canViewBundles', label: 'View Bundles' },
+                  { key: 'canCreateBundles', label: 'Create Bundles' },
+                  { key: 'canEditBundles', label: 'Edit Bundles' },
+                  { key: 'canDeleteBundles', label: 'Delete Bundles' },
+                  { key: 'canSetPricing', label: 'Set Bundle Pricing' }
+                ].map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <Label>{label}</Label>
+                    <Switch
+                      checked={formData.featurePermissions?.bundles?.[key as keyof typeof formData.featurePermissions.bundles] as boolean || false}
+                      onCheckedChange={(checked) => updateFeaturePermissions('bundles', key, checked)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="management" className="space-y-4">
+              <div className="space-y-4">
+                <h4 className="font-medium">Suppliers</h4>
+                {[
+                  { key: 'canManageSuppliers', label: 'Manage Suppliers' },
+                  { key: 'canCreateSuppliers', label: 'Create Suppliers' },
+                  { key: 'canEditSuppliers', label: 'Edit Suppliers' },
+                  { key: 'canDeleteSuppliers', label: 'Delete Suppliers' }
+                ].map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <Label>{label}</Label>
+                    <Switch
+                      checked={formData.featurePermissions?.suppliers?.[key as keyof typeof formData.featurePermissions.suppliers] as boolean || false}
+                      onCheckedChange={(checked) => updateFeaturePermissions('suppliers', key, checked)}
+                    />
+                  </div>
+                ))}
+
+                <h4 className="font-medium pt-4">Brands</h4>
+                {[
+                  { key: 'canManageBrands', label: 'Manage Brands' },
+                  { key: 'canCreateBrands', label: 'Create Brands' },
+                  { key: 'canEditBrands', label: 'Edit Brands' },
+                  { key: 'canDeleteBrands', label: 'Delete Brands' }
+                ].map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <Label>{label}</Label>
+                    <Switch
+                      checked={formData.featurePermissions?.brands?.[key as keyof typeof formData.featurePermissions.brands] as boolean || false}
+                      onCheckedChange={(checked) => updateFeaturePermissions('brands', key, checked)}
+                    />
+                  </div>
+                ))}
+
+                <h4 className="font-medium pt-4">Container Types</h4>
+                {[
+                  { key: 'canManageContainerTypes', label: 'Manage Container Types' },
+                  { key: 'canCreateTypes', label: 'Create Types' },
+                  { key: 'canEditTypes', label: 'Edit Types' },
+                  { key: 'canDeleteTypes', label: 'Delete Types' }
+                ].map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <Label>{label}</Label>
+                    <Switch
+                      checked={formData.featurePermissions?.containers?.[key as keyof typeof formData.featurePermissions.containers] as boolean || false}
+                      onCheckedChange={(checked) => updateFeaturePermissions('containers', key, checked)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="appointments" className="space-y-4">
+              <div className="space-y-4">
+                <h4 className="font-medium">Appointment Management</h4>
+                {[
+                  { key: 'canViewAllAppointments', label: 'View All Appointments' },
+                  { key: 'canCreateAppointments', label: 'Create Appointments' },
+                  { key: 'canEditAppointments', label: 'Edit Appointments' },
+                  { key: 'canDeleteAppointments', label: 'Delete Appointments' },
+                  { key: 'canManageSchedules', label: 'Manage Schedules' },
+                  { key: 'canOverrideBookings', label: 'Override Bookings' }
+                ].map(({ key, label }) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <Label>{label}</Label>
+                    <Switch
+                      checked={formData.featurePermissions?.appointments?.[key as keyof typeof formData.featurePermissions.appointments] as boolean || false}
+                      onCheckedChange={(checked) => updateFeaturePermissions('appointments', key, checked)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </TabsContent>
+
             <TabsContent value="system" className="space-y-4">
               <div className="space-y-4">
                 <h4 className="font-medium">User Management</h4>
@@ -540,8 +698,11 @@ export function UserForm({ initialData, onSubmit, onCancel }: UserFormProps) {
                   { key: 'canCreateUsers', label: 'Create Users' },
                   { key: 'canEditUsers', label: 'Edit Users' },
                   { key: 'canDeleteUsers', label: 'Delete Users' },
+                  { key: 'canAssignRoles', label: 'Assign Roles' },
                   { key: 'canChangeRoles', label: 'Change User Roles' },
+                  { key: 'canManagePermissions', label: 'Manage Permissions' },
                   { key: 'canResetPasswords', label: 'Reset Passwords' },
+                  { key: 'canViewSecurityLogs', label: 'View Security Logs' },
                   { key: 'canViewAuditLogs', label: 'View Audit Logs' }
                 ].map(({ key, label }) => (
                   <div key={key} className="flex items-center justify-between">
