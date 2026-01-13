@@ -342,6 +342,20 @@ export class InvoiceGenerator {
       .text('Subtotal:', labelX, this.yPosition)
       .text(this.formatCurrency(data.subtotal, currency), valueX, this.yPosition, { align: 'right', width: 60 });
 
+    // Member Discounts (if any)
+    if (data.discountAmount > 0) {
+      this.yPosition += 20;
+      this.doc.fillColor('#000000').text('Member Discounts:', labelX, this.yPosition);
+      this.doc.fillColor('#059669').text(`-${this.formatCurrency(data.discountAmount, currency)}`, valueX, this.yPosition, { align: 'right', width: 60 });
+    }
+
+    // Additional Discount (if any)
+    if (data.additionalDiscount && data.additionalDiscount > 0) {
+      this.yPosition += 20;
+      this.doc.fillColor('#000000').text('Additional Discount:', labelX, this.yPosition);
+      this.doc.fillColor('#dc2626').text(`-${this.formatCurrency(data.additionalDiscount, currency)}`, valueX, this.yPosition, { align: 'right', width: 60 });
+    }
+
     this.yPosition += 30;
 
     // Total line
@@ -354,12 +368,16 @@ export class InvoiceGenerator {
 
     this.yPosition += 15;
 
+    // Calculate correct total from subtotal minus discounts
+    const calculatedTotal = data.subtotal - data.discountAmount - (data.additionalDiscount || 0);
+
     // Total
     this.doc
       .fontSize(14)
       .font('Helvetica-Bold')
+      .fillColor('#000000')
       .text('Total:', labelX, this.yPosition)
-      .text(this.formatCurrency(data.totalAmount, currency), valueX - 10, this.yPosition, { align: 'right', width: 70 });
+      .text(this.formatCurrency(calculatedTotal, currency), valueX - 10, this.yPosition, { align: 'right', width: 70 });
 
     this.yPosition += 40;
   }

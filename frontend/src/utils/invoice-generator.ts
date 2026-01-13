@@ -308,11 +308,14 @@ export function generateInvoicePDF(transaction: Transaction): void {
     doc.line(totalsX - 5, yPos, pageWidth - margin, yPos);
 
     yPos += 8;
+    // Calculate correct total from subtotal minus discounts
+    const calculatedTotal = transaction.subtotal - memberDiscountTotal - transaction.discountAmount;
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.setTextColor(...darkGray);
     doc.text("Total:", totalsX, yPos);
-    doc.text(`${transaction.currency} ${transaction.totalAmount.toFixed(2)}`, pageWidth - margin, yPos, { align: "right" });
+    doc.text(`${transaction.currency} ${calculatedTotal.toFixed(2)}`, pageWidth - margin, yPos, { align: "right" });
 
     // Save the PDF
     const fileName = `${transaction.invoiceNumber || transaction.transactionNumber}-LeafToLife.pdf`;
@@ -730,7 +733,7 @@ export function generateInvoiceHTML(transaction: Transaction): string {
           ` : ''}
           <div class="totals-row total-row border-top">
             <span class="totals-label">Total:</span>
-            <span class="totals-value">${transaction.currency} ${transaction.totalAmount.toFixed(2)}</span>
+            <span class="totals-value">${transaction.currency} ${(transaction.subtotal - memberDiscountTotal - transaction.discountAmount).toFixed(2)}</span>
           </div>
         </div>
 

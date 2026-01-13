@@ -533,10 +533,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
 
     const containerCapacity = selectedProduct.containerCapacity || 1
     const pricePerUnit = selectedProduct.sellingPrice / containerCapacity
-    
-    // No membership discounts for "Sell in Parts" items
-    const discountAmount = 0
-    const totalPrice = pricePerUnit * quantity
+    const basePrice = pricePerUnit * quantity
 
     const newItem: TransactionItem = {
       id: `item_${Date.now()}`,
@@ -546,9 +543,10 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       description: selectedProduct.description,
       quantity: quantity,
       unitPrice: pricePerUnit,
-      totalPrice: totalPrice,
-      discountAmount: discountAmount,
+      totalPrice: basePrice,
+      discountAmount: 0, // Will be set by applyMemberDiscount
       isService: false,
+      itemType: 'product', // Set itemType for discount eligibility
       saleType: 'volume', // Always use volume for partial sales
       unitOfMeasurementId: unitId,
       baseUnit: baseUnit,
@@ -556,9 +554,12 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       sku: selectedProduct.sku
     }
 
+    // Apply member discount if eligible (now includes Sell in Parts items)
+    const itemWithDiscount = applyMemberDiscount(newItem)
+
     setFormData(prev => ({
       ...prev,
-      items: [...prev.items, newItem]
+      items: [...prev.items, itemWithDiscount]
     }))
     setSelectedProduct(null)
     setIsPartialMode(false)
@@ -645,15 +646,13 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       patientDiscount: selectedPatient?.memberBenefits?.discountPercentage
     });
 
-    // Apply discounts to regular products and fixed blends - exclude custom blends, bundles, etc.
+    // Apply discounts to regular products and fixed blends (including Sell in Parts) - exclude custom blends, bundles, etc.
     if (!selectedPatient?.memberBenefits?.discountPercentage ||
         item.isService ||
-        item.saleType === 'volume' ||
         (item.itemType !== 'product' && item.itemType !== 'fixed_blend')) {  // Include fixed blends
       console.log('[Discount] Item not eligible:', {
         reason: !selectedPatient?.memberBenefits?.discountPercentage ? 'No patient discount' :
                 item.isService ? 'Is a service' :
-                item.saleType === 'volume' ? 'Sell in parts (volume)' :
                 'Not product or fixed blend'
       });
       return item

@@ -547,7 +547,7 @@ export function generateInvoiceHTML(transaction: Transaction): string {
                 ` : ''}
                 <tr class="total-row">
                     <td class="label">Total:</td>
-                    <td class="amount">${transaction.currency} ${transaction.totalAmount.toFixed(2)}</td>
+                    <td class="amount">${transaction.currency} ${(transaction.subtotal - transaction.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0) - transaction.discountAmount).toFixed(2)}</td>
                 </tr>
             </table>
         </div>

@@ -46,7 +46,10 @@ export class InvoiceEmailTemplates {
     options: EmailTemplateOptions
   ): string {
     const formattedDate = format(new Date(transaction.transactionDate), 'dd MMM yyyy');
-    const totalAmount = formatCurrency(transaction.totalAmount, transaction.currency);
+    // Calculate correct total from subtotal minus discounts
+    const memberDiscountTotal = transaction.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
+    const calculatedTotal = transaction.subtotal - memberDiscountTotal - transaction.discountAmount;
+    const totalAmount = formatCurrency(calculatedTotal, transaction.currency);
     const dueDate = transaction.dueDate ? format(new Date(transaction.transactionDate), 'dd MMM yyyy') : null;
     
     return `
@@ -453,10 +456,15 @@ export class InvoiceEmailTemplates {
    * Generate payment instructions
    */
   private static generatePaymentInstructions(transaction: Transaction, _dueDate: string | null): string {
+    // Calculate correct total from subtotal minus discounts
+    const memberDiscountTotal = transaction.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
+    const calculatedTotal = transaction.subtotal - memberDiscountTotal - transaction.discountAmount;
+    const outstandingAmount = calculatedTotal - transaction.paidAmount;
+
     return `
       <div class="payment-instructions">
         <h4>🔔 Payment Method</h4>
-        <p><strong>Outstanding Amount:</strong> ${formatCurrency(transaction.totalAmount - transaction.paidAmount, transaction.currency)}</p>
+        <p><strong>Outstanding Amount:</strong> ${formatCurrency(outstandingAmount, transaction.currency)}</p>
         <p><strong>Please complete your payment using one of the following methods:</strong></p>
         
         <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin: 15px 0;">
@@ -584,7 +592,7 @@ export class InvoiceEmailTemplates {
           <div class="item-row" style="border-top: 2px solid #000; margin-top: 10px; padding-top: 10px; font-weight: 700; font-size: 16px;">
             <div class="item-name">Total</div>
             <div class="item-quantity"></div>
-            <div class="item-price">${formatCurrency(transaction.totalAmount, transaction.currency)}</div>
+            <div class="item-price">${formatCurrency(transaction.subtotal - memberDiscountTotal - transaction.discountAmount, transaction.currency)}</div>
           </div>
         </div>
       </div>
@@ -662,7 +670,10 @@ export class InvoiceEmailTemplates {
    */
   static generateTextVersion(transaction: Transaction, options: EmailTemplateOptions): string {
     const formattedDate = format(new Date(transaction.transactionDate), 'dd MMM yyyy');
-    const totalAmount = formatCurrency(transaction.totalAmount, transaction.currency);
+    // Calculate correct total from subtotal minus discounts
+    const memberDiscountTotal = transaction.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
+    const calculatedTotal = transaction.subtotal - memberDiscountTotal - transaction.discountAmount;
+    const totalAmount = formatCurrency(calculatedTotal, transaction.currency);
     const dueDate = transaction.dueDate ? format(new Date(transaction.transactionDate), 'dd MMM yyyy') : null;
 
     return `
@@ -684,7 +695,7 @@ ${options.hasAttachment ? 'Your detailed invoice is attached as a PDF file.' : '
 
 ${transaction.paymentStatus === 'pending' ? `
 PAYMENT REQUIRED:
-Amount Due: ${formatCurrency(transaction.totalAmount - transaction.paidAmount, transaction.currency)}
+Amount Due: ${formatCurrency(calculatedTotal - transaction.paidAmount, transaction.currency)}
 ${dueDate ? `Due Date: ${dueDate}` : ''}
 
 PAYMENT METHODS:

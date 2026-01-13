@@ -205,6 +205,9 @@ export default function TransactionDetailPage() {
 
   const totalItems = (transaction.items || []).reduce((sum, item) => sum + (item.quantity ?? 0), 0)
   const totalDiscounts = (transaction.items || []).reduce((sum, item) => sum + (item.discountAmount || 0), 0)
+  // Calculate correct total from subtotal minus discounts
+  const subtotal = (transaction.items || []).reduce((sum, item) => sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)), 0)
+  const calculatedTotal = subtotal - totalDiscounts - (transaction.discountAmount || 0)
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -403,7 +406,7 @@ export default function TransactionDetailPage() {
           )}
           <div className="flex justify-between text-xl font-bold pt-2 border-t">
             <span>Total</span>
-            <span>{formatCurrency(transaction.totalAmount)}</span>
+            <span>{formatCurrency(calculatedTotal)}</span>
           </div>
           <div className="flex justify-between font-medium pt-2">
             <span>Paid Amount</span>
@@ -421,7 +424,7 @@ export default function TransactionDetailPage() {
               <div className="flex-1">
                 <h3 className="font-semibold text-yellow-900 text-lg">Payment Required</h3>
                 <p className="text-yellow-800 text-sm mt-1">
-                  Outstanding Amount: {formatCurrency((transaction.totalAmount || 0) - (transaction.paidAmount || 0))}
+                  Outstanding Amount: {formatCurrency(calculatedTotal - (transaction.paidAmount || 0))}
                 </p>
               </div>
             </div>
