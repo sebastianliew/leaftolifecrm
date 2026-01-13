@@ -538,10 +538,6 @@ export const addStock = async (
     
     await product.save();
 
-    // Log the stock addition
-    const authReq = req as AuthenticatedRequest;
-    if (authReq.user) {
-    }
 
     res.json({
       message: 'Stock added successfully',
@@ -632,10 +628,6 @@ export const bulkDeleteProducts = async (
         } 
       }
     );
-
-    // Log admin activity for bulk deletion
-    if (authReq.user) {
-    }
 
     res.json({
       message: `Successfully deleted ${result.modifiedCount} products`,

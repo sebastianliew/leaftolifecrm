@@ -32,8 +32,19 @@ export interface IProduct extends Document {
       id: string;
       remaining: number;
       capacity: number;
-      status: 'full' | 'partial' | 'empty';
+      status: 'full' | 'partial' | 'empty' | 'oversold';
       lastMovement?: Schema.Types.ObjectId;
+      // Enhanced bottle tracking fields
+      openedAt?: Date;
+      batchNumber?: string;
+      expiryDate?: Date;
+      notes?: string;
+      saleHistory?: Array<{
+        transactionRef: string;
+        quantitySold: number;
+        soldAt: Date;
+        soldBy?: string;
+      }>;
     }>;
   };
   supplierId?: Schema.Types.ObjectId;
@@ -75,7 +86,11 @@ export interface IProduct extends Document {
   updatedAt: Date;
   
   // Method signatures
-  handlePartialContainerSale(quantity: number): Promise<void>;
+  handlePartialContainerSale(quantity: number, options?: {
+    containerId?: string;
+    transactionRef?: string;
+    userId?: string;
+  }): Promise<void>;
   handleFullContainerSale(): Promise<void>;
   updateRestockAnalytics(quantity: number): Promise<void>;
   needsRestock(threshold?: number): boolean;
@@ -91,20 +106,34 @@ export interface IProduct extends Document {
   generateSKU(): Promise<string>;
 }
 
-// Container Schema
+// Sale History Schema for bottle tracking
+const SaleHistorySchema = new mongoose.Schema({
+  transactionRef: { type: String, required: true },
+  quantitySold: { type: Number, required: true },
+  soldAt: { type: Date, default: Date.now },
+  soldBy: { type: String }
+}, { _id: false });
+
+// Container Schema with enhanced bottle tracking
 const ContainerSchema = new mongoose.Schema({
   id: { type: String, required: true },
   remaining: { type: Number, required: true },
   capacity: { type: Number, required: true },
-  status: { 
-    type: String, 
-    enum: ['full', 'partial', 'empty'],
+  status: {
+    type: String,
+    enum: ['full', 'partial', 'empty', 'oversold'],
     default: 'full'
   },
   lastMovement: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'InventoryMovement'
-  }
+  },
+  // Enhanced bottle tracking fields
+  openedAt: { type: Date },
+  batchNumber: { type: String },
+  expiryDate: { type: Date },
+  notes: { type: String },
+  saleHistory: [SaleHistorySchema]
 }, { _id: false });
 
 const productSchema = new mongoose.Schema<IProduct>({
@@ -228,8 +257,15 @@ productSchema.virtual('totalStock').get(function() {
          partialContainers.reduce((sum, p) => sum + (p?.remaining || 0), 0);
 });
 
-// Method to handle partial container sale
-productSchema.methods.handlePartialContainerSale = async function(quantity: number) {
+// Method to handle partial container sale with enhanced bottle tracking
+productSchema.methods.handlePartialContainerSale = async function(
+  quantity: number,
+  options?: {
+    containerId?: string;
+    transactionRef?: string;
+    userId?: string;
+  }
+) {
   // If no container capacity is set, treat as regular stock deduction
   if (!this.containerCapacity || this.containerCapacity <= 0) {
     // Allow negative stock - validation removed for clinical workflow
@@ -238,46 +274,109 @@ productSchema.methods.handlePartialContainerSale = async function(quantity: numb
     await this.save();
     return;
   }
-  
-  // Container-based logic
-  if (this.containers?.full > 0) {
-    // Convert a full container to partial
-    this.containers.full--;
-    if (!Array.isArray(this.containers.partial)) {
-      this.containers.partial = [];
+
+  // Helper to record sale history on a container
+  const recordSaleHistory = (container: typeof this.containers.partial[0]) => {
+    if (options?.transactionRef) {
+      if (!container.saleHistory) container.saleHistory = [];
+      container.saleHistory.push({
+        transactionRef: options.transactionRef,
+        quantitySold: quantity,
+        soldAt: new Date(),
+        soldBy: options.userId
+      });
     }
-    this.containers.partial.push({
-      id: `CONTAINER_${Date.now()}`,
+  };
+
+  // If a specific container is requested, target that one
+  if (options?.containerId) {
+    const targetIndex = this.containers?.partial?.findIndex(
+      (c: IProduct['containers']['partial'][0]) => c.id === options.containerId
+    );
+
+    if (targetIndex !== undefined && targetIndex >= 0) {
+      const container = this.containers.partial[targetIndex];
+      container.remaining -= quantity;
+      recordSaleHistory(container);
+
+      if (container.remaining <= 0) {
+        container.status = 'empty';
+        // Keep the container for history, but mark as empty
+      } else {
+        container.status = 'partial';
+      }
+
+      this.currentStock = this.totalStock;
+      await this.save();
+      return;
+    }
+    // If container not found, fall through to default FIFO logic
+  }
+
+  // Default FIFO logic - open new bottle or use existing partial
+  if (!Array.isArray(this.containers?.partial)) {
+    if (!this.containers) this.containers = { full: 0, partial: [] };
+    this.containers.partial = [];
+  }
+
+  // Check for existing partial containers first (FIFO)
+  if (this.containers.partial.length > 0) {
+    // Find first non-empty partial container
+    const activeContainer = this.containers.partial.find(
+      (c: IProduct['containers']['partial'][0]) => c.status !== 'empty' && c.remaining > 0
+    );
+
+    if (activeContainer) {
+      activeContainer.remaining -= quantity;
+      recordSaleHistory(activeContainer);
+
+      if (activeContainer.remaining <= 0) {
+        activeContainer.status = 'empty';
+      } else {
+        activeContainer.status = 'partial';
+      }
+
+      this.currentStock = this.totalStock;
+      await this.save();
+      return;
+    }
+  }
+
+  // No active partial containers - open a new bottle from full stock
+  if (this.containers?.full > 0) {
+    this.containers.full--;
+    const newContainer = {
+      id: `BOTTLE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       remaining: this.containerCapacity - quantity,
       capacity: this.containerCapacity,
-      status: 'partial'
-    });
-  } else if (Array.isArray(this.containers?.partial) && this.containers.partial.length > 0) {
-    // Update existing partial container
-    const container = this.containers.partial[0];
-    container.remaining -= quantity;
-    if (container.remaining <= 0) {
-      this.containers.partial.shift(); // Remove empty container
-    } else {
-      container.status = container.remaining < this.containerCapacity ? 'partial' : 'full';
-    }
+      status: 'partial' as const,
+      openedAt: new Date(),
+      saleHistory: options?.transactionRef ? [{
+        transactionRef: options.transactionRef,
+        quantitySold: quantity,
+        soldAt: new Date(),
+        soldBy: options.userId
+      }] : []
+    };
+    this.containers.partial.push(newContainer);
   } else {
-    // No containers available - allow out-of-stock sales by tracking as negative partial container
-    if (!this.containers) {
-      this.containers = { full: 0, partial: [], empty: [] };
-    }
-    if (!Array.isArray(this.containers.partial)) {
-      this.containers.partial = [];
-    }
-    // Create a negative partial container to track oversold quantity
-    this.containers.partial.push({
-      id: `OVERSOLD_${Date.now()}`,
-      remaining: -quantity,  // Negative remaining indicates oversold amount
+    // No containers available - allow out-of-stock sales by tracking as oversold
+    const oversoldContainer = {
+      id: `OVERSOLD_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      remaining: -quantity,
       capacity: this.containerCapacity,
-      status: 'oversold'
-    });
+      status: 'oversold' as const,
+      openedAt: new Date(),
+      saleHistory: options?.transactionRef ? [{
+        transactionRef: options.transactionRef,
+        quantitySold: quantity,
+        soldAt: new Date(),
+        soldBy: options.userId
+      }] : []
+    };
+    this.containers.partial.push(oversoldContainer);
   }
-  
+
   // Update current stock (recalculate from container data)
   this.currentStock = this.totalStock;
   await this.save();
@@ -370,7 +469,6 @@ productSchema.methods.needsUrgentRestock = function(): boolean {
 
 // Method to auto-create reference data and populate ObjectIds
 productSchema.methods.populateReferences = async function() {
-  try {
     const { Category } = await import('./Category.js');
     const { Brand } = await import('./Brand.js');
     const { UnitOfMeasurement } = await import('./UnitOfMeasurement.js');
@@ -436,9 +534,6 @@ productSchema.methods.populateReferences = async function() {
     }
 
     return this;
-  } catch (error) {
-    throw error;
-  }
 };
 
 // Method to convert between units

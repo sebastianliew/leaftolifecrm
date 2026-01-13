@@ -38,6 +38,8 @@ interface ItemSalesData {
   margin: number
   base_unit: string
   last_sale_date: string
+  has_cost_data?: boolean
+  item_type?: string
 }
 
 interface ItemSalesResponse {
@@ -353,7 +355,12 @@ export default function ItemSalesReport() {
         {/* Data Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Item Sales Details</CardTitle>
+            <div className="flex justify-between items-start">
+              <CardTitle>Item Sales Details</CardTitle>
+              <div className="text-sm text-gray-600">
+                <span className="text-orange-600">N/A</span> = Cost data unavailable
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             <div className="min-w-[900px] h-[800px] overflow-y-auto">
@@ -407,7 +414,20 @@ export default function ItemSalesReport() {
                             <TableCell className="text-right whitespace-nowrap">
                               {item.quantity_sold} {item.base_unit}
                             </TableCell>
-                            <TableCell className="text-right">{(item.margin * 100).toFixed(1)}%</TableCell>
+                            <TableCell className="text-right">
+                              {item.margin === -1 ? (
+                                <span className="text-orange-600" title="Cost data missing">
+                                  N/A
+                                </span>
+                              ) : (
+                                <span className={!item.has_cost_data ? "text-orange-600" : ""}>
+                                  {(item.margin * 100).toFixed(1)}%
+                                  {!item.has_cost_data && item.margin === 1 && (
+                                    <span className="text-xs ml-1" title="Cost price is missing">⚠️</span>
+                                  )}
+                                </span>
+                              )}
+                            </TableCell>
                             <TableCell className="text-right">{date}</TableCell>
                             <TableCell className="text-right">{time}</TableCell>
                           </TableRow>

@@ -1,6 +1,7 @@
 import express, { type IRouter } from 'express';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
 import { requirePermission } from '../middlewares/permission.middleware.js';
+import { sensitiveOperationRateLimit } from '../middlewares/rateLimiting.middleware.js';
 import {
   getRefunds,
   getRefundById,
@@ -29,11 +30,11 @@ router.get('/statistics', requirePermission('transactions', 'canViewTransactions
 // GET /api/refunds/:id - Get refund by ID
 router.get('/:id', requirePermission('transactions', 'canViewTransactions'), getRefundById);
 
-// POST /api/refunds - Create new refund
-router.post('/', requirePermission('transactions', 'canRefundTransactions'), createRefund);
+// POST /api/refunds - Create new refund (rate limited)
+router.post('/', sensitiveOperationRateLimit, requirePermission('transactions', 'canRefundTransactions'), createRefund);
 
-// PUT /api/refunds/:id/approve - Approve refund
-router.put('/:id/approve', requirePermission('transactions', 'canRefundTransactions'), approveRefund);
+// PUT /api/refunds/:id/approve - Approve refund (rate limited)
+router.put('/:id/approve', sensitiveOperationRateLimit, requirePermission('transactions', 'canRefundTransactions'), approveRefund);
 
 // PUT /api/refunds/:id/reject - Reject refund
 router.put('/:id/reject', requirePermission('transactions', 'canRefundTransactions'), rejectRefund);
@@ -41,8 +42,8 @@ router.put('/:id/reject', requirePermission('transactions', 'canRefundTransactio
 // PUT /api/refunds/:id/process - Process refund (handle inventory)
 router.put('/:id/process', requirePermission('transactions', 'canRefundTransactions'), processRefund);
 
-// PUT /api/refunds/:id/complete - Complete refund (finalize payment)
-router.put('/:id/complete', requirePermission('transactions', 'canRefundTransactions'), completeRefund);
+// PUT /api/refunds/:id/complete - Complete refund (finalize payment, rate limited)
+router.put('/:id/complete', sensitiveOperationRateLimit, requirePermission('transactions', 'canRefundTransactions'), completeRefund);
 
 // PUT /api/refunds/:id/cancel - Cancel refund
 router.put('/:id/cancel', requirePermission('transactions', 'canRefundTransactions'), cancelRefund);

@@ -26,7 +26,7 @@ export function Toast({ title, description, variant = "default", onClose, childr
 
   return (
     <div
-      className={cn("fixed top-4 right-4 z-[100] w-full max-w-sm rounded-lg border p-4 shadow-lg", {
+      className={cn("fixed bottom-4 right-4 z-[100] w-full max-w-sm rounded-lg border p-4 shadow-lg", {
         "bg-white border-gray-200": variant === "default",
         "bg-red-50 border-red-200": variant === "destructive",
         "bg-green-50 border-green-200": variant === "success",

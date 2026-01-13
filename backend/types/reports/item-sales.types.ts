@@ -10,6 +10,8 @@ export interface ItemSalesData {
   average_cost_price: number
   last_sale_date: string
   margin: number
+  has_cost_data?: boolean
+  item_type?: string
 }
 
 export interface ItemSalesResponse {

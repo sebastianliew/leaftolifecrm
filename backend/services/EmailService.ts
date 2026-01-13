@@ -28,6 +28,15 @@ class EmailService {
       return; // Already initialized
     }
     this.initialized = true;
+
+    // Check if email is explicitly disabled
+    const emailEnabled = process.env.EMAIL_ENABLED !== 'false';
+    if (!emailEnabled) {
+      console.warn('⚠️  Email service is disabled (EMAIL_ENABLED=false). Email features will not work.');
+      this.isConfigured = false;
+      return;
+    }
+
     const emailHost = process.env.SMTP_HOST || process.env.EMAIL_HOST;
     const emailPort = process.env.SMTP_PORT || process.env.EMAIL_PORT;
     const emailSecure = process.env.SMTP_SECURE === 'true';

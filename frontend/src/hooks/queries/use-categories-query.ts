@@ -16,10 +16,10 @@ export function useCategoriesQuery(filters?: CategoryFilters, sort?: CategorySor
   return useQuery({
     queryKey: ['inventory', 'categories', filters, sort],
     queryFn: () => categoriesService.getCategories(filters, sort),
-    staleTime: 0, // Always consider data stale for immediate updates
-    gcTime: 1 * 60 * 1000,   // 1 minute cache
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
+    staleTime: 5 * 60 * 1000,  // 5 minutes - categories rarely change
+    gcTime: 10 * 60 * 1000,    // 10 minutes cache
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
     retry: 3,
   })
 }
@@ -50,19 +50,12 @@ export function useRootCategoriesQuery() {
 // Mutation hooks
 export function useCreateCategoryMutation() {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
     mutationFn: (data: CreateCategoryRequest) => categoriesService.createCategory(data),
     onSuccess: () => {
-      // Clear all categories cache and refetch
-      queryClient.removeQueries({ queryKey: ['inventory', 'categories'] })
-      queryClient.invalidateQueries({ 
-        queryKey: ['inventory', 'categories'],
-        refetchType: 'all' 
-      })
-      queryClient.refetchQueries({ 
-        queryKey: ['inventory', 'categories']
-      })
+      // Invalidate triggers automatic refetch - no need for removeQueries or manual refetch
+      queryClient.invalidateQueries({ queryKey: ['inventory', 'categories'] })
     },
     onError: (error) => {
       console.error('Create category mutation error:', error)

@@ -59,7 +59,7 @@ export function Toaster() {
 
   return (
     <ToastProvider>
-      <div className="fixed top-0 right-0 z-[100] flex flex-col-reverse p-4 space-y-4 space-y-reverse">
+      <div className="fixed bottom-0 right-0 z-[100] flex flex-col p-4 space-y-4">
         {toasts.map(function ({ id, title, description, action, ...props }) {
           return (
             <div

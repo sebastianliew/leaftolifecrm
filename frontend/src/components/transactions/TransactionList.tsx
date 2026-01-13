@@ -5,7 +5,8 @@ import { useTransactions, useDeleteTransaction, useUpdateTransaction } from '@/h
 import { TransactionTable } from './TransactionTable'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { SimpleTransactionForm } from './SimpleTransactionForm'
 import { TransactionDeleteDialog } from './transaction-delete-dialog'
 import { useToast } from '@/components/ui/use-toast'
@@ -13,6 +14,7 @@ import { useInventory } from '@/hooks/useInventory'
 import { useTransactions as useTransactionsHook } from '@/hooks/useTransactions'
 import { usePermissions } from '@/hooks/usePermissions'
 import type { Transaction, TransactionFormData } from '@/types/transaction'
+import type { TransactionFilterValues } from './TransactionFilters'
 
 interface InvoiceGenerationResult {
   success: boolean;
@@ -21,11 +23,20 @@ interface InvoiceGenerationResult {
   downloadUrl: string;
 }
 
+const DEFAULT_FILTERS: TransactionFilterValues = {
+  paymentStatus: "all",
+  status: "all",
+  dateFrom: undefined,
+  dateTo: undefined,
+}
+
 export function TransactionList() {
   const [searchInput, setSearchInput] = useState('')  // For immediate UI updates
   const [searchTerm, setSearchTerm] = useState('')   // For actual API calls
+  const [filters, setFilters] = useState<TransactionFilterValues>(DEFAULT_FILTERS)
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
   const [deletingTransaction, setDeletingTransaction] = useState<Transaction | null>(null)
+  const [cancellingTransaction, setCancellingTransaction] = useState<Transaction | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(20)
   const { toast } = useToast()
@@ -49,16 +60,62 @@ export function TransactionList() {
     setCurrentPage(1) // Reset to first page on search
   }, [searchInput])
 
+  // Handle filter changes
+  const handleFiltersChange = useCallback((newFilters: TransactionFilterValues) => {
+    setFilters(newFilters)
+    setCurrentPage(1) // Reset to first page on filter change
+  }, [])
+
+  // Handle clear filters
+  const handleClearFilters = useCallback(() => {
+    setFilters(DEFAULT_FILTERS)
+    setCurrentPage(1)
+  }, [])
+
+  // Build query params from filters
+  const queryFilters = useMemo(() => {
+    const params: {
+      search?: string
+      page: number
+      limit: number
+      paymentStatus?: string
+      status?: string
+      dateFrom?: string
+      dateTo?: string
+    } = {
+      page: currentPage,
+      limit: itemsPerPage,
+    }
+
+    if (searchTerm) {
+      params.search = searchTerm
+    }
+
+    if (filters.paymentStatus && filters.paymentStatus !== "all") {
+      params.paymentStatus = filters.paymentStatus
+    }
+
+    if (filters.status && filters.status !== "all") {
+      params.status = filters.status
+    }
+
+    if (filters.dateFrom) {
+      params.dateFrom = filters.dateFrom.toISOString()
+    }
+
+    if (filters.dateTo) {
+      params.dateTo = filters.dateTo.toISOString()
+    }
+
+    return params
+  }, [searchTerm, currentPage, itemsPerPage, filters])
+
   const {
     data: response,
     isLoading,
     error,
     refetch
-  } = useTransactions({
-    search: searchTerm,
-    page: currentPage,
-    limit: itemsPerPage
-  })
+  } = useTransactions(queryFilters)
 
   const transactions = useMemo(() => response?.transactions || [], [response?.transactions])
   const pagination = response?.pagination
@@ -98,9 +155,9 @@ export function TransactionList() {
 
   const handleConfirmDelete = async () => {
     if (!deletingTransaction) return
-    
+
     const isDraft = deletingTransaction.status === 'draft'
-    
+
     try {
       // Both drafts and regular transactions are now in the database
       await deleteTransactionMutation.mutateAsync(deletingTransaction._id)
@@ -117,6 +174,40 @@ export function TransactionList() {
       })
     } finally {
       setDeletingTransaction(null)
+    }
+  }
+
+  // Handle cancel draft (sets status to 'cancelled')
+  const handleCancelDraft = (transaction: Transaction) => {
+    if (transaction.status === 'draft') {
+      setCancellingTransaction(transaction)
+    }
+  }
+
+  const handleConfirmCancelDraft = async () => {
+    if (!cancellingTransaction) return
+
+    try {
+      await updateTransactionMutation.mutateAsync({
+        id: cancellingTransaction._id,
+        data: {
+          ...cancellingTransaction,
+          status: 'cancelled'
+        } as TransactionFormData
+      })
+      toast({
+        title: 'Draft Cancelled',
+        description: 'The draft has been marked as cancelled'
+      })
+      refetch()
+    } catch (_error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to cancel draft',
+        variant: 'destructive'
+      })
+    } finally {
+      setCancellingTransaction(null)
     }
   }
 
@@ -298,15 +389,19 @@ export function TransactionList() {
 
   return (
     <>
-      <TransactionTable 
+      <TransactionTable
         transactions={transactions}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        onCancelDraft={handleCancelDraft}
         onGenerateInvoice={handleGenerateInvoice}
         onBulkDelete={handleBulkDelete}
         searchTerm={searchInput}
         onSearchChange={handleSearchChange}
         onSearchSubmit={handleSearchSubmit}
+        filters={filters}
+        onFiltersChange={handleFiltersChange}
+        onClearFilters={handleClearFilters}
         pagination={pagination}
         onPageChange={handlePageChange}
         onItemsPerPageChange={handleItemsPerPageChange}
@@ -344,6 +439,31 @@ export function TransactionList() {
         onConfirm={handleConfirmDelete}
         loading={deleteTransactionMutation.isPending}
       />
+
+      {/* Cancel Draft Dialog */}
+      <Dialog open={!!cancellingTransaction} onOpenChange={(open) => !open && setCancellingTransaction(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Draft</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel this draft? The draft will be marked as cancelled
+              and can be found using the &quot;Cancelled&quot; status filter.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancellingTransaction(null)}>
+              No, Keep Draft
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmCancelDraft}
+              disabled={updateTransactionMutation.isPending}
+            >
+              {updateTransactionMutation.isPending ? 'Cancelling...' : 'Yes, Cancel Draft'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

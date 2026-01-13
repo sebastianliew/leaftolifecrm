@@ -1,4 +1,8 @@
 import mongoose, { Document, Schema } from 'mongoose';
+import { getNextSequence } from './Counter.js';
+
+// Invoice status enum for proper state tracking
+export type InvoiceStatus = 'none' | 'pending' | 'generating' | 'completed' | 'failed';
 
 // Interface matching the frontend Transaction type
 export interface ITransaction extends Document {
@@ -36,6 +40,22 @@ export interface ITransaction extends Document {
     convertedQuantity: number;
     sku?: string;
     itemType?: 'product' | 'fixed_blend' | 'custom_blend' | 'bundle' | 'miscellaneous' | 'consultation' | 'service';
+    // Custom blend data for storing ingredients when itemType is 'custom_blend'
+    customBlendData?: {
+      name: string;
+      ingredients: Array<{
+        productId: string;
+        name: string;
+        quantity: number;
+        unitOfMeasurementId: string;
+        unitName: string;
+        costPerUnit: number;
+      }>;
+      totalIngredientCost: number;
+      preparationNotes?: string;
+      mixedBy: string;
+      mixedAt: Date;
+    };
   }>;
   subtotal: number;
   discountAmount: number;
@@ -60,7 +80,9 @@ export interface ITransaction extends Document {
   terms?: string;
 
   // Invoice Information
-  invoiceGenerated: boolean;
+  invoiceGenerated: boolean; // Kept for backwards compatibility
+  invoiceStatus: InvoiceStatus; // New status field for proper state tracking
+  invoiceError?: string; // Error message if invoice generation failed
   invoicePath?: string;
   invoiceNumber?: string;
   invoiceEmailSent?: boolean;
@@ -85,6 +107,26 @@ export interface ITransaction extends Document {
   refundableAmount?: number;
 }
 
+// Schema for custom blend ingredients
+const CustomBlendIngredientSchema = new Schema({
+  productId: { type: String, required: true },
+  name: { type: String, required: true },
+  quantity: { type: Number, required: true },
+  unitOfMeasurementId: { type: String, required: true },
+  unitName: { type: String, required: true },
+  costPerUnit: { type: Number, default: 0 }
+}, { _id: false });
+
+// Schema for custom blend data
+const CustomBlendDataSchema = new Schema({
+  name: { type: String, required: true },
+  ingredients: [CustomBlendIngredientSchema],
+  totalIngredientCost: { type: Number, required: true },
+  preparationNotes: { type: String },
+  mixedBy: { type: String, required: true },
+  mixedAt: { type: Date, required: true }
+}, { _id: false });
+
 const TransactionItemSchema = new Schema({
   productId: { type: String, required: true },
   name: { type: String, required: true },
@@ -104,7 +146,9 @@ const TransactionItemSchema = new Schema({
     type: String,
     enum: ['product', 'fixed_blend', 'custom_blend', 'bundle', 'miscellaneous', 'consultation', 'service'],
     default: 'product'
-  }
+  },
+  // Custom blend data for storing ingredients and blend details
+  customBlendData: { type: CustomBlendDataSchema }
 });
 
 const AddressSchema = new Schema({
@@ -170,7 +214,13 @@ const TransactionSchema = new Schema<ITransaction>({
   terms: { type: String },
 
   // Invoice Information
-  invoiceGenerated: { type: Boolean, default: false },
+  invoiceGenerated: { type: Boolean, default: false }, // Kept for backwards compatibility
+  invoiceStatus: {
+    type: String,
+    enum: ['none', 'pending', 'generating', 'completed', 'failed'],
+    default: 'none'
+  },
+  invoiceError: { type: String },
   invoicePath: { type: String },
   invoiceNumber: { type: String },
   invoiceEmailSent: { type: Boolean, default: false },
@@ -205,20 +255,38 @@ TransactionSchema.index({ status: 1 });
 TransactionSchema.index({ paymentStatus: 1 });
 TransactionSchema.index({ createdBy: 1 });
 
-// Pre-save middleware to generate transaction number
+// Unique compound index to prevent duplicate drafts for the same user
+// partialFilterExpression ensures only documents with draftId (string type) are indexed
+// This prevents duplicate drafts while allowing regular transactions without draftId
+TransactionSchema.index(
+  { draftId: 1, createdBy: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { draftId: { $type: 'string' } }
+  }
+);
+
+// Compound indexes for common query patterns (significant performance improvement)
+TransactionSchema.index({ status: 1, transactionDate: -1 }); // Status filtering with date sort
+TransactionSchema.index({ type: 1, status: 1, createdAt: -1 }); // Report queries
+TransactionSchema.index({ createdAt: -1, status: 1, type: 1 }); // Sales trends, item sales
+
+// Text index for search functionality (replaces slow regex searches)
+TransactionSchema.index(
+  { customerName: 'text', customerEmail: 'text', transactionNumber: 'text' },
+  { name: 'transaction_search_text' }
+);
+
+// Pre-save middleware to generate transaction number using atomic counter
+// This eliminates the race condition that could cause duplicate transaction numbers
 TransactionSchema.pre('save', async function(next) {
   if (this.isNew && (!this.transactionNumber || this.transactionNumber.trim() === '')) {
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-    // Count only transactions with TXN numbers (excluding any legacy DRAFT numbers)
-    const count = await mongoose.model('Transaction').countDocuments({
-      transactionDate: {
-        $gte: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
-        $lt: new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1)
-      },
-      transactionNumber: { $regex: '^TXN-' }
-    });
-    this.transactionNumber = `TXN-${dateStr}-${String(count + 1).padStart(4, '0')}`;
+    // Use atomic counter to get unique sequence number
+    const counterId = `txn-${dateStr}`;
+    const seq = await getNextSequence(counterId);
+    this.transactionNumber = `TXN-${dateStr}-${String(seq).padStart(4, '0')}`;
   }
   next();
 });

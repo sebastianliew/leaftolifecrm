@@ -64,6 +64,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   const [discountValue, setDiscountValue] = useState<string>('')
   const [isTyping, setIsTyping] = useState(false)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
+  // Ref-based submission lock to prevent double-clicks (independent of React state timing)
+  const isSubmittingRef = useRef(false)
 
   // Transaction numbers are now generated server-side to avoid conflicts
 
@@ -179,8 +181,9 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               console.log('[Discount] Recalculating discounts for edit mode with patient discount:', patient.memberBenefits.discountPercentage + '%');
               setFormData(prev => {
                 const updatedItems = prev.items.map((item) => {
-                  // Skip non-eligible items
-                  if (item.isService || item.saleType === 'volume' ||
+                  // Skip non-eligible items (services, custom blends, bundles, etc.)
+                  // Note: "Sell in Parts" items (saleType: 'volume') ARE eligible for member discounts
+                  if (item.isService ||
                       (item.itemType !== 'product' && item.itemType !== 'fixed_blend')) {
                     return item
                   }
@@ -188,7 +191,19 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                   // Get product for discount calculation
                   let product = item.product;
                   if (item.itemType === 'product') {
-                    product = products.find(p => p._id === item.productId) || item.product;
+                    // Try multiple sources for product data to handle race conditions
+                    const foundProduct = products.find(p => p._id === item.productId);
+                    if (foundProduct) {
+                      product = foundProduct;
+                    } else if (item.product) {
+                      product = item.product;
+                    } else {
+                      // Create minimal product with default discount flags (discountable by default)
+                      product = {
+                        _id: item.productId || '',
+                        discountFlags: { discountableForMembers: true, discountableForAll: true, discountableInBlends: false }
+                      } as Partial<Product> as Product;
+                    }
                   } else if (item.itemType === 'fixed_blend' && !product) {
                     product = {
                       _id: item.productId || '',
@@ -282,8 +297,9 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               // Recalculate all item discounts with new patient data
               setFormData(prev => {
                 const updatedItems = prev.items.map((item) => {
-                  // Skip non-eligible items for membership discounts
-                  if (item.isService || item.saleType === 'volume' || 
+                  // Skip non-eligible items for membership discounts (services, custom blends, bundles, etc.)
+                  // Note: "Sell in Parts" items (saleType: 'volume') ARE eligible for member discounts
+                  if (item.isService ||
                       (item.itemType !== 'product' && item.itemType !== 'fixed_blend')) {
                     return item
                   }
@@ -291,7 +307,19 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                   // For regular products, find in products array; for fixed blends, create synthetic product
                   let product = item.product;
                   if (item.itemType === 'product') {
-                    product = products.find(p => p._id === item.productId) || item.product;
+                    // Try multiple sources for product data to handle race conditions
+                    const foundProduct = products.find(p => p._id === item.productId);
+                    if (foundProduct) {
+                      product = foundProduct;
+                    } else if (item.product) {
+                      product = item.product;
+                    } else {
+                      // Create minimal product with default discount flags (discountable by default)
+                      product = {
+                        _id: item.productId || '',
+                        discountFlags: { discountableForMembers: true, discountableForAll: true, discountableInBlends: false }
+                      } as Partial<Product> as Product;
+                    }
                   } else if (item.itemType === 'fixed_blend' && !product) {
                     product = {
                       _id: item.productId || '',
@@ -516,19 +544,16 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     setSelectedProduct(null)
   }
 
-  const handlePartialQuantityConfirm = (quantity: number) => {
+  const handlePartialQuantityConfirm = (quantity: number, containerId?: string | null, unitDisplay?: string) => {
     if (!selectedProduct) return
 
     const unitOfMeasurement = selectedProduct.unitOfMeasurement
     let unitId = ''
-    let baseUnit = 'unit'
 
     if (typeof unitOfMeasurement === 'object' && unitOfMeasurement !== null) {
       unitId = unitOfMeasurement._id || unitOfMeasurement.id || ''
-      baseUnit = unitOfMeasurement.baseUnit || unitOfMeasurement.name || 'unit'
     } else if (typeof unitOfMeasurement === 'string') {
       unitId = unitOfMeasurement
-      baseUnit = unitOfMeasurement
     }
 
     const containerCapacity = selectedProduct.containerCapacity || 1
@@ -549,9 +574,11 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       itemType: 'product', // Set itemType for discount eligibility
       saleType: 'volume', // Always use volume for partial sales
       unitOfMeasurementId: unitId,
-      baseUnit: baseUnit,
+      baseUnit: unitDisplay || 'pieces', // Use the unit display from PartialQuantitySelector
       convertedQuantity: quantity, // For volume sales, convertedQuantity equals quantity
-      sku: selectedProduct.sku
+      sku: selectedProduct.sku,
+      // Include containerId for bottle-level tracking
+      containerId: containerId || undefined
     }
 
     // Apply member discount if eligible (now includes Sell in Parts items)
@@ -566,19 +593,15 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   }
 
   const handleBlendSelection = (blendItem: TransactionItem) => {
-    console.log('🔍 handleBlendSelection - blendItem:', blendItem)
-    console.log('🔍 handleBlendSelection - blendItem.customBlendData:', blendItem.customBlendData)
     // This function is only for adding new blends
     // handleUpdateCustomBlend handles editing
     // Member discounts apply to fixed blends but not custom blends
-    
+
     // Apply member discount if this is a fixed blend
-    const finalBlendItem = blendItem.itemType === 'fixed_blend' 
-      ? applyMemberDiscount(blendItem) 
+    const finalBlendItem = blendItem.itemType === 'fixed_blend'
+      ? applyMemberDiscount(blendItem)
       : blendItem;
-    
-    console.log('🔍 handleBlendSelection - finalBlendItem.customBlendData:', finalBlendItem.customBlendData)
-    
+
     setFormData(prev => ({
       ...prev,
       items: [...prev.items, {
@@ -586,7 +609,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         customBlendData: blendItem.customBlendData
       }]
     }))
-    
+
     setShowFixedBlendSelector(false)
     setShowCustomBlendCreator(false)
   }
@@ -739,9 +762,9 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
 
       const updatedItems = prev.items.map((item) => {
 
-        // Skip recalculation for non-eligible items for membership discounts
-        // Also skip "Sell in Parts" items (saleType: 'volume') - membership discounts apply to products and fixed blends
-        if (item.isService || item.saleType === 'volume' ||
+        // Skip recalculation for non-eligible items for membership discounts (services, custom blends, bundles, etc.)
+        // Note: "Sell in Parts" items (saleType: 'volume') ARE eligible for member discounts
+        if (item.isService ||
             (item.itemType !== 'product' && item.itemType !== 'fixed_blend')) {
           return item;
         }
@@ -749,7 +772,19 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         // Get the product for discount calculation
         let product = item.product;
         if (item.itemType === 'product') {
-          product = products.find(p => p._id === item.productId) || item.product;
+          // Try multiple sources for product data to handle race conditions
+          const foundProduct = products.find(p => p._id === item.productId);
+          if (foundProduct) {
+            product = foundProduct;
+          } else if (item.product) {
+            product = item.product;
+          } else {
+            // Create minimal product with default discount flags (discountable by default)
+            product = {
+              _id: item.productId || '',
+              discountFlags: { discountableForMembers: true, discountableForAll: true, discountableInBlends: false }
+            } as Partial<Product> as Product;
+          }
         } else if (item.itemType === 'fixed_blend' && !product) {
           product = {
             _id: item.productId || '',
@@ -856,13 +891,25 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
             
             // Get or create product for discount calculation
             let productForDiscount = item.product;
-            if (item.itemType === 'fixed_blend' && !productForDiscount) {
+            if (item.itemType === 'product') {
+              // Try multiple sources for product data to handle race conditions
+              const foundProduct = products.find(p => p._id === item.productId);
+              if (foundProduct) {
+                productForDiscount = foundProduct;
+              } else if (!productForDiscount) {
+                // Create minimal product with default discount flags (discountable by default)
+                productForDiscount = {
+                  _id: item.productId || '',
+                  discountFlags: { discountableForMembers: true, discountableForAll: true, discountableInBlends: false }
+                } as Partial<Product> as Product;
+              }
+            } else if (item.itemType === 'fixed_blend' && !productForDiscount) {
               productForDiscount = {
                 _id: item.productId || '',
                 discountFlags: { discountableForMembers: true, discountableForAll: false, discountableInBlends: false }
               } as Partial<Product> as Product;
             }
-            
+
             if (productForDiscount) {
             const customerForDiscount = {
               _id: selectedPatient.id,
@@ -971,25 +1018,48 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     quantity?: number;
     itemType: string;
   }>) => {
-    const newItems: TransactionItem[] = items.map(item => ({
-      id: `item_${Date.now()}_${Math.random()}`,
-      productId: item.productId,
-      name: item.name,
-      quantity: item.quantity || 1,
-      unitPrice: 0, // Will be populated by product selector
-      totalPrice: 0,
-      discountAmount: 0,
-      isService: false,
-      itemType: (item.itemType || 'product') as 'product' | 'fixed_blend' | 'custom_blend' | 'bundle',
-      saleType: 'quantity' as const,
-      unitOfMeasurementId: '',
-      baseUnit: '',
-      convertedQuantity: 0
-    }))
-    
+    const newItems: TransactionItem[] = []
+
+    for (const item of items) {
+      // Try to find the product in the products array for full data
+      const product = products.find(p => p._id === item.productId)
+
+      // Validate and get the item name - never allow empty or "Unknown Item"
+      const itemName = product?.name || item.name
+      if (!itemName || itemName.trim() === '' || itemName === 'Unknown Item') {
+        console.warn(`⚠️ Skipping item with invalid name: productId=${item.productId}`)
+        continue
+      }
+
+      newItems.push({
+        id: `item_${Date.now()}_${Math.random()}`,
+        productId: item.productId,
+        name: itemName,
+        quantity: item.quantity || 1,
+        unitPrice: product?.sellingPrice || 0,
+        totalPrice: (product?.sellingPrice || 0) * (item.quantity || 1),
+        discountAmount: 0,
+        isService: false,
+        product: product,
+        itemType: (item.itemType || 'product') as 'product' | 'fixed_blend' | 'custom_blend' | 'bundle',
+        saleType: 'quantity' as const,
+        unitOfMeasurementId: product?.unitOfMeasurement?._id || '',
+        baseUnit: product?.unitOfMeasurement?.abbreviation || '',
+        convertedQuantity: item.quantity || 1
+      })
+    }
+
+    if (newItems.length === 0) {
+      alert('Could not add items - product information is missing')
+      return
+    }
+
+    // Apply member discounts to each item before adding
+    const itemsWithDiscounts = newItems.map(item => applyMemberDiscount(item))
+
     setFormData(prev => ({
       ...prev,
-      items: [...prev.items, ...newItems]
+      items: [...prev.items, ...itemsWithDiscounts]
     }))
   }
 
@@ -1018,39 +1088,66 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Prevent duplicate submissions
+    // CRITICAL: Ref-based lock to prevent double-clicks regardless of React state timing
+    // This check runs synchronously before any async operations
+    if (isSubmittingRef.current) {
+      console.log('[SimpleTransactionForm] Blocked duplicate submission (ref lock)')
+      return
+    }
+
+    // Also check the prop-based loading state as a fallback
     if (loading) {
+      console.log('[SimpleTransactionForm] Blocked submission (loading prop)')
       return
     }
 
-    if (!formData.customerName.trim()) {
-      alert('Please enter customer name')
-      return
-    }
+    // Set the ref lock IMMEDIATELY (synchronous, before any async work)
+    isSubmittingRef.current = true
 
-    if (formData.items.length === 0) {
-      alert('Please add at least one item')
-      return
-    }
+    try {
+      if (!formData.customerName.trim()) {
+        alert('Please enter customer name')
+        return
+      }
 
-    // Check if this is a draft being completed (has initialData and status is draft)
-    // If payment status is pending, automatically update to paid
-    const submitData = { ...formData }
-    if (initialData?.status === 'draft' && formData.paymentStatus === 'pending') {
-      submitData.paymentStatus = 'paid'
-      // Also update the paid amount to match total amount
-      submitData.paidAmount = submitData.totalAmount
-      submitData.changeAmount = 0
-    }
+      if (formData.items.length === 0) {
+        alert('Please add at least one item')
+        return
+      }
 
-    console.log('🔍 handleSubmit - submitData:', submitData)
-    console.log('🔍 handleSubmit - items with customBlendData:', 
-      submitData.items.filter(item => item.itemType === 'custom_blend').map(item => ({
-        name: item.name,
-        customBlendData: item.customBlendData
-      }))
-    )
-    await onSubmit(submitData)
+      // Validate all items have valid names (prevent "Unknown Item" entries)
+      const invalidItems = formData.items.filter(item =>
+        !item.name || item.name.trim() === '' || item.name === 'Unknown Item'
+      )
+      if (invalidItems.length > 0) {
+        alert(`Cannot submit: ${invalidItems.length} item(s) have missing or invalid names. Please remove or fix these items.`)
+        return
+      }
+
+      // Auto-set payment status based on paidAmount when completing a transaction
+      const submitData = { ...formData }
+      if (formData.paymentStatus === 'pending') {
+        if (submitData.paidAmount >= submitData.totalAmount) {
+          submitData.paymentStatus = 'paid'
+          submitData.changeAmount = submitData.paidAmount - submitData.totalAmount
+        } else if (submitData.paidAmount > 0) {
+          submitData.paymentStatus = 'partial'
+        }
+        // If paidAmount === 0, keep as 'pending'
+      }
+
+      console.log('🔍 handleSubmit - submitData:', submitData)
+      console.log('🔍 handleSubmit - items with customBlendData:',
+        submitData.items.filter(item => item.itemType === 'custom_blend').map(item => ({
+          name: item.name,
+          customBlendData: item.customBlendData
+        }))
+      )
+      await onSubmit(submitData)
+    } finally {
+      // Release the lock after submission completes (success or failure)
+      isSubmittingRef.current = false
+    }
   }
 
   const toggleDiscountMode = () => {
@@ -1080,26 +1177,38 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   const handleSaveDraft = async () => {
     if (!onSaveDraft) return
 
+    // Prevent duplicate draft saves using the same ref lock
+    if (isSubmittingRef.current) {
+      console.log('[SimpleTransactionForm] Blocked duplicate draft save (ref lock)')
+      return
+    }
+
     if (formData.items.length === 0) {
       alert('Please add at least one item to save as draft')
       return
     }
 
-    const draftData = {
-      ...formData,
-      isDraft: true,
-      status: 'draft' as const
-    }
+    isSubmittingRef.current = true
 
-    await onSaveDraft(draftData)
-    
-    // Show immediate feedback to the user
-    toast({
-      title: initialData ? "Draft Updated" : "Draft Saved",
-      description: initialData 
-        ? "Your changes have been saved to the draft. Refresh the page to see latest updates." 
-        : "Transaction saved as draft successfully. Refresh the page to see latest updates.",
-    })
+    try {
+      const draftData = {
+        ...formData,
+        isDraft: true,
+        status: 'draft' as const
+      }
+
+      await onSaveDraft(draftData)
+
+      // Show immediate feedback to the user
+      toast({
+        title: initialData ? "Draft Updated" : "Draft Saved",
+        description: initialData
+          ? "Your changes have been saved to the draft. Refresh the page to see latest updates."
+          : "Transaction saved as draft successfully. Refresh the page to see latest updates.",
+      })
+    } finally {
+      isSubmittingRef.current = false
+    }
   }
 
   return (

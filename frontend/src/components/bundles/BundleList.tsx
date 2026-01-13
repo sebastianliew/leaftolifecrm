@@ -38,7 +38,7 @@ export function BundleList({ onCreateNew, onEdit, onView, canDelete = false }: B
   const [filters, setFilters] = useState<BundleFilters>({
     search: '',
     category: undefined,
-    isActive: true,
+    isActive: undefined,
     isPromoted: undefined,
     sortBy: 'createdAt',
     sortOrder: 'desc'
@@ -48,8 +48,15 @@ export function BundleList({ onCreateNew, onEdit, onView, canDelete = false }: B
   const { data: categories = [] } = useBundleCategoriesQuery();
   const deleteBundleMutation = useDeleteBundleMutation();
   
-  const bundles = Array.isArray(bundlesData) ? bundlesData : bundlesData?.data || [];
-  const totalPages = bundlesData?.pagination?.totalPages || 0;
+  // Backend returns { bundles, pagination: { pages } } not { data, pagination: { totalPages } }
+  const bundles = Array.isArray(bundlesData)
+    ? bundlesData
+    : (bundlesData as { bundles?: Bundle[]; data?: Bundle[] })?.bundles
+      || (bundlesData as { bundles?: Bundle[]; data?: Bundle[] })?.data
+      || [];
+  const totalPages = (bundlesData?.pagination as { totalPages?: number; pages?: number })?.totalPages
+    || (bundlesData?.pagination as { totalPages?: number; pages?: number })?.pages
+    || 0;
   const page = bundlesData?.pagination?.page || currentPage;
 
   const [showFilters, setShowFilters] = useState(false);
@@ -94,10 +101,34 @@ export function BundleList({ onCreateNew, onEdit, onView, canDelete = false }: B
   };
 
   if (error) {
+    const isAuthError = error.message?.includes('401') || error.message?.includes('Unauthorized') || error.message?.includes('Access token required');
+    
     return (
       <Card className="p-6">
-        <div className="text-center text-red-600">
-          <p>Error loading bundles. Please try again.</p>
+        <div className="text-center">
+          <div className="text-red-600 mb-4">
+            <p className="font-semibold">
+              {isAuthError ? 'Authentication Required' : 'Error Loading Bundles'}
+            </p>
+            <p className="text-sm text-gray-600 mt-2">
+              {isAuthError 
+                ? 'Please log in to view bundles. You need to be authenticated with proper permissions to access the bundles feature.'
+                : 'There was an error loading the bundles. Please try again or contact support if the issue persists.'
+              }
+            </p>
+            <p className="text-xs text-gray-500 mt-2">
+              Error: {error.message}
+            </p>
+          </div>
+          {!isAuthError && (
+            <Button 
+              onClick={() => window.location.reload()} 
+              variant="outline" 
+              size="sm"
+            >
+              Try Again
+            </Button>
+          )}
         </div>
       </Card>
     );

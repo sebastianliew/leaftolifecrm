@@ -1,6 +1,11 @@
 import express, { type IRouter } from 'express';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
-import { requirePermission } from '../middlewares/permission.middleware.js';
+import { requirePermission, requireDraftOrEditPermission } from '../middlewares/permission.middleware.js';
+import {
+  sensitiveOperationRateLimit,
+  fileGenerationRateLimit,
+  emailRateLimit
+} from '../middlewares/rateLimiting.middleware.js';
 import {
   getTransactions,
   getTransactionById,
@@ -35,17 +40,18 @@ router.delete('/drafts/:draftId', requirePermission('transactions', 'canDeleteTr
 // GET /api/transactions/:id - Get transaction by ID
 router.get('/:id', requirePermission('transactions', 'canViewTransactions'), getTransactionById);
 
-// POST /api/transactions - Create new transaction
-router.post('/', requirePermission('transactions', 'canCreateTransactions'), createTransaction);
+// POST /api/transactions - Create new transaction (rate limited)
+router.post('/', sensitiveOperationRateLimit, requirePermission('transactions', 'canCreateTransactions'), createTransaction);
 
-// POST /api/transactions/:id/invoice - Generate invoice for transaction
-router.post('/:id/invoice', requirePermission('transactions', 'canViewTransactions'), generateTransactionInvoice);
+// POST /api/transactions/:id/invoice - Generate invoice for transaction (rate limited)
+router.post('/:id/invoice', fileGenerationRateLimit, requirePermission('transactions', 'canViewTransactions'), generateTransactionInvoice);
 
-// POST /api/transactions/:id/send-invoice-email - Send or resend invoice email
-router.post('/:id/send-invoice-email', requirePermission('transactions', 'canViewTransactions'), sendInvoiceEmail);
+// POST /api/transactions/:id/send-invoice-email - Send or resend invoice email (rate limited)
+router.post('/:id/send-invoice-email', emailRateLimit, requirePermission('transactions', 'canViewTransactions'), sendInvoiceEmail);
 
 // PUT /api/transactions/:id - Update transaction
-router.put('/:id', requirePermission('transactions', 'canEditTransactions'), updateTransaction);
+// Uses draft-aware permission: drafts require canEditDrafts + ownership, completed transactions require canEditTransactions
+router.put('/:id', requireDraftOrEditPermission(), updateTransaction);
 
 // DELETE /api/transactions/:id - Delete transaction
 router.delete('/:id', requirePermission('transactions', 'canDeleteTransactions'), deleteTransaction);

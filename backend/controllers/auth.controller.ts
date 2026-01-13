@@ -72,48 +72,16 @@ export const login = async (req: Request<object, object, LoginRequest>, res: Res
       return;
     }
     
-    // Debug login attempt (remove in production)
-    console.log('Login attempt debug:', {
-      email,
-      userId: user._id,
-      username: user.username,
-      passwordLength: password.length,
-      storedHashPrefix: user.password.substring(0, 10),
-      storedHashLength: user.password.length
-    });
-    
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    
-    console.log('Password comparison result:', {
-      isValid: isPasswordValid,
-      email
-    });
-    
+
     if (!isPasswordValid) {
-      // Update failed login attempts
-      const failedAttempts = (user.failedLoginAttempts || 0) + 1;
-      
-      if (failedAttempts >= 5) {
-        await User.updateOne(
-          { _id: user._id },
-          { 
-            $set: { 
-              failedLoginAttempts: failedAttempts,
-              lastFailedLogin: new Date(),
-              isActive: false
-            } 
-          }
-        );
-        res.status(401).json({ error: 'Account locked due to multiple failed login attempts' });
-        return;
-      }
-      
+      // Account locking logic disabled
+      // Just log the failed attempt without locking
       await User.updateOne(
         { _id: user._id },
         { 
           $set: { 
-            failedLoginAttempts: failedAttempts,
             lastFailedLogin: new Date()
           } 
         }

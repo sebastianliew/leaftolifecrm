@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { SimpleTransactionForm } from './SimpleTransactionForm'
 import { useInventory } from '@/hooks/useInventory'
 import { useCreateTransaction } from '@/hooks/queries/use-transaction-queries'
 import { useToast } from '@/hooks/use-toast'
-import { useAuth } from '@/hooks/useAuth'
+import { useQueryClient } from '@tanstack/react-query'
+import { fetchAPI, queryKeys } from '@/lib/query-client'
 import type { TransactionFormData } from '@/types/transaction'
 
 export function CreateTransactionButton() {
@@ -15,7 +16,9 @@ export function CreateTransactionButton() {
   const { products, getProducts } = useInventory()
   const createTransactionMutation = useCreateTransaction()
   const { toast } = useToast()
-  const auth = useAuth()
+  const queryClient = useQueryClient()
+  // Ref-based lock to prevent duplicate API calls (independent of React state timing)
+  const isSubmittingRef = useRef(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -24,6 +27,14 @@ export function CreateTransactionButton() {
   }, [isOpen, getProducts])
 
   const handleSubmit = async (data: TransactionFormData) => {
+    // CRITICAL: Ref-based lock to prevent duplicate submissions
+    if (isSubmittingRef.current || createTransactionMutation.isPending) {
+      console.log('[CreateTransactionButton] Blocked duplicate submission')
+      return
+    }
+
+    isSubmittingRef.current = true
+
     try {
       await createTransactionMutation.mutateAsync(data)
       toast({
@@ -39,43 +50,40 @@ export function CreateTransactionButton() {
         description: error instanceof Error ? error.message : "Failed to create transaction",
         variant: "destructive",
       })
+    } finally {
+      isSubmittingRef.current = false
     }
   }
 
   const handleSaveDraft = async (data: TransactionFormData) => {
+    // Prevent duplicate draft saves
+    if (isSubmittingRef.current) {
+      console.log('[CreateTransactionButton] Blocked duplicate draft save')
+      return
+    }
+
+    isSubmittingRef.current = true
+
     try {
-      if (!auth.isAuthenticated || !auth.user) {
-        console.error('Auth state:', { isAuthenticated: auth.isAuthenticated, user: auth.user })
-        throw new Error('User not authenticated')
-      }
-      
       const draftId = `draft_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
       const draftName = `Draft ${new Date().toLocaleString()}`
-      
-      // Save to database via API  
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'
-      const response = await fetch(`${apiUrl}/transactions/drafts/autosave`, {
+
+      // Save to database via API using fetchAPI (handles auth automatically)
+      await fetchAPI('/transactions/drafts/autosave', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        },
         body: JSON.stringify({
           draftId,
           draftName,
           formData: data
         })
       })
-      
-      if (!response.ok) {
-        throw new Error('Failed to save draft to server')
-      }
-      
-      await response.json()
-      
+
+      // Invalidate transactions query to refresh the list
+      queryClient.invalidateQueries({ queryKey: queryKeys.transactions })
+
       toast({
         title: "Draft Saved",
-        description: "Transaction saved as draft successfully. Refresh the page to see latest updates.",
+        description: "Transaction saved as draft successfully.",
       })
     } catch (error) {
       console.error('Failed to save draft:', error)
@@ -84,6 +92,8 @@ export function CreateTransactionButton() {
         description: error instanceof Error ? error.message : "Failed to save draft",
         variant: "destructive",
       })
+    } finally {
+      isSubmittingRef.current = false
     }
   }
 

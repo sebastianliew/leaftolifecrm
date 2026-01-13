@@ -18,12 +18,15 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Progress } from "@/components/ui/progress"
 import { FaBox, FaTint } from "react-icons/fa"
+import { Package } from "lucide-react"
 import type { Product } from "@/types/inventory"
+import type { Bottle } from "@/types/container"
+import BottleSelector from "./BottleSelector"
 
 interface PartialQuantitySelectorProps {
   open: boolean
   onClose: () => void
-  onConfirm: (quantity: number) => void
+  onConfirm: (quantity: number, containerId?: string | null, unitDisplay?: string) => void
   product: Product | null
 }
 
@@ -31,17 +34,28 @@ export function PartialQuantitySelector({ open, onClose, onConfirm, product }: P
   const [quantity, setQuantity] = useState(1)
   const [saleMode, setSaleMode] = useState<'pieces' | 'volume'>('pieces')
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  // Bottle selection state
+  const [showBottleSelector, setShowBottleSelector] = useState(false)
+  const [selectedBottle, setSelectedBottle] = useState<Bottle | null>(null)
+  const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) {
       setQuantity(1)
       setSaleMode('pieces')
+      setSelectedBottle(null)
+      setSelectedContainerId(null)
     }
   }, [open])
 
+  const handleBottleSelect = (containerId: string | null, bottle: Bottle | null) => {
+    setSelectedContainerId(containerId)
+    setSelectedBottle(bottle)
+  }
+
   const handleConfirm = () => {
     const minValue = saleMode === 'volume' ? 0.1 : 1;
-    
+
     if (quantity < minValue) {
       alert(`❌ Quantity must be at least ${minValue}.`)
       return
@@ -53,13 +67,13 @@ export function PartialQuantitySelector({ open, onClose, onConfirm, product }: P
       return
     }
 
-    onConfirm(quantity)
+    onConfirm(quantity, selectedContainerId, unitDisplay)
     onClose()
   }
 
   const handleConfirmOutOfStock = () => {
     setShowConfirmDialog(false)
-    onConfirm(quantity)
+    onConfirm(quantity, selectedContainerId, unitDisplay)
     onClose()
   }
 
@@ -128,6 +142,37 @@ export function PartialQuantitySelector({ open, onClose, onConfirm, product }: P
               </div>
             </RadioGroup>
           </div>
+
+          {/* Bottle Selection */}
+          {containerCapacity > 0 && (
+            <div className="space-y-2 p-3 bg-green-50 rounded-lg border border-green-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-green-800">Select Bottle (Optional)</Label>
+                  <p className="text-xs text-green-700">
+                    {selectedBottle ? (
+                      <span className="flex items-center gap-1">
+                        <Package className="w-3 h-3" />
+                        {selectedBottle.remaining} {unitDisplay} remaining
+                      </span>
+                    ) : (
+                      'Auto-select (FIFO) or choose specific bottle'
+                    )}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowBottleSelector(true)}
+                  className="border-green-300 text-green-700 hover:bg-green-100"
+                >
+                  <Package className="w-4 h-4 mr-1" />
+                  {selectedBottle ? 'Change' : 'Select'}
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="quantity">Quantity ({unitDisplay})</Label>
@@ -261,7 +306,7 @@ export function PartialQuantitySelector({ open, onClose, onConfirm, product }: P
           
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleConfirmOutOfStock}
               className="bg-orange-600 hover:bg-orange-700"
             >
@@ -270,6 +315,19 @@ export function PartialQuantitySelector({ open, onClose, onConfirm, product }: P
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Bottle Selector Modal */}
+      {product && (
+        <BottleSelector
+          productId={product._id || ''}
+          productName={product.name}
+          requiredQuantity={quantity}
+          unitAbbreviation={unitDisplay}
+          open={showBottleSelector}
+          onClose={() => setShowBottleSelector(false)}
+          onSelect={handleBottleSelect}
+        />
+      )}
     </Dialog>
   )
 }

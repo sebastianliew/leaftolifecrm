@@ -39,21 +39,7 @@ export function useInventory(includeInactive = false) {
       
       const data = await fetchAPI<{ products: Product[] }>(`/inventory/products?${params}`);
       const rawProducts = data.products || data || [];
-      
-      // Debug log for development only
-      if (process.env.NODE_ENV === 'development') {
-        // Type assertion for products that may have additional properties like isDeleted
-        const productsWithDeleted = rawProducts as (Product & { isDeleted?: boolean })[];
-        console.log('🔍 Inventory API response:', { 
-          includeInactive, 
-          totalProducts: productsWithDeleted.length,
-          activeProducts: productsWithDeleted.filter(p => p.isActive !== false && !p.isDeleted).length,
-          inactiveProducts: productsWithDeleted.filter(p => p.isActive === false && !p.isDeleted).length,
-          deletedProducts: productsWithDeleted.filter(p => p.isDeleted === true).length,
-          note: includeInactive ? 'Showing all products including deleted' : 'Deleted products filtered out by backend'
-        });
-      }
-      
+
       // Simple transformation - map backend field names to frontend
       return rawProducts.map((product: Product) => ({
         ...product,
@@ -94,11 +80,7 @@ export function useCreateInventoryItem() {
         sellingPrice: data.price || data.sellingPrice || 0,
         reorderPoint: data.reorderLevel || data.reorderPoint || 10,
       };
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🚀 Creating inventory item:', { name: data.name, stock: backendData.currentStock });
-      }
-      
+
       return fetchAPI('/inventory/products', {
         method: 'POST',
         body: JSON.stringify(backendData),
@@ -135,42 +117,26 @@ export function useUpdateInventoryItem() {
 
 export function useDeleteInventoryItem() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (id: string) => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🗑️ Deleting product with ID:', id);
-      }
-      
-      const result = await fetchAPI(`/inventory/products/${id}`, {
+      return fetchAPI(`/inventory/products/${id}`, {
         method: 'DELETE',
       });
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log('✅ Product deleted successfully:', result);
-      }
-      
-      return result;
     },
     onSuccess: () => {
-      // More aggressive cache invalidation to ensure UI updates
+      // Invalidate triggers automatic refetch - simpler and more efficient
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
-      queryClient.removeQueries({ queryKey: queryKeys.inventory });
-      
-      // Force immediate refetch with fresh data
-      setTimeout(() => {
-        queryClient.refetchQueries({ queryKey: queryKeys.inventory });
-      }, 100);
     },
     onError: (error) => {
-      console.error('❌ Delete product error:', error);
+      console.error('Delete product error:', error);
     },
   });
 }
 
 export function useBulkDeleteInventoryItems() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (productIds: string[]) => {
       return fetchAPI('/inventory/products/bulk-delete', {
@@ -179,17 +145,11 @@ export function useBulkDeleteInventoryItems() {
       });
     },
     onSuccess: () => {
-      // More aggressive cache invalidation to ensure UI updates
+      // Invalidate triggers automatic refetch - simpler and more efficient
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
-      queryClient.removeQueries({ queryKey: queryKeys.inventory });
-      
-      // Force immediate refetch with fresh data
-      setTimeout(() => {
-        queryClient.refetchQueries({ queryKey: queryKeys.inventory });
-      }, 100);
     },
     onError: (error) => {
-      console.error('❌ Bulk delete error:', error);
+      console.error('Bulk delete error:', error);
     },
   });
 }

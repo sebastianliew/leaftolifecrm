@@ -39,6 +39,7 @@ import usersRoutes from './routes/users.routes.js';
 
 // Import services to initialize at startup
 import { emailService } from './services/EmailService.js';
+import { checkDbConnection, getDbStatus } from './middlewares/dbConnection.middleware.js';
 
 // Debug environment variables
 console.log('JWT_SECRET loaded:', process.env.JWT_SECRET ? 'Yes' : 'No');
@@ -83,10 +84,6 @@ const mongoOptions = {
   heartbeatFrequencyMS: 2000,
 };
 
-mongoose.connect(mongoUri, mongoOptions)
-  .then(() => console.log('✅ MongoDB Atlas connected successfully'))
-  .catch((err: Error) => console.error('❌ MongoDB connection error:', err));
-
 // MongoDB connection events
 mongoose.connection.on('connected', () => {
   console.log('🔗 Mongoose connected to MongoDB Atlas');
@@ -106,6 +103,57 @@ process.on('SIGINT', async () => {
   console.log('🔐 MongoDB Atlas connection closed through app termination');
   process.exit(0);
 });
+
+// Connect to MongoDB and start server
+async function startServer(): Promise<void> {
+  try {
+    // CRITICAL: Wait for MongoDB connection before accepting requests
+    console.log('⏳ Connecting to MongoDB Atlas...');
+    await mongoose.connect(mongoUri, mongoOptions);
+    console.log('✅ MongoDB Atlas connected successfully');
+
+    // Verify connection is ready
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error('MongoDB connection not ready');
+    }
+
+    // Start the server only after successful connection
+    const server = createServer(app);
+
+    server.listen(PORT, () => {
+      const address = server.address() as AddressInfo;
+      const actualPort = address.port;
+
+      // JSON status message for deployment verification
+      const serverStatus = {
+        status: 'SUCCESS',
+        message: 'L2L Backend API Server started successfully',
+        port: actualPort,
+        environment: process.env.NODE_ENV || 'development',
+        baseUrl: `http://localhost:${actualPort}/api`,
+        healthCheck: `http://localhost:${actualPort}/health`,
+        timestamp: new Date().toISOString()
+      };
+
+      console.log(JSON.stringify(serverStatus, null, 2));
+
+      console.log(`🚀 Backend server is running on http://localhost:${actualPort}`);
+      console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🔗 API Base URL: http://localhost:${actualPort}/api`);
+      console.log(`❤️  Health Check: http://localhost:${actualPort}/health`);
+
+      // If port is different from requested, suggest updating frontend config
+      if (actualPort !== PORT) {
+        console.log(`⚠️  Server started on port ${actualPort} instead of ${PORT}`);
+        console.log(`💡 Update NEXT_PUBLIC_API_URL to: http://localhost:${actualPort}/api`);
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
 
 // Middleware
 app.use(helmet()); // Security headers
@@ -152,11 +200,18 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Rate limiting - increased for development
+// Global rate limiting - baseline protection for all API routes
+// Sensitive endpoints have additional stricter limits applied via rateLimiting.middleware.ts
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // limit each IP to 1000 requests per windowMs (increased for dev)
-  message: 'Too many requests from this IP, please try again later.',
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // 100 for production, 1000 for dev
+  message: {
+    error: 'Too many requests',
+    message: 'Too many requests from this IP, please try again later.',
+    retryAfter: '15 minutes'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
 });
 
 app.use('/api/', limiter);
@@ -168,15 +223,21 @@ app.get('/', (_req: Request, res: Response): void => {
   });
 });
 
-// Health check endpoint
+// Health check endpoint with database status
 app.get('/health', (_req: Request, res: Response): void => {
-  res.status(200).json({ 
-    status: 'OK', 
+  const dbStatus = getDbStatus();
+  res.status(dbStatus.connected ? 200 : 503).json({
+    status: dbStatus.connected ? 'OK' : 'DEGRADED',
     timestamp: new Date().toISOString(),
     service: 'L2L Backend API',
-    version: '1.0.0'
+    version: '1.0.0',
+    database: dbStatus
   });
 });
+
+// Database connection check for all API routes
+// This ensures requests fail fast if DB is unavailable
+app.use('/api', checkDbConnection);
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -241,36 +302,7 @@ const errorHandler: ErrorRequestHandler = (
 
 app.use(errorHandler);
 
-// Start server with dynamic port allocation
-const server = createServer(app);
-
-server.listen(PORT, () => {
-  const address = server.address() as AddressInfo;
-  const actualPort = address.port;
-  
-  // JSON status message for deployment verification
-  const serverStatus = {
-    status: 'SUCCESS',
-    message: 'L2L Backend API Server started successfully',
-    port: actualPort,
-    environment: process.env.NODE_ENV || 'development',
-    baseUrl: `http://localhost:${actualPort}/api`,
-    healthCheck: `http://localhost:${actualPort}/health`,
-    timestamp: new Date().toISOString()
-  };
-  
-  console.log(JSON.stringify(serverStatus, null, 2));
-  
-  console.log(`🚀 Backend server is running on http://localhost:${actualPort}`);
-  console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 API Base URL: http://localhost:${actualPort}/api`);
-  console.log(`❤️  Health Check: http://localhost:${actualPort}/health`);
-  
-  // If port is different from requested, suggest updating frontend config
-  if (actualPort !== PORT) {
-    console.log(`⚠️  Server started on port ${actualPort} instead of ${PORT}`);
-    console.log(`💡 Update NEXT_PUBLIC_API_URL to: http://localhost:${actualPort}/api`);
-  }
-});
+// Start the server (waits for MongoDB connection first)
+startServer();
 
 export default app;

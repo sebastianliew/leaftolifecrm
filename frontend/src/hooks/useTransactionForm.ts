@@ -4,6 +4,7 @@ import type { Product } from "@/types/inventory"
 import type { Patient } from "@/types/patient"
 import { DraftStorage } from "@/lib/client/draftStorage"
 import { DiscountService } from "@/services/DiscountService"
+import { fetchAPI } from "@/lib/query-client"
 
 interface DraftData {
   draftId: string
@@ -239,9 +240,9 @@ export function useTransactionForm({
 
     setIsAutoSaving(true)
     try {
-      const response = await fetch('/api/transactions/drafts/autosave', {
+      // Use fetchAPI which handles auth automatically
+      const result = await fetchAPI<{ success: boolean; draft?: { draftId: string } }>('/transactions/drafts/autosave', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           draftId: draftId || currentDraftId,
           formData: data,
@@ -249,7 +250,6 @@ export function useTransactionForm({
         })
       })
 
-      const result = await response.json()
       if (result.success && result.draft) {
         if (!currentDraftId) {
           setCurrentDraftId(result.draft.draftId)
@@ -257,12 +257,12 @@ export function useTransactionForm({
         setLastSaved(new Date())
       }
     } catch (error) {
-      console.warn('Server auto-save failed, using local storage:', error)
-      saveDraftToLocal(data, draftId, selectedPatientId)
+      console.warn('Server auto-save failed:', error)
+      // Don't silently create local draft - server is the source of truth
     } finally {
       setIsAutoSaving(false)
     }
-  }, [userId, currentDraftId, saveDraftToLocal])
+  }, [userId, currentDraftId])
 
   const triggerAutoSave = useCallback((data: TransactionFormData) => {
     if (!enableAutoSave || !userId) return

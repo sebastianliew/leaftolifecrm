@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from './auth.middleware.js';
 import { PermissionService } from '../lib/permissions/PermissionService.js';
 import type { FeaturePermissions } from '../lib/permissions/types.js';
+import { Transaction } from '../models/Transaction.js';
 
 const permissionService = PermissionService.getInstance();
 
@@ -104,5 +105,91 @@ export const requireAnyPermission = (permissions: Array<{ category: keyof Featur
     }
 
     next();
+  };
+};
+
+/**
+ * Middleware to check permission for editing transactions.
+ * - For drafts: Requires canEditDrafts (any user with this permission can edit any draft)
+ * - For non-drafts: Requires canEditTransactions
+ */
+export const requireDraftOrEditPermission = () => {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    const user = req.user;
+
+    if (!user) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const { id } = req.params;
+
+    try {
+      // Fetch the transaction to check its status and owner
+      const transaction = await Transaction.findById(id).select('status createdBy').lean();
+
+      if (!transaction) {
+        res.status(404).json({ error: 'Transaction not found' });
+        return;
+      }
+
+      // For drafts: check permissions with proper hierarchy
+      if (transaction.status === 'draft') {
+        // Super admin can edit any draft
+        if (user.role === 'super_admin') {
+          next();
+          return;
+        }
+
+        // Users with canEditTransactions can edit any draft (they can edit completed transactions anyway)
+        const canEditTransactions = permissionService.hasPermission(user, 'transactions', 'canEditTransactions');
+        if (canEditTransactions) {
+          next();
+          return;
+        }
+
+        // Otherwise, check canEditDrafts (allows staff to edit any draft for delegation workflow)
+        const canEditDrafts = permissionService.hasPermission(user, 'transactions', 'canEditDrafts');
+
+        if (canEditDrafts) {
+          next();
+          return;
+        }
+
+        // Debug logging for draft permission checks
+        console.log('[Permission Debug - Draft]', {
+          userId: user._id,
+          username: user.username,
+          role: user.role,
+          transactionId: id,
+          createdBy: transaction.createdBy,
+          canEditDrafts,
+          canEditTransactions
+        });
+
+        res.status(403).json({
+          error: 'Permission denied',
+          required: { category: 'transactions', permission: 'canEditDrafts' },
+          message: 'You do not have permission to edit drafts'
+        });
+        return;
+      }
+
+      // For non-drafts: require canEditTransactions
+      const canEdit = permissionService.hasPermission(user, 'transactions', 'canEditTransactions');
+
+      if (canEdit) {
+        next();
+        return;
+      }
+
+      res.status(403).json({
+        error: 'Permission denied',
+        required: { category: 'transactions', permission: 'canEditTransactions' }
+      });
+    } catch (error) {
+      console.error('Error in requireDraftOrEditPermission middleware:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   };
 };

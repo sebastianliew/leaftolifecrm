@@ -18,6 +18,7 @@ interface BundleQueryParams {
   maxPrice?: string;
   minSavings?: string;
   tags?: string;
+  getAllBundles?: string; // Added to support fetching all bundles without pagination
 }
 
 interface BundleProduct {
@@ -67,11 +68,11 @@ export const getBundles = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { 
-      page = '1', 
-      limit = '20', 
-      search, 
-      sortBy = 'name', 
+    const {
+      page = '1',
+      limit = '20',
+      search,
+      sortBy = 'name',
       sortOrder = 'asc',
       category,
       isActive,
@@ -79,9 +80,10 @@ export const getBundles = async (
       minPrice,
       maxPrice,
       minSavings,
-      tags
+      tags,
+      getAllBundles
     } = req.query;
-    
+
     // Build query
     interface BundleQuery {
       $or?: Array<
@@ -96,9 +98,9 @@ export const getBundles = async (
       savingsPercentage?: { $gte?: number };
       tags?: { $in: string[] };
     }
-    
+
     const query: BundleQuery = {};
-    
+
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -106,56 +108,63 @@ export const getBundles = async (
         { category: { $regex: search, $options: 'i' } }
       ];
     }
-    
+
     if (category) {
       query.category = { $regex: category, $options: 'i' };
     }
-    
+
     if (isActive !== undefined) {
       query.isActive = isActive === 'true';
     }
-    
+
     if (isPromoted !== undefined) {
       query.isPromoted = isPromoted === 'true';
     }
-    
+
     if (minPrice || maxPrice) {
       query.bundlePrice = {};
       if (minPrice) query.bundlePrice.$gte = parseFloat(minPrice);
       if (maxPrice) query.bundlePrice.$lte = parseFloat(maxPrice);
     }
-    
+
     if (minSavings) {
       query.savingsPercentage = { $gte: parseFloat(minSavings) };
     }
-    
+
     if (tags) {
       query.tags = { $in: tags.split(',') };
     }
-    
-    // Calculate pagination
+
+    // Check if we should return all bundles (no pagination)
+    const shouldGetAll = getAllBundles === 'true';
+
+    // Calculate pagination (only if not getting all)
     const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const skip = (pageNum - 1) * limitNum;
-    
+    const limitNum = shouldGetAll ? 0 : parseInt(limit); // 0 means no limit in mongoose
+    const skip = shouldGetAll ? 0 : (pageNum - 1) * limitNum;
+
     // Execute query - removed problematic createdBy populate for now
+    let bundlesQuery = Bundle.find(query)
+      .populate('bundleProducts.productId', 'name sku availableStock')
+      .sort({ [sortBy]: sortOrder === 'asc' ? 1 : -1 });
+
+    // Only apply pagination if not getting all bundles
+    if (!shouldGetAll) {
+      bundlesQuery = bundlesQuery.skip(skip).limit(limitNum);
+    }
+
     const [bundles, total] = await Promise.all([
-      Bundle.find(query)
-        .populate('bundleProducts.productId', 'name sku availableStock')
-        .sort({ [sortBy]: sortOrder === 'asc' ? 1 : -1 })
-        .skip(skip)
-        .limit(limitNum)
-        .lean(),
+      bundlesQuery.lean(),
       Bundle.countDocuments(query)
     ]);
-    
+
     res.json({
       bundles,
       pagination: {
         total,
-        page: pageNum,
-        limit: limitNum,
-        pages: Math.ceil(total / limitNum)
+        page: shouldGetAll ? 1 : pageNum,
+        limit: shouldGetAll ? total : limitNum,
+        pages: shouldGetAll ? 1 : Math.ceil(total / limitNum)
       }
     });
   } catch (error) {

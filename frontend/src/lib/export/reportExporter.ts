@@ -1,5 +1,5 @@
-import { jsPDF } from 'jspdf'
-import * as XLSX from 'xlsx'
+// Lazy-load heavy libraries to reduce initial bundle size
+// jsPDF: ~300KB, XLSX: ~400KB - only loaded when export is triggered
 
 interface ExportData {
   title: string
@@ -25,7 +25,9 @@ export class ReportExporter {
     }
   }
 
-  private static exportToPDF(options: ExportData) {
+  private static async exportToPDF(options: ExportData) {
+    // Dynamically import jsPDF only when needed
+    const { jsPDF } = await import('jspdf')
     const doc = new jsPDF()
     
     // Add title
@@ -50,7 +52,9 @@ export class ReportExporter {
     doc.save(`${options.title.toLowerCase().replace(/\s+/g, '-')}-report.pdf`)
   }
 
-  private static exportToExcel(options: ExportData) {
+  private static async exportToExcel(options: ExportData) {
+    // Dynamically import XLSX only when needed
+    const XLSX = await import('xlsx')
     const wb = XLSX.utils.book_new()
     
     // Create summary sheet if metrics provided
@@ -73,11 +77,13 @@ export class ReportExporter {
     XLSX.writeFile(wb, `${options.title.toLowerCase().replace(/\s+/g, '-')}-report.xlsx`)
   }
 
-  private static exportToCSV(options: ExportData) {
+  private static async exportToCSV(options: ExportData) {
     if (!Array.isArray(options.data)) {
       throw new Error('CSV export requires array data')
     }
-    
+
+    // Dynamically import XLSX only when needed
+    const XLSX = await import('xlsx')
     // Convert to CSV
     const ws = XLSX.utils.json_to_sheet(options.data)
     const csv = XLSX.utils.sheet_to_csv(ws)

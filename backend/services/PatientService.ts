@@ -1,5 +1,5 @@
 import { Patient } from '../models/Patient.js';
-import type { PatientFormData } from '../types/patient.js';
+import type { PatientFormData, Patient as PatientType } from '../types/patient.js';
 
 export class PatientService {
   // Get all patients with search and pagination
@@ -92,21 +92,46 @@ export class PatientService {
   // Create new patient
   async createPatient(patientData: PatientFormData) {
     try {
-      // Check for duplicate email or NRIC
-      const existingPatient = await Patient.findOne({
-        $or: [
-          { email: patientData.email },
-          ...(patientData.nric ? [{ nric: patientData.nric }] : [])
-        ]
-      });
-      
-      if (existingPatient) {
-        throw new Error('Patient with this email or NRIC already exists');
+      // Normalize email and NRIC
+      const normalizedEmail = patientData.email?.trim().toLowerCase();
+      const normalizedNric = patientData.nric?.trim().toUpperCase();
+
+      // Treat empty strings as "no value"
+      const hasEmail = normalizedEmail && normalizedEmail.length > 0;
+      const hasNric = normalizedNric && normalizedNric.length > 0;
+
+      // Build query conditions for case-insensitive email matching
+      const orConditions: Record<string, unknown>[] = [];
+      if (hasEmail) {
+        orConditions.push({ email: { $regex: new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
       }
-      
+      if (hasNric) {
+        orConditions.push({ nric: normalizedNric });
+      }
+
+      // Check for duplicate email or NRIC
+      if (orConditions.length > 0) {
+        const existingPatient = await Patient.findOne({ $or: orConditions });
+
+        if (existingPatient) {
+          // Determine which field caused the duplicate
+          const existingEmail = (existingPatient.email as string | undefined)?.toLowerCase();
+          const duplicateField = hasEmail && existingEmail === normalizedEmail ? 'email' : 'NRIC';
+          throw new Error(`Patient with this ${duplicateField} already exists`);
+        }
+      }
+
+      // Normalize the data being saved for consistency
+      if (hasEmail) {
+        patientData.email = normalizedEmail;
+      }
+      if (hasNric) {
+        patientData.nric = normalizedNric;
+      }
+
       const patient = new Patient(patientData);
       const savedPatient = await patient.save();
-      
+
       return savedPatient.toJSON();
     } catch (error) {
       console.error('Error in PatientService.createPatient:', error);
@@ -117,31 +142,68 @@ export class PatientService {
   // Update patient
   async updatePatient(id: string, updateData: Partial<PatientFormData>) {
     try {
-      // Check if trying to update email/NRIC to existing value
-      if (updateData.email || updateData.nric) {
+      // First, get the current patient to compare values
+      const currentPatient = await Patient.findById(id).lean() as PatientType | null;
+      if (!currentPatient) {
+        throw new Error('Patient not found');
+      }
+
+      // Normalize email and NRIC for comparison
+      const normalizedEmail = updateData.email?.trim().toLowerCase();
+      const normalizedNric = updateData.nric?.trim().toUpperCase();
+      const currentEmail = currentPatient.email?.trim().toLowerCase();
+      const currentNric = currentPatient.nric?.trim().toUpperCase();
+
+      // Treat empty strings as "no value"
+      const hasEmail = normalizedEmail && normalizedEmail.length > 0;
+      const hasNric = normalizedNric && normalizedNric.length > 0;
+
+      // Only check for duplicates if the value is CHANGING to a new value
+      const emailIsChanging = hasEmail && normalizedEmail !== currentEmail;
+      const nricIsChanging = hasNric && normalizedNric !== currentNric;
+
+      // Check if trying to update email/NRIC to existing value (owned by another patient)
+      if (emailIsChanging || nricIsChanging) {
+        // Build query conditions for case-insensitive email matching
+        const orConditions: Record<string, unknown>[] = [];
+        if (emailIsChanging) {
+          orConditions.push({ email: { $regex: new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
+        }
+        if (nricIsChanging) {
+          orConditions.push({ nric: normalizedNric });
+        }
+
         const existingPatient = await Patient.findOne({
           _id: { $ne: id },
-          $or: [
-            ...(updateData.email ? [{ email: updateData.email }] : []),
-            ...(updateData.nric ? [{ nric: updateData.nric }] : [])
-          ]
+          $or: orConditions
         });
-        
+
         if (existingPatient) {
-          throw new Error('Patient with this email or NRIC already exists');
+          // Determine which field caused the duplicate
+          const existingEmail = (existingPatient.email as string | undefined)?.toLowerCase();
+          const duplicateField = emailIsChanging && existingEmail === normalizedEmail ? 'email' : 'NRIC';
+          throw new Error(`Patient with this ${duplicateField} already exists`);
         }
       }
-      
+
+      // Normalize the data being saved for consistency
+      if (hasEmail && updateData.email) {
+        updateData.email = normalizedEmail;
+      }
+      if (hasNric && updateData.nric) {
+        updateData.nric = normalizedNric;
+      }
+
       const patient = await Patient.findByIdAndUpdate(
         id,
         updateData,
         { new: true, runValidators: true }
       ).lean();
-      
+
       if (!patient) {
         throw new Error('Patient not found');
       }
-      
+
       return patient;
     } catch (error) {
       console.error('Error in PatientService.updatePatient:', error);

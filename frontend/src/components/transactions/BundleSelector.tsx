@@ -93,7 +93,6 @@ export function BundleSelector({
   // Fetch all bundles and categories when component opens
   useEffect(() => {
     if (open) {
-      // Clear any existing bundles and fetch all bundles for transaction creation
       getAllBundles();
       getCategories();
     }
@@ -111,11 +110,11 @@ export function BundleSelector({
     const matchesSearch = bundle.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          bundle.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (bundle.bundleProducts?.some(p => p.name.toLowerCase().includes(searchTerm.toLowerCase())) || false);
-    
+
     const matchesCategory = selectedCategory === 'all' || bundle.category === selectedCategory;
     const matchesPromotion = !showPromotedOnly || bundle.isPromoted;
-    
-    return matchesSearch && matchesCategory && matchesPromotion && bundle.isActive;
+
+    return matchesSearch && matchesCategory && matchesPromotion;
   });
 
   const handleBundleSelection = (bundle: Bundle) => {
@@ -286,6 +285,11 @@ export function BundleSelector({
                         <div className="col-span-2">
                           <div className="flex items-center gap-2 mb-1">
                             <h3 className="font-medium text-sm">{bundle.name}</h3>
+                            {!bundle.isActive && (
+                              <Badge variant="secondary" className="text-xs h-4 px-1 bg-gray-200 text-gray-600">
+                                Inactive
+                              </Badge>
+                            )}
                             {bundle.isPromoted && (
                               <Badge variant="default" className="text-xs h-4 px-1">
                                 <FaTag className="w-2 h-2 mr-1" />

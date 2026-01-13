@@ -61,6 +61,7 @@ export interface TransactionPermissions {
   canViewTransactions: boolean;  // View transactions list and details
   canCreateTransactions: boolean;
   canEditTransactions: boolean;
+  canEditDrafts: boolean;  // Edit own draft transactions
   canDeleteTransactions: boolean;
   canApplyDiscounts: boolean;
   canRefundTransactions: boolean;

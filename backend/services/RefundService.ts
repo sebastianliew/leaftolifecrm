@@ -1,6 +1,8 @@
+import mongoose from 'mongoose';
 import { Refund, IRefund } from '../models/Refund.js';
 import { Transaction } from '../models/Transaction.js';
 import { Product } from '../models/Product.js';
+import { createAuditLog } from '../models/AuditLog.js';
 
 interface RefundFilters {
   status?: string;
@@ -88,11 +90,16 @@ export class RefundService {
     }
   }
 
-  // Create new refund
+  // Create new refund - uses MongoDB session for atomic operations
   static async createRefund(transactionId: string, refundData: CreateRefundData): Promise<IRefund> {
+    const session = await mongoose.startSession();
+    const startTime = Date.now();
+
     try {
+      session.startTransaction();
+
       // Get the original transaction
-      const transaction = await Transaction.findById(transactionId);
+      const transaction = await Transaction.findById(transactionId).session(session);
       if (!transaction) {
         throw new Error('Transaction not found');
       }
@@ -100,6 +107,31 @@ export class RefundService {
       // Check if transaction can be refunded
       if (transaction.status === 'cancelled' || transaction.status === 'refunded') {
         throw new Error('Transaction cannot be refunded');
+      }
+
+      // DUPLICATE PREVENTION: Check for recent refunds with the SAME ITEMS (within 5 seconds)
+      // This prevents duplicate refunds from rapid clicks or retried requests
+      // but allows legitimate sequential partial refunds with different items
+      const requestedProductIds = refundData.items.map(item => item.productId).sort();
+
+      const recentRefunds = await Refund.find({
+        transactionId,
+        createdAt: { $gte: new Date(Date.now() - 5000) }, // Within last 5 seconds
+        status: { $in: ['pending', 'approved', 'completed'] } // Only check non-rejected refunds
+      }).session(session);
+
+      // Check if any recent refund has the same items
+      const isDuplicateRefund = recentRefunds.some(existingRefund => {
+        const existingProductIds = existingRefund.items
+          .map((item: { productId: string }) => item.productId)
+          .sort();
+        // Check if the product IDs overlap (same items being refunded twice)
+        return requestedProductIds.some(id => existingProductIds.includes(id));
+      });
+
+      if (isDuplicateRefund) {
+        console.log(`[RefundService] DUPLICATE PREVENTED: Recent refund for same items found for transaction ${transactionId}`);
+        throw new Error('A refund request for these items was recently submitted. Please wait and try again.');
       }
 
       // Calculate refund amounts and validate items
@@ -110,7 +142,7 @@ export class RefundService {
         const originalItem = transaction.items.find(
           (txnItem) => txnItem.productId === item.productId
         );
-        
+
         if (!originalItem) {
           throw new Error(`Product ${item.productId} not found in transaction`);
         }
@@ -155,7 +187,7 @@ export class RefundService {
         status: 'pending'
       });
 
-      await refund.save();
+      await refund.save({ session });
 
       // Update transaction refund tracking
       transaction.refundHistory = transaction.refundHistory || [];
@@ -163,7 +195,7 @@ export class RefundService {
       transaction.refundCount = (transaction.refundCount || 0) + 1;
       transaction.totalRefunded = (transaction.totalRefunded || 0) + totalRefundAmount;
       transaction.lastRefundDate = new Date();
-      
+
       // Update refund status
       if (refundType === 'full') {
         transaction.refundStatus = 'full';
@@ -173,12 +205,46 @@ export class RefundService {
         transaction.status = 'partially_refunded';
       }
 
-      await transaction.save();
+      await transaction.save({ session });
+
+      // Commit the transaction
+      await session.commitTransaction();
+
+      // Create audit log (fire-and-forget)
+      createAuditLog({
+        entityType: 'refund',
+        entityId: refund._id,
+        action: 'create',
+        status: 'success',
+        userId: refundData.createdBy,
+        metadata: {
+          transactionNumber: transaction.transactionNumber,
+          refundAmount: totalRefundAmount,
+          refundType
+        },
+        duration: Date.now() - startTime
+      });
 
       return refund;
     } catch (error) {
+      // Abort transaction on any error
+      await session.abortTransaction();
+
+      // Log the failure
+      createAuditLog({
+        entityType: 'refund',
+        entityId: transactionId,
+        action: 'create',
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        userId: refundData.createdBy,
+        duration: Date.now() - startTime
+      });
+
       console.error('Error creating refund:', error);
       throw error;
+    } finally {
+      session.endSession();
     }
   }
 

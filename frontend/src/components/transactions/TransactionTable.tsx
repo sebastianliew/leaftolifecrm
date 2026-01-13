@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { TransactionTableRow } from './TransactionTableRow'
+import { TransactionFilters, type TransactionFilterValues } from './TransactionFilters'
 import { PaginationControls } from '@/components/ui/pagination-controls'
 import { Search, Trash2, X } from 'lucide-react'
 import type { Transaction } from '@/types/transaction'
@@ -23,11 +24,15 @@ interface TransactionTableProps {
   transactions: Transaction[]
   onEdit: (transaction: Transaction) => void
   onDelete: (transactionId: string) => void
+  onCancelDraft?: (transaction: Transaction) => void
   onGenerateInvoice: (transactionId: string) => void
   onBulkDelete?: (transactionIds: string[]) => void
   searchTerm: string
   onSearchChange: (search: string) => void
   onSearchSubmit?: () => void
+  filters?: TransactionFilterValues
+  onFiltersChange?: (filters: TransactionFilterValues) => void
+  onClearFilters?: () => void
   pagination?: PaginationInfo
   onPageChange?: (page: number) => void
   onItemsPerPageChange?: (limit: number) => void
@@ -40,11 +45,15 @@ export function TransactionTable({
   transactions,
   onEdit,
   onDelete,
+  onCancelDraft,
   onGenerateInvoice,
   onBulkDelete,
   searchTerm,
   onSearchChange,
   onSearchSubmit,
+  filters,
+  onFiltersChange,
+  onClearFilters,
   pagination,
   onPageChange,
   onItemsPerPageChange,
@@ -81,59 +90,73 @@ export function TransactionTable({
 
   return (
     <div className="space-y-4">
-      {/* Search and bulk actions */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
-          <div className="relative max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search all transactions... (Press Enter)"
-              value={searchTerm}
-              onChange={(e) => onSearchChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && onSearchSubmit) {
-                  onSearchSubmit()
-                }
-              }}
-              className="pl-10 pr-10"
-            />
-            {searchTerm && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 p-0"
-                onClick={() => {
-                  onSearchChange('')
-                  if (onSearchSubmit) onSearchSubmit()
+      {/* Search, Filters, and Bulk Actions */}
+      <div className="space-y-3">
+        {/* Top row: Search and Bulk Actions */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 flex-1">
+            <div className="relative w-full max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search transactions... (Press Enter)"
+                value={searchTerm}
+                onChange={(e) => onSearchChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && onSearchSubmit) {
+                    onSearchSubmit()
+                  }
                 }}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
+                className="pl-10 pr-10"
+              />
+              {searchTerm && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 p-0"
+                  onClick={() => {
+                    onSearchChange('')
+                    if (onSearchSubmit) onSearchSubmit()
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
-          {activeSearchTerm && pagination && (
-            <p className="text-sm text-muted-foreground">
-              Found {pagination.totalCount} result{pagination.totalCount !== 1 ? 's' : ''} for &quot;{activeSearchTerm}&quot;
-            </p>
+
+          {selectedTransactions.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                {selectedTransactions.length} selected
+              </span>
+              {onBulkDelete && canDeleteTransactions && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Selected
+                </Button>
+              )}
+            </div>
           )}
         </div>
-        
-        {selectedTransactions.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">
-              {selectedTransactions.length} selected
-            </span>
-            {onBulkDelete && canDeleteTransactions && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleBulkDelete}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Delete Selected
-              </Button>
-            )}
-          </div>
+
+        {/* Filters row */}
+        {filters && onFiltersChange && onClearFilters && (
+          <TransactionFilters
+            filters={filters}
+            onFiltersChange={onFiltersChange}
+            onClearFilters={onClearFilters}
+          />
+        )}
+
+        {/* Search results indicator */}
+        {activeSearchTerm && pagination && (
+          <p className="text-sm text-muted-foreground">
+            Found {pagination.totalCount} result{pagination.totalCount !== 1 ? 's' : ''} for &quot;{activeSearchTerm}&quot;
+          </p>
         )}
       </div>
 
@@ -175,6 +198,7 @@ export function TransactionTable({
                   onSelect={handleSelectTransaction}
                   onEdit={onEdit}
                   onDelete={onDelete}
+                  onCancelDraft={onCancelDraft}
                   onGenerateInvoice={onGenerateInvoice}
                   canEdit={canEditTransactions}
                   canDelete={canDeleteTransactions}

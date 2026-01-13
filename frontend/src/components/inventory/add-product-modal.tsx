@@ -75,7 +75,7 @@ export function AddProductModal({
   const canAddProducts = hasPermission('inventory', 'canAddProducts')
   const canEditCostPrices = hasPermission('inventory', 'canEditCostPrices')
   // Remove stock permission check as it's causing issues with async permission loading
-  const canManageStock = true // Always allow stock management for product creation
+  const _canManageStock = true // Always allow stock management for product creation
   
   const {
     register,
@@ -104,24 +104,9 @@ export function AddProductModal({
   const bundleInfo = watch('bundleInfo')
   const showBundlePrice = bundleInfo && bundleInfo.trim() !== '' && bundleInfo !== '-'
 
-  // Debug permissions and current values
-  const currentStockValue = watch("currentStock")
-  console.log('🔍 Permissions check:', {
-    canAddProducts,
-    canEditCostPrices, 
-    canManageStock: true, // Always true now
-    userRole: 'Check your auth provider for role'
-  })
-  console.log('👁️ Current stock field value:', currentStockValue)
-  console.log('🔧 Stock field will be saved as:', currentStockValue || 0)
-  
-  // Debug categories data
-  console.log('📋 AddProductModal received categories:', categories)
-  console.log('📋 Categories length:', categories?.length)
-  console.log('📋 Categories sample:', categories?.[0])
+  const _currentStockValue = watch("currentStock")
 
   const onFormSubmit = async (data: AddProductFormData) => {
-    console.log('🚀 Form submission started with data:', data)
     if (isSubmitting || loading) return
     
     // Check if user has permission to add products
@@ -153,16 +138,6 @@ export function AddProductModal({
         bundlePrice: showBundlePrice ? data.bundlePrice : undefined,
         hasBundle: !!showBundlePrice
       }
-
-      console.log('📦 Form data before transform:', data)
-      console.log('🔐 Permission check at submission:', {
-        canManageStock,
-        canEditCostPrices,
-        canAddProducts,
-        stockValue: data.currentStock,
-        willSaveStock: data.currentStock || 0
-      })
-      console.log('📤 Data being sent to API:', transformedData)
 
       await onSubmit(transformedData)
       reset()
@@ -366,9 +341,8 @@ export function AddProductModal({
                 id="currentStock"
                 type="number"
                 step="0.01"
-                {...register("currentStock", { 
+                {...register("currentStock", {
                   setValueAs: (value) => {
-                    console.log('🔢 Converting value:', value, 'to number:', Number(value || 0))
                     return value === "" || value === undefined || isNaN(Number(value)) ? 0 : Number(value)
                   }
                 })}

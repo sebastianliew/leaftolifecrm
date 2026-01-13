@@ -19,18 +19,20 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { HiCube } from "react-icons/hi2"
+import { Package } from 'lucide-react'
 import type { Product, UnitOfMeasurement } from '@/types/inventory'
-import type { ContainerType } from '@/types/container'
+import type { ContainerType, Bottle } from '@/types/container'
+import BottleSelector from './BottleSelector'
 
 interface QuantitySelectorModalProps {
   product: Product
   isOpen: boolean
   onClose: () => void
-  onConfirm: (totalQuantity: number, totalPrice: number, selectedUnit: string, saleType?: string, containerTypeInfo?: { 
-    containerType: ContainerType; 
+  onConfirm: (totalQuantity: number, totalPrice: number, selectedUnit: string, saleType?: string, containerTypeInfo?: {
+    containerType: ContainerType;
     containerCapacity: number;
     containersNeeded?: number;
-  } | null) => void
+  } | null, containerId?: string | null) => void
   unitPrice: number
   unitOfMeasurements: UnitOfMeasurement[]
 }
@@ -48,6 +50,10 @@ export function QuantitySelectorModal({
   const [containerTypes, setContainerTypes] = useState<ContainerType[]>([])
   const [selectedContainerType, setSelectedContainerType] = useState<ContainerType | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  // Bottle selection for partial/volume sales
+  const [showBottleSelector, setShowBottleSelector] = useState(false)
+  const [selectedBottle, setSelectedBottle] = useState<Bottle | null>(null)
+  const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null)
 
   // Fetch container types when modal opens
   useEffect(() => {
@@ -101,6 +107,21 @@ export function QuantitySelectorModal({
 
   const handleQuantityChange = (value: string) => {
     setQuantity(value)
+  }
+
+  // Handle bottle selection
+  const handleBottleSelect = (containerId: string | null, bottle: Bottle | null) => {
+    setSelectedContainerId(containerId)
+    setSelectedBottle(bottle)
+  }
+
+  // Clear bottle selection when sale type changes
+  const handleSaleTypeChange = (newSaleType: 'quantity' | 'volume') => {
+    setSaleType(newSaleType)
+    if (newSaleType === 'quantity') {
+      setSelectedContainerId(null)
+      setSelectedBottle(null)
+    }
   }
 
   const getTotalQuantity = () => {
@@ -248,7 +269,8 @@ export function QuantitySelectorModal({
       getTotalPrice(),
       productUnit,
       saleType,
-      containerInfo
+      containerInfo,
+      saleType === 'volume' ? selectedContainerId : null
     )
 
     onClose()
@@ -256,18 +278,18 @@ export function QuantitySelectorModal({
 
   const handleConfirmOutOfStock = () => {
     setShowConfirmDialog(false)
-    
+
     const qty = parseFloat(quantity)
-    const productUnit = typeof product.unitOfMeasurement === 'object' 
+    const productUnit = typeof product.unitOfMeasurement === 'object'
       ? product.unitOfMeasurement._id || ''
       : product.unitOfMeasurement || ''
-    
+
     // Only create containerInfo if we have a valid ContainerType object
     const containerInfo = (product.containerType && typeof product.containerType === 'object') ? {
       containerType: product.containerType,
       containerCapacity: product.containerCapacity || 0,
-      containersNeeded: saleType === 'volume' 
-        ? Math.ceil(qty / (product.containerCapacity || 1)) 
+      containersNeeded: saleType === 'volume'
+        ? Math.ceil(qty / (product.containerCapacity || 1))
         : undefined
     } : null
 
@@ -276,7 +298,8 @@ export function QuantitySelectorModal({
       getTotalPrice(),
       productUnit,
       saleType,
-      containerInfo
+      containerInfo,
+      saleType === 'volume' ? selectedContainerId : null
     )
 
     onClose()
@@ -352,11 +375,11 @@ export function QuantitySelectorModal({
             <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg">
               <Label className="text-lg font-semibold text-blue-900 mb-3 block">Sale Type</Label>
               <div className="grid grid-cols-2 gap-3">
-                <button 
-                  className={`p-3 rounded-lg border-2 transition-all ${saleType === 'quantity' 
-                    ? 'border-blue-500 bg-blue-100 text-blue-800' 
+                <button
+                  className={`p-3 rounded-lg border-2 transition-all ${saleType === 'quantity'
+                    ? 'border-blue-500 bg-blue-100 text-blue-800'
                     : 'border-gray-200 bg-white hover:border-blue-300'}`}
-                  onClick={() => setSaleType('quantity')}
+                  onClick={() => handleSaleTypeChange('quantity')}
                 >
                   <div className="text-center">
                     <div className="text-lg font-bold">📦</div>
@@ -364,12 +387,12 @@ export function QuantitySelectorModal({
                     <div className="text-xs text-muted-foreground">Sell by piece/unit count</div>
                   </div>
                 </button>
-                
-                <button 
-                  className={`p-3 rounded-lg border-2 transition-all ${saleType === 'volume' 
-                    ? 'border-green-500 bg-green-100 text-green-800' 
+
+                <button
+                  className={`p-3 rounded-lg border-2 transition-all ${saleType === 'volume'
+                    ? 'border-green-500 bg-green-100 text-green-800'
                     : 'border-gray-200 bg-white hover:border-green-300'}`}
-                  onClick={() => setSaleType('volume')}
+                  onClick={() => handleSaleTypeChange('volume')}
                 >
                   <div className="text-center">
                     <div className="text-lg font-bold">⚗️</div>
@@ -392,6 +415,36 @@ export function QuantitySelectorModal({
                   </div>
                 )}
               </div>
+
+              {/* Bottle Selection for Volume Sales */}
+              {saleType === 'volume' && product.containerCapacity && product.containerCapacity > 0 && (
+                <div className="mt-3 p-3 bg-green-50 rounded border border-green-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium text-green-800">Select Bottle (Optional)</div>
+                      <div className="text-xs text-green-700">
+                        {selectedBottle ? (
+                          <span className="flex items-center gap-1">
+                            <Package className="w-3 h-3" />
+                            Bottle selected: {selectedBottle.remaining} {product.unitOfMeasurement?.abbreviation || 'units'} remaining
+                          </span>
+                        ) : (
+                          'Auto-select (FIFO) or choose specific bottle'
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowBottleSelector(true)}
+                      className="border-green-300 text-green-700 hover:bg-green-100"
+                    >
+                      <Package className="w-4 h-4 mr-1" />
+                      {selectedBottle ? 'Change Bottle' : 'Select Bottle'}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
             {/* Container Type Display - Always show for products with containers */}
             {product.containerType && selectedContainerType && (
@@ -570,7 +623,7 @@ export function QuantitySelectorModal({
           
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleConfirmOutOfStock}
               className="bg-orange-600 hover:bg-orange-700"
             >
@@ -579,6 +632,17 @@ export function QuantitySelectorModal({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Bottle Selector Modal */}
+      <BottleSelector
+        productId={product._id || ''}
+        productName={product.name}
+        requiredQuantity={parseFloat(quantity) || 0}
+        unitAbbreviation={product.unitOfMeasurement?.abbreviation || 'units'}
+        open={showBottleSelector}
+        onClose={() => setShowBottleSelector(false)}
+        onSelect={handleBottleSelect}
+      />
     </Dialog>
   )
 }

@@ -11,6 +11,7 @@ import {
 } from '@backend/controllers/users.controller.js';
 import { authenticateToken } from '@backend/middlewares/auth.middleware.js';
 import { requirePermission } from '../middlewares/permission.middleware.js';
+import { authRateLimit } from '../middlewares/rateLimiting.middleware.js';
 
 const router: ExpressRouter = Router();
 
@@ -26,7 +27,7 @@ router.put('/:id', requirePermission('userManagement', 'canEditUsers'), updateUs
 
 router.patch('/:id/role', requirePermission('userManagement', 'canEditUsers'), updateUserRole);
 
-router.patch('/:id/password', updateUserPassword);
+router.patch('/:id/password', authRateLimit, updateUserPassword);
 
 router.delete('/:id', requirePermission('userManagement', 'canDeleteUsers'), deleteUser);
 

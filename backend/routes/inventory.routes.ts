@@ -1,6 +1,7 @@
 import express, { type IRouter } from 'express';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
 import { requirePermission } from '../middlewares/permission.middleware.js';
+import { bulkOperationRateLimit } from '../middlewares/rateLimiting.middleware.js';
 import {
   getUnits,
   getUnitById,
@@ -32,6 +33,14 @@ import {
   getRestockHistory,
   getRestockBatches
 } from '../controllers/restock.controller.js';
+import {
+  getProductContainers,
+  getContainerDetails,
+  getContainerSaleHistory,
+  createContainer,
+  updateContainer,
+  deleteContainer
+} from '../controllers/containers.controller.js';
 
 const router: IRouter = express.Router();
 
@@ -58,7 +67,7 @@ router.get('/products/:id', requirePermission('inventory', 'canViewInventory'), 
 router.post('/products', requirePermission('inventory', 'canAddProducts'), createProduct);
 router.put('/products/:id', requirePermission('inventory', 'canEditProducts'), updateProduct);
 router.delete('/products/:id', requirePermission('inventory', 'canDeleteProducts'), deleteProduct);
-router.post('/products/bulk-delete', requirePermission('inventory', 'canDeleteProducts'), bulkDeleteProducts);
+router.post('/products/bulk-delete', bulkOperationRateLimit, requirePermission('inventory', 'canDeleteProducts'), bulkDeleteProducts);
 router.post('/products/add-stock', requirePermission('inventory', 'canManageStock'), addStock);
 router.get('/products/templates', requirePermission('inventory', 'canViewInventory'), getProductTemplates);
 
@@ -66,7 +75,15 @@ router.get('/products/templates', requirePermission('inventory', 'canViewInvento
 router.get('/restock/suggestions', requirePermission('inventory', 'canCreateRestockOrders'), getRestockSuggestions);
 router.post('/restock', requirePermission('inventory', 'canCreateRestockOrders'), restockProduct);
 router.get('/restock', requirePermission('inventory', 'canViewInventory'), getRestockHistory);
-router.post('/restock/bulk', requirePermission('inventory', 'canCreateRestockOrders'), bulkRestockProducts);
+router.post('/restock/bulk', bulkOperationRateLimit, requirePermission('inventory', 'canCreateRestockOrders'), bulkRestockProducts);
 router.get('/restock/batches', requirePermission('inventory', 'canViewInventory'), getRestockBatches);
+
+// Container (Bottle) routes - for partial unit sales tracking
+router.get('/products/:productId/containers', requirePermission('inventory', 'canViewInventory'), getProductContainers);
+router.get('/products/:productId/containers/:containerId', requirePermission('inventory', 'canViewInventory'), getContainerDetails);
+router.get('/products/:productId/containers/:containerId/history', requirePermission('inventory', 'canViewInventory'), getContainerSaleHistory);
+router.post('/products/:productId/containers', requirePermission('inventory', 'canManageStock'), createContainer);
+router.put('/products/:productId/containers/:containerId', requirePermission('inventory', 'canManageStock'), updateContainer);
+router.delete('/products/:productId/containers/:containerId', requirePermission('inventory', 'canManageStock'), deleteContainer);
 
 export default router;

@@ -69,10 +69,24 @@ export default function TransactionDetailPage() {
   }
 
   const handleViewInvoice = async () => {
-    if (transaction?.invoiceNumber) {
-      // Backend saves invoices with format: {invoiceNumber}-LeafToLife.pdf
+    if (!transaction) return
+
+    try {
+      // Try to preview existing invoice
       const downloadUrl = `/api/invoices/${transaction.invoiceNumber}-LeafToLife.pdf`
       await previewInvoicePDF(downloadUrl)
+    } catch (_err) {
+      // If invoice not found (404), generate it first then preview
+      console.log('[Invoice] Not found, generating...')
+      setError(null) // Clear any previous error
+      try {
+        const result = await generateInvoice(transaction._id) as GenerateInvoiceResponse
+        await loadTransaction() // Refresh transaction data
+        await previewInvoicePDF(result.downloadUrl)
+      } catch (genErr) {
+        console.error('[Invoice] Generation failed:', genErr)
+        setError('Failed to generate invoice. Please try again.')
+      }
     }
   }
 
@@ -218,7 +232,14 @@ export default function TransactionDetailPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">Transaction Details</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-bold">Transaction Details</h1>
+              {transaction.status === 'draft' && (
+                <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                  DRAFT
+                </Badge>
+              )}
+            </div>
             <p className="text-gray-500">{transaction.transactionNumber}</p>
           </div>
         </div>
@@ -227,7 +248,8 @@ export default function TransactionDetailPage() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Transactions
           </Button>
-          {transaction.invoiceGenerated ? (
+          {/* Only show View Invoice if invoice was successfully generated (status = completed) */}
+          {transaction.invoiceStatus === 'completed' && transaction.invoicePath ? (
             <>
               <Button onClick={handleViewInvoice} variant="default">
                 <FileText className="mr-2 h-4 w-4" />
@@ -247,7 +269,7 @@ export default function TransactionDetailPage() {
           ) : (
             <Button onClick={handleGenerateInvoice} disabled={loading} variant="default">
               <Printer className="mr-2 h-4 w-4" />
-              Download PDF
+              {transaction.invoiceStatus === 'failed' ? 'Retry Invoice' : 'Download PDF'}
             </Button>
           )}
         </div>
@@ -319,32 +341,48 @@ export default function TransactionDetailPage() {
                 {(transaction.paymentStatus || 'pending').toUpperCase()}
               </Badge>
             </div>
-            {transaction.invoiceGenerated && (
+            {(transaction.invoiceStatus && transaction.invoiceStatus !== 'none') && (
               <div>
                 <p className="text-sm text-gray-500">Invoice Status</p>
-                {transaction.invoiceEmailSent && transaction.invoiceEmailSentAt ? (
-                  <div className="flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-green-700">Email Sent</p>
-                      <p className="text-xs text-gray-600">
-                        {new Date(transaction.invoiceEmailSentAt).toLocaleString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </p>
-                      {transaction.invoiceEmailRecipient && (
+                {transaction.invoiceStatus === 'completed' ? (
+                  transaction.invoiceEmailSent && transaction.invoiceEmailSentAt ? (
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-green-700">Email Sent</p>
                         <p className="text-xs text-gray-600">
-                          to: {transaction.invoiceEmailRecipient}
+                          {new Date(transaction.invoiceEmailSentAt).toLocaleString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
                         </p>
+                        {transaction.invoiceEmailRecipient && (
+                          <p className="text-xs text-gray-600">
+                            to: {transaction.invoiceEmailRecipient}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="font-medium text-gray-600">Generated • Not sent via email</p>
+                  )
+                ) : transaction.invoiceStatus === 'failed' ? (
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-red-600">Generation Failed</p>
+                      {transaction.invoiceError && (
+                        <p className="text-xs text-gray-600">{transaction.invoiceError}</p>
                       )}
                     </div>
                   </div>
+                ) : transaction.invoiceStatus === 'generating' ? (
+                  <p className="font-medium text-blue-600">Generating...</p>
                 ) : (
-                  <p className="font-medium text-gray-600">Generated • Not sent via email</p>
+                  <p className="font-medium text-gray-500">Pending</p>
                 )}
               </div>
             )}

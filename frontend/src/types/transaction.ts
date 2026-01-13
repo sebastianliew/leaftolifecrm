@@ -41,6 +41,8 @@ export interface Transaction {
 
   // Invoice Information
   invoiceGenerated: boolean
+  invoiceStatus?: 'none' | 'pending' | 'generating' | 'completed' | 'failed'
+  invoiceError?: string
   invoicePath?: string
   invoiceNumber?: string
   

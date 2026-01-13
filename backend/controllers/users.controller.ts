@@ -7,7 +7,8 @@ import { FilterQuery } from 'mongoose';
 // Type for user creation/update data
 type UserData = Partial<Pick<IUser,
   'username' | 'email' | 'password' | 'role' | 'isActive' | 'name' |
-  'firstName' | 'lastName' | 'displayName' | 'featurePermissions'
+  'firstName' | 'lastName' | 'displayName' | 'featurePermissions' |
+  'failedLoginAttempts' | 'lastFailedLogin'
 >> & {
   phone?: string;
   address?: string;
@@ -210,14 +211,6 @@ export const updateUser = async (req: Request, res: Response): Promise<Response 
       dateOfBirth 
     } = req.body;
 
-    // Debug logging for permissions update
-    console.log('[UpdateUser Debug] Request data:', {
-      userId: id,
-      hasFeaturePermissions: !!featurePermissions,
-      featurePermissions: featurePermissions ? JSON.stringify(featurePermissions, null, 2) : 'undefined',
-      hasDiscountPermissions: !!discountPermissions,
-      discountPermissions: discountPermissions ? JSON.stringify(discountPermissions, null, 2) : 'undefined'
-    });
 
     const user = await User.findById(id);
 
@@ -277,16 +270,17 @@ export const updateUser = async (req: Request, res: Response): Promise<Response 
     if (email !== undefined) updateData.email = email;
     if (role !== undefined && role !== '') updateData.role = role;
     if (displayName !== undefined) updateData.displayName = displayName;
-    if (isActive !== undefined) updateData.isActive = isActive;
+    if (isActive !== undefined) {
+      updateData.isActive = isActive;
+      // Clear lockout fields when reactivating a user
+      if (isActive === true) {
+        updateData.failedLoginAttempts = 0;
+        updateData.lastFailedLogin = undefined;
+      }
+    }
     
     // Handle permissions
     if (featurePermissions !== undefined) {
-      console.log('[UpdateUser Debug] Processing featurePermissions:', {
-        hasDiscountPermissions: !!discountPermissions,
-        hasFeatureDiscounts: !!featurePermissions.discounts,
-        featurePermissionsKeys: Object.keys(featurePermissions)
-      });
-      
       // Merge discount permissions from both sources if they exist
       if (discountPermissions || featurePermissions.discounts) {
         updateData.featurePermissions = {
@@ -314,23 +308,11 @@ export const updateUser = async (req: Request, res: Response): Promise<Response 
     if (status !== undefined) updateData.status = status;
     if (dateOfBirth !== undefined) updateData.dateOfBirth = dateOfBirth;
 
-    // Debug logging for final update data
-    console.log('[UpdateUser Debug] Final update data:', {
-      userId: id,
-      updateData: JSON.stringify(updateData, null, 2)
-    });
-
     const updatedUser = await User.findByIdAndUpdate(
       id,
       updateData,
       { new: true, runValidators: true }
     ).select('-password');
-
-    // Debug logging for updated user
-    console.log('[UpdateUser Debug] Updated user permissions:', {
-      userId: id,
-      savedFeaturePermissions: updatedUser?.featurePermissions ? JSON.stringify(updatedUser.featurePermissions, null, 2) : 'undefined'
-    });
 
     return res.json({
       message: 'User updated successfully',

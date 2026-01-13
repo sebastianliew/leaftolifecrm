@@ -1,5 +1,5 @@
 import express, { Request, type IRouter } from 'express';
-import { 
+import {
   login,
   logout,
   refreshToken,
@@ -13,6 +13,11 @@ import {
 } from '../controllers/auth.controller.js';
 import { authenticateToken, requireRole } from '../middlewares/auth.middleware.js';
 import { IUser } from '../models/User.js';
+import {
+  authRateLimit,
+  passwordResetRateLimit,
+  tokenRefreshRateLimit
+} from '../middlewares/rateLimiting.middleware.js';
 
 // Extended request interface for authenticated routes
 interface AuthenticatedRequest extends Request {
@@ -21,19 +26,19 @@ interface AuthenticatedRequest extends Request {
 
 const router: IRouter = express.Router();
 
-// Public routes
-router.post('/login', login);
+// Public routes with rate limiting
+router.post('/login', authRateLimit, login);
 router.post('/logout', logout);
-router.post('/refresh', refreshToken);
-router.post('/password-reset', resetPassword);
-router.post('/password-reset/confirm', confirmPasswordReset);
+router.post('/refresh', tokenRefreshRateLimit, refreshToken);
+router.post('/password-reset', passwordResetRateLimit, resetPassword);
+router.post('/password-reset/confirm', passwordResetRateLimit, confirmPasswordReset);
 
 // Protected routes
 router.get('/me', authenticateToken, (req: AuthenticatedRequest, res) => {
   // Return the authenticated user
   res.json({ user: req.user });
 });
-router.post('/create-admin', createAdmin); // Consider adding initial setup check
+router.post('/create-admin', authRateLimit, createAdmin); // Rate limited to prevent abuse
 router.post('/create-temp-user', authenticateToken, requireRole('admin'), createTempUser);
 router.post('/force-logout', authenticateToken, forceLogout);
 router.post('/switch-user', authenticateToken, requireRole(['admin', 'super_admin']), switchUser);

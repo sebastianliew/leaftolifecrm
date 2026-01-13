@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -8,17 +8,19 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { 
-  HiCube, 
-  HiExclamationTriangle, 
-  HiMagnifyingGlass, 
-  HiPencil, 
-  HiTrash, 
-  HiChevronUp, 
-  HiChevronDown, 
+import {
+  HiCube,
+  HiExclamationTriangle,
+  HiMagnifyingGlass,
+  HiPencil,
+  HiTrash,
+  HiChevronUp,
+  HiChevronDown,
   HiPlus,
-  HiFunnel 
+  HiFunnel,
+  HiArrowDownTray
 } from "react-icons/hi2"
+import { Loader2 } from 'lucide-react'
 import { useInventory, useCreateInventoryItem, useUpdateInventoryItem, useDeleteInventoryItem, useBulkDeleteInventoryItems } from "@/hooks/queries/use-inventory-queries"
 import { useCategoriesQuery } from "@/hooks/queries/use-categories-query"
 import { useUnitsQuery } from "@/hooks/queries/use-units-query"
@@ -61,6 +63,7 @@ interface Product {
   expiryDate?: string | Date
   description?: string
   isActive: boolean
+  containerCapacity?: number
   createdAt?: string | Date
   updatedAt?: string | Date
 }
@@ -72,24 +75,6 @@ export default function InventoryPage() {
   const { data: units = [], isLoading: unitsLoading } = useUnitsQuery()
   const { toast } = useToast()
 
-  // Test soft delete verification - temporary debug call
-  useInventory(true) // includeInactive = true
-
-  // Pre-load all dropdown data when page mounts for instant UX
-  useEffect(() => {
-    // Data automatically loads due to React Query hooks above
-    if (process.env.NODE_ENV === 'development') {
-      console.log('📦 Inventory data loaded:', { categories: categories.length, units: units.length, brands: brands.length });
-      console.log('🏷️ Categories data:', categories);
-      console.log('🔍 Categories loading state:', categoriesLoading);
-      
-      // Debug the categories filtering
-      const filteredCategoriesForModal = Array.isArray(categories) ? 
-        categories.filter(cat => cat && cat.id) : []
-      console.log('🎯 Filtered categories for modal:', filteredCategoriesForModal);
-      console.log('🎯 Categories that failed filter:', categories.filter(cat => !cat || !cat.id));
-    }
-  }, [categories, units.length, brands.length, categoriesLoading])
 
   // Mutations
   const createMutation = useCreateInventoryItem()
@@ -123,6 +108,7 @@ export default function InventoryPage() {
   const [productToEdit, setProductToEdit] = useState<Product | null>(null)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   // Filtering logic
   const filteredProducts = products.filter((product) => {
@@ -298,6 +284,40 @@ export default function InventoryPage() {
     setAlertFilter(filterType)
   }
 
+  // Excel export handler
+  const handleExportExcel = async () => {
+    setIsExporting(true)
+    try {
+      const XLSX = await import('xlsx')
+
+      const dataToExport = sortedProducts.map(product => ({
+        'Product Name': product.name,
+        'SKU': product.sku || '',
+        'Category': typeof product.category === 'object' ? (product.category as ProductCategory)?.name : product.category || '',
+        'Brand/Supplier': product.brandName || '',
+        'Unit': product.unitOfMeasure || '',
+        'Capacity': product.containerCapacity || '',
+        'Cost Price': canViewCostPrices ? (product.costPrice || '') : 'N/A',
+        'Selling Price': product.price || '',
+        'Current Stock': product.stock ?? 0,
+        'Reorder Point': product.reorderLevel || '',
+        'Status': product.isActive ? 'Active' : 'Inactive'
+      }))
+
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport)
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventory')
+      XLSX.writeFile(workbook, `inventory_${new Date().toISOString().split('T')[0]}.xlsx`)
+
+      toast({ title: "Success", description: "Excel file downloaded successfully" })
+    } catch (error) {
+      console.error('Excel export error:', error)
+      toast({ title: "Error", description: "Failed to export Excel file", variant: "destructive" })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   // Add product handler
   const handleAddProduct = async (data: AddProductSubmitData) => {
     try {
@@ -312,6 +332,7 @@ export default function InventoryPage() {
         reorderLevel: data.reorderPoint || 10,
         description: data.bundleInfo,
         status: 'active',
+        containerCapacity: data.containerCapacity,
       }
 
       await createMutation.mutateAsync(inventoryData)
@@ -353,6 +374,7 @@ export default function InventoryPage() {
         reorderLevel: data.reorderPoint || 10,
         description: data.bundleInfo,
         status: 'active',
+        containerCapacity: data.containerCapacity,
       }
 
       await updateMutation.mutateAsync({ 
@@ -516,8 +538,8 @@ export default function InventoryPage() {
             />
           </div>
           
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => setShowFilters(!showFilters)}
             className="flex items-center gap-2"
           >
@@ -525,7 +547,21 @@ export default function InventoryPage() {
             Filters
           </Button>
 
-          <Button 
+          <Button
+            variant="outline"
+            onClick={handleExportExcel}
+            disabled={isExporting}
+            className="flex items-center gap-2"
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <HiArrowDownTray className="h-4 w-4" />
+            )}
+            Download Excel
+          </Button>
+
+          <Button
             className="flex items-center gap-2"
             onClick={() => setShowAddModal(true)}
             disabled={!canAddProducts}
@@ -679,6 +715,7 @@ export default function InventoryPage() {
                   </button>
                 </TableHead>
                 <TableHead className="w-16 text-center">Unit</TableHead>
+                <TableHead className="w-24 text-center">Capacity</TableHead>
                 <TableHead className="w-32 text-center">
                   <button 
                     onClick={() => handleSort('category')}
@@ -758,6 +795,9 @@ export default function InventoryPage() {
                     </TableCell>
                     <TableCell className="text-center text-xs">
                       {product.unitOfMeasure || 'N/A'}
+                    </TableCell>
+                    <TableCell className="text-center text-xs">
+                      {product.containerCapacity || '-'}
                     </TableCell>
                     <TableCell className="text-center text-xs">
                       {typeof product.category === 'string' ? product.category : product.category?.name || 'N/A'}
@@ -917,7 +957,7 @@ export default function InventoryPage() {
           sellingPrice: productToEdit.price,
           status: productToEdit.isActive ? 'active' as const : 'inactive' as const,
           isActive: productToEdit.isActive,
-          containerCapacity: 1,
+          containerCapacity: productToEdit.containerCapacity || 1,
           category: { 
             id: categories.find(c => c.name === (typeof productToEdit.category === 'string' ? productToEdit.category : productToEdit.category?.name))?.id || '', 
             name: typeof productToEdit.category === 'string' ? productToEdit.category : productToEdit.category?.name || '', 
@@ -968,7 +1008,7 @@ export default function InventoryPage() {
           sellingPrice: productToDelete.price,
           status: productToDelete.isActive ? 'active' as const : 'inactive' as const,
           isActive: productToDelete.isActive,
-          containerCapacity: 1,
+          containerCapacity: productToDelete.containerCapacity || 1,
           category: { id: '', name: typeof productToDelete.category === 'string' ? productToDelete.category : productToDelete.category?.name || '', description: '', level: 1, isActive: true, createdAt: new Date(), updatedAt: new Date() },
           createdAt: productToDelete.createdAt || new Date(),
           updatedAt: productToDelete.updatedAt || new Date()

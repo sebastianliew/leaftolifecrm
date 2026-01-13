@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import path from 'path';
+import fs from 'fs';
 import { blobStorageService } from '../services/BlobStorageService.js';
 
 // GET /api/invoices/:filename - Download invoice PDF
@@ -19,6 +20,18 @@ export const downloadInvoice = async (req: Request, res: Response): Promise<void
     const localFilePath = path.join(process.cwd(), 'invoices', filename);
 
     console.log('[Invoice Download] Attempting to download:', filename);
+    console.log('[Invoice Download] CWD:', process.cwd());
+    console.log('[Invoice Download] Local path:', localFilePath);
+    console.log('[Invoice Download] File exists locally:', fs.existsSync(localFilePath));
+
+    // List files in invoices directory for debugging
+    const invoicesDir = path.join(process.cwd(), 'invoices');
+    if (fs.existsSync(invoicesDir)) {
+      const files = fs.readdirSync(invoicesDir);
+      console.log('[Invoice Download] Files in invoices dir:', files.slice(0, 10)); // Show first 10
+    } else {
+      console.log('[Invoice Download] Invoices directory does not exist!');
+    }
 
     // Download from Azure Blob Storage or local storage
     const { stream, exists } = await blobStorageService.downloadFile(filename, localFilePath);

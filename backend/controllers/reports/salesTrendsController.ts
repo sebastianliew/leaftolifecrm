@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Transaction, ITransaction } from '../../models/Transaction.js';
+import { Transaction } from '../../models/Transaction.js';
 
 interface SalesTrendData {
   date: string;
@@ -19,6 +19,18 @@ interface TopProductData {
   product: string;
   revenue: number;
   quantity: number;
+}
+
+// Lean transaction type for optimized queries (subset of ITransaction)
+interface LeanTransaction {
+  createdAt: Date;
+  totalAmount?: number;
+  items?: Array<{
+    name?: string;
+    itemType?: string;
+    totalPrice?: number;
+    quantity?: number;
+  }>;
 }
 
 interface SalesTrendsResponse {
@@ -47,30 +59,25 @@ export class SalesTrendsController {
         startDate.setDate(startDate.getDate() - days);
       }
 
-      // Get transactions for the period
+      // Get transactions for the period with .lean() for better memory efficiency
+      // Uses compound index: { createdAt: -1, status: 1, type: 1 }
       const transactions = await Transaction.find({
         createdAt: { $gte: startDate, $lte: endDate },
         status: 'completed',
         type: 'COMPLETED'
-      });
-
-      console.log(`Sales Trends Debug: Found ${transactions.length} transactions between ${startDate.toISOString()} and ${endDate.toISOString()}`);
-      
-      // Debug: Check first transaction structure
-      if (transactions.length > 0) {
-        console.log('First transaction items sample:', JSON.stringify(transactions[0].items?.slice(0, 2), null, 2));
-      }
+      })
+        .select('createdAt totalAmount items') // Only select needed fields
+        .lean() as LeanTransaction[];
 
       // Generate daily data
       const dailyData = await generateDailyData(transactions, startDate, days);
-      
+
       // Generate category data
       const categoryData = await generateCategoryData(transactions);
-      
+
       // Generate top products data
       const topProducts = await generateTopProductsData(transactions);
 
-      console.log(`Sales Trends Debug: Generated ${dailyData.length} daily entries, ${categoryData.length} categories, ${topProducts.length} top products`);
 
       const response: SalesTrendsResponse = {
         dailyData,
@@ -89,7 +96,7 @@ export class SalesTrendsController {
   }
 }
 
-async function generateDailyData(transactions: ITransaction[], startDate: Date, days: number): Promise<SalesTrendData[]> {
+async function generateDailyData(transactions: LeanTransaction[], startDate: Date, days: number): Promise<SalesTrendData[]> {
   const dailyMap = new Map<string, SalesTrendData>();
   
   // Initialize all days with zero values
@@ -127,20 +134,17 @@ async function generateDailyData(transactions: ITransaction[], startDate: Date, 
   return Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-async function generateCategoryData(transactions: ITransaction[]): Promise<CategoryData[]> {
+async function generateCategoryData(transactions: LeanTransaction[]): Promise<CategoryData[]> {
   const categoryMap = new Map<string, number>();
   let totalRevenue = 0;
-  let itemsProcessed = 0;
 
   transactions.forEach(transaction => {
     if (!transaction.items || !Array.isArray(transaction.items)) {
-      console.log(`Warning: Transaction ${transaction.transactionNumber || 'unknown'} has no items array`);
       return;
     }
-    
+
     transaction.items.forEach((item) => {
       if (!item) {
-        console.log(`Warning: Found null/undefined item in transaction ${transaction.transactionNumber || 'unknown'}`);
         return;
       }
       
@@ -152,12 +156,9 @@ async function generateCategoryData(transactions: ITransaction[]): Promise<Categ
       if (revenue > 0) {
         categoryMap.set(category, (categoryMap.get(category) || 0) + revenue);
         totalRevenue += revenue;
-        itemsProcessed++;
       }
     });
   });
-  
-  console.log(`Category Debug: Processed ${itemsProcessed} items from ${transactions.length} transactions, total revenue: ${totalRevenue}`);
   
   const result = Array.from(categoryMap.entries())
     .map(([category, revenue]) => ({
@@ -167,14 +168,11 @@ async function generateCategoryData(transactions: ITransaction[]): Promise<Categ
     }))
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5);
-    
-  console.log('Category breakdown:', result);
   return result;
 }
 
-async function generateTopProductsData(transactions: ITransaction[]): Promise<TopProductData[]> {
+async function generateTopProductsData(transactions: LeanTransaction[]): Promise<TopProductData[]> {
   const productMap = new Map<string, { revenue: number; quantity: number }>();
-  let productsProcessed = 0;
 
   transactions.forEach(transaction => {
     if (!transaction.items || !Array.isArray(transaction.items)) {
@@ -195,12 +193,9 @@ async function generateTopProductsData(transactions: ITransaction[]): Promise<To
         existing.revenue += revenue;
         existing.quantity += quantity;
         productMap.set(productName, existing);
-        productsProcessed++;
       }
     });
   });
-  
-  console.log(`Top Products Debug: Processed ${productsProcessed} product entries, found ${productMap.size} unique products`);
   
   const result = Array.from(productMap.entries())
     .map(([product, data]) => ({
@@ -210,7 +205,5 @@ async function generateTopProductsData(transactions: ITransaction[]): Promise<To
     }))
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, 5);
-    
-  console.log('Top products:', result.map(p => `${p.product}: $${p.revenue}`));
   return result;
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +27,7 @@ import type {
 import type { TransactionItem } from '@/types/transaction';
 import { useBlendTemplates } from '@/hooks/useBlendTemplates';
 import { useContainerTypes } from '@/hooks/useContainerTypes';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 
 import type { CustomBlendHistoryItem, BlendHistoryIngredient } from './BlendHistorySelector';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -77,9 +77,21 @@ export function CustomBlendCreator({
   const [_isLoadingEditData, setIsLoadingEditData] = useState(false);
   const [pendingContainerTypeId, setPendingContainerTypeId] = useState<string | null>(null);
 
+  // Track if form has been initialized for current dialog session
+  const hasInitializedRef = useRef(false);
+
   // Reset form when dialog opens/closes or load editing data
   useEffect(() => {
-    if (!open) return;
+    // Reset initialization flag when dialog closes
+    if (!open) {
+      hasInitializedRef.current = false;
+      return;
+    }
+
+    // Skip if already initialized for this session (prevents form reset on dependency changes)
+    if (hasInitializedRef.current && !editingBlend) {
+      return;
+    }
     
     console.log('🔍 CustomBlendCreator - editingBlend:', editingBlend)
     console.log('🔍 CustomBlendCreator - editingBlend.customBlendData:', editingBlend?.customBlendData)
@@ -168,6 +180,9 @@ export function CustomBlendCreator({
       setPreparationNotes('Note: Original blend data not available for editing')
       setIsLoadingEditData(false)
     }
+
+    // Mark as initialized after setting up the form
+    hasInitializedRef.current = true;
   }, [open, editingBlend, containerTypes, products]);  // Added products dependency
 
   // Set container type when container types are loaded and we have a pending ID
@@ -390,18 +405,18 @@ export function CustomBlendCreator({
     });
 
     setErrors(newErrors);
-    
+
     // Show toast notification if there are errors
     if (errorMessages.length > 0) {
       toast({
         title: 'Validation Error',
-        description: errorMessages.length === 1 
-          ? errorMessages[0] 
+        description: errorMessages.length === 1
+          ? errorMessages[0]
           : `Please fix the following issues:\n${errorMessages.join('\n')}`,
         variant: 'destructive'
       });
     }
-    
+
     return Object.keys(newErrors).length === 0;
   };
 

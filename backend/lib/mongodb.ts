@@ -1,59 +1,35 @@
-if (typeof Proxy === 'undefined') {
-  console.warn('Proxy is not supported in this environment. Some features may not work correctly.');
-}
+/**
+ * MongoDB Connection Utility
+ *
+ * NOTE: The primary connection is now managed centrally in server.ts
+ * This file is kept for backward compatibility with existing imports.
+ * The server waits for MongoDB connection before accepting requests,
+ * so services can use mongoose directly without calling connectDB().
+ */
 
 import mongoose from 'mongoose';
 
-interface Cached {
-  conn: typeof mongoose | null;
-  promise: Promise<typeof mongoose> | null;
-}
+/**
+ * Returns the existing mongoose connection.
+ * The connection is established in server.ts before the server starts.
+ *
+ * @deprecated Use mongoose directly - connection is managed by server.ts
+ */
+async function connectDB(): Promise<typeof mongoose> {
+  // Connection is already established by server.ts
+  if (mongoose.connection.readyState !== 1) {
+    console.warn('[connectDB] Warning: Called before server connection was established');
 
-declare global {
-  // eslint-disable-next-line no-var
-  var mongoose: Cached | undefined;
-}
+    // Fallback: try to connect if not connected (shouldn't happen normally)
+    if (!process.env.MONGODB_URI) {
+      throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+    }
 
-const cached: Cached = globalThis.mongoose || {
-  conn: null,
-  promise: null
-};
-
-if (!globalThis.mongoose) {
-  globalThis.mongoose = cached;
-}
-
-async function connectDB() {
-  if (!process.env.MONGODB_URI) {
-    throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+    await mongoose.connect(process.env.MONGODB_URI);
   }
 
-  if (cached.conn && mongoose.connection.readyState === 1) {
-    return cached.conn;
-  }
-
-  if (!cached.promise) {
-    const opts = {
-      bufferCommands: false,
-      maxPoolSize: 10,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-      connectTimeoutMS: 10000,
-    };
-    
-    cached.promise = mongoose.connect(process.env.MONGODB_URI!, opts).then((mongoose) => {
-      return mongoose;
-    });
-  }
-
-  try {
-    cached.conn = await cached.promise;
-  } catch (e) {
-    cached.promise = null;
-    throw e;
-  }
-
-  return cached.conn;
+  return mongoose;
 }
 
-export default connectDB; 
+export default connectDB;
+export { connectDB }; 

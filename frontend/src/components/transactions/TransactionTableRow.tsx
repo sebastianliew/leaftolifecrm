@@ -5,7 +5,15 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import Link from "next/link"
+import { MoreVertical, Ban } from "lucide-react"
 import { FaEye, FaEdit, FaReceipt, FaTrash } from "react-icons/fa"
 import type { Transaction } from "@/types/transaction"
 
@@ -15,6 +23,7 @@ interface TransactionTableRowProps {
   onSelect: (transactionId: string, checked: boolean) => void
   onEdit: (transaction: Transaction) => void
   onDelete: (transactionId: string) => void
+  onCancelDraft?: (transaction: Transaction) => void
   onGenerateInvoice: (transactionId: string) => void
   canEdit?: boolean
   canDelete?: boolean
@@ -38,7 +47,11 @@ const getStatusColor = (status: string) => {
   }
 }
 
-const getTypeColor = (type: string) => {
+const getTypeColor = (type: string, status?: string) => {
+  // Check status first for cancelled transactions
+  if (status === "cancelled") {
+    return "bg-red-100 text-red-800"
+  }
   switch (type) {
     case "DRAFT":
       return "bg-yellow-100 text-yellow-800"
@@ -47,6 +60,13 @@ const getTypeColor = (type: string) => {
     default:
       return "bg-gray-100 text-gray-800"
   }
+}
+
+const getTypeLabel = (type: string, status?: string) => {
+  if (status === "cancelled") {
+    return "CANCELLED"
+  }
+  return type
 }
 
 const formatDate = (dateString: string) => {
@@ -66,6 +86,7 @@ export const TransactionTableRow = React.memo(({
   onSelect,
   onEdit,
   onDelete,
+  onCancelDraft,
   onGenerateInvoice,
   canEdit = false,
   canDelete = false
@@ -93,8 +114,8 @@ export const TransactionTableRow = React.memo(({
         </div>
       </TableCell>
       <TableCell>
-        <Badge className={getTypeColor(transaction.type)}>
-          {transaction.type}
+        <Badge className={getTypeColor(transaction.type, transaction.status)}>
+          {getTypeLabel(transaction.type, transaction.status)}
         </Badge>
       </TableCell>
       <TableCell className="text-center">{itemCount}</TableCell>
@@ -107,41 +128,56 @@ export const TransactionTableRow = React.memo(({
         </Badge>
       </TableCell>
       <TableCell>
-        <div className="flex items-center gap-1">
-          <Link href={`/transactions/${transaction._id}`}>
-            <Button variant="ghost" size="icon" title="View details">
-              <FaEye className="h-4 w-4" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon">
+              <MoreVertical className="h-4 w-4" />
+              <span className="sr-only">Actions</span>
             </Button>
-          </Link>
-          {canEdit && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onEdit(transaction)}
-              title="Edit transaction"
-            >
-              <FaEdit className="h-4 w-4" />
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onGenerateInvoice(transaction._id)}
-            title="Generate invoice"
-          >
-            <FaReceipt className="h-4 w-4" />
-          </Button>
-          {canDelete && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onDelete(transaction._id)}
-              title="Delete transaction"
-            >
-              <FaTrash className="h-4 w-4 text-red-600" />
-            </Button>
-          )}
-        </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem asChild>
+              <Link href={`/transactions/${transaction._id}`}>
+                <FaEye className="mr-2 h-4 w-4" />
+                View details
+              </Link>
+            </DropdownMenuItem>
+            {canEdit && (
+              <DropdownMenuItem onClick={() => onEdit(transaction)}>
+                <FaEdit className="mr-2 h-4 w-4" />
+                Edit
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => onGenerateInvoice(transaction._id)}>
+              <FaReceipt className="mr-2 h-4 w-4" />
+              Generate invoice
+            </DropdownMenuItem>
+            {transaction.status === 'draft' && onCancelDraft && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => onCancelDraft(transaction)}
+                  className="text-orange-600 focus:text-orange-600"
+                >
+                  <Ban className="mr-2 h-4 w-4" />
+                  Cancel Draft
+                </DropdownMenuItem>
+              </>
+            )}
+            {canDelete && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => onDelete(transaction._id)}
+                  className="text-red-600 focus:text-red-600"
+                >
+                  <FaTrash className="mr-2 h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </TableCell>
     </TableRow>
   )
@@ -150,12 +186,15 @@ export const TransactionTableRow = React.memo(({
   // Return true if props are equal (skip re-render), false if different (re-render)
   return prevProps.transaction._id === nextProps.transaction._id &&
          prevProps.transaction.paymentStatus === nextProps.transaction.paymentStatus &&
+         prevProps.transaction.status === nextProps.transaction.status &&
          prevProps.transaction.totalAmount === nextProps.transaction.totalAmount &&
          prevProps.transaction.customerName === nextProps.transaction.customerName &&
          prevProps.transaction.type === nextProps.transaction.type &&
          prevProps.transaction.transactionDate === nextProps.transaction.transactionDate &&
          prevProps.transaction.updatedAt === nextProps.transaction.updatedAt &&
-         prevProps.isSelected === nextProps.isSelected
+         prevProps.isSelected === nextProps.isSelected &&
+         prevProps.canEdit === nextProps.canEdit &&
+         prevProps.canDelete === nextProps.canDelete
 })
 
 TransactionTableRow.displayName = 'TransactionTableRow'

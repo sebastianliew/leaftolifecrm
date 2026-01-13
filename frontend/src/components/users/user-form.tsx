@@ -719,6 +719,7 @@ export function UserForm({ initialData, onSubmit, onCancel }: UserFormProps) {
                   { key: 'canViewTransactions', label: 'View Transactions' },
                   { key: 'canCreateTransactions', label: 'Create Transactions' },
                   { key: 'canEditTransactions', label: 'Edit Transactions' },
+                  { key: 'canEditDrafts', label: 'Edit Drafts' },
                   { key: 'canDeleteTransactions', label: 'Delete Transactions' },
                   { key: 'canApplyDiscounts', label: 'Apply Discounts' },
                   { key: 'canRefundTransactions', label: 'Refund Transactions' },

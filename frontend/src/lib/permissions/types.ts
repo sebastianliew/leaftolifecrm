@@ -34,6 +34,7 @@ export interface FeaturePermissions {
     canViewTransactions: boolean;  // View transactions list and details
     canCreateTransactions: boolean;
     canEditTransactions: boolean;
+    canEditDrafts: boolean;  // Edit own draft transactions
     canDeleteTransactions: boolean;
     canApplyDiscounts: boolean;
     canRefundTransactions: boolean;
@@ -180,6 +181,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Partial<FeaturePermissions>> = {
       canViewTransactions: true,
       canCreateTransactions: true,
       canEditTransactions: true,
+      canEditDrafts: true,
       canDeleteTransactions: true,
       canApplyDiscounts: true,
       canRefundTransactions: true,
@@ -242,6 +244,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Partial<FeaturePermissions>> = {
       canViewTransactions: true,
       canCreateTransactions: true,
       canEditTransactions: true,
+      canEditDrafts: true,
       canDeleteTransactions: false,
       canApplyDiscounts: true,
       canRefundTransactions: true,
@@ -304,6 +307,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Partial<FeaturePermissions>> = {
       canViewTransactions: true,
       canCreateTransactions: true,
       canEditTransactions: false,
+      canEditDrafts: true,
       canDeleteTransactions: false,
       canApplyDiscounts: true,
       canRefundTransactions: false,
@@ -360,6 +364,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Partial<FeaturePermissions>> = {
       canViewTransactions: false,
       canCreateTransactions: false,
       canEditTransactions: false,
+      canEditDrafts: false,
       canDeleteTransactions: false,
       canApplyDiscounts: false,
       canRefundTransactions: false,

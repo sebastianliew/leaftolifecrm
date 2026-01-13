@@ -1,0 +1,18 @@
+{
+  "summary": {
+    "csv": {
+      "users": 7,
+      "transactions": 4341
+    },
+    "mongodb": {
+      "users": 8,
+      "transactions": 4279
+    },
+    "missing": {
+      "users": 0,
+      "transactions": 0
+    }
+  },
+  "missingUsers": [],
+  "missingTransactions": []
+}

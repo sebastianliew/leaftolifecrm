@@ -77,28 +77,35 @@ export const getCategories = async (
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
     
-    // Execute query
-    // console.log('📋 Categories query object:', query);
-    const [categories, total] = await Promise.all([
+    // Execute query with product counts in a single aggregation (eliminates N+1)
+    const [categories, total, productCounts] = await Promise.all([
       Category.find(query)
         .sort({ [sortBy]: sortOrder === 'asc' ? 1 : -1 })
         .skip(skip)
         .limit(limitNum)
         .lean<ICategory[]>(),
-      Category.countDocuments(query)
+      Category.countDocuments(query),
+      // Get all product counts in one query using aggregation
+      Product.aggregate([
+        { $match: { isActive: true } },
+        { $group: { _id: '$category', count: { $sum: 1 } } }
+      ])
     ]);
-    // console.log(`📊 Found ${categories.length} categories, total: ${total}`);
-    
-    // Add product count to each category
-    const categoriesWithCount: CategoryWithCount[] = await Promise.all(
-      categories.map(async (category) => {
-        const productCount = await Product.countDocuments({ 
-          category: category._id as string,
-          isActive: true 
-        });
-        return { ...category, productCount } as unknown as CategoryWithCount;
-      })
-    );
+
+    // Build a map of category ID -> product count for O(1) lookup
+    const countMap = new Map<string, number>();
+    for (const item of productCounts) {
+      if (item._id) {
+        countMap.set(item._id.toString(), item.count);
+      }
+    }
+
+    // Add product count to each category using the map (no additional DB queries)
+    const categoriesWithCount: CategoryWithCount[] = categories.map(category => {
+      const categoryId = (category._id as string).toString();
+      const productCount = countMap.get(categoryId) || 0;
+      return { ...category, productCount } as unknown as CategoryWithCount;
+    });
     
     const response = {
       categories: categoriesWithCount,
