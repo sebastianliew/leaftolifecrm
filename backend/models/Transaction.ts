@@ -55,6 +55,8 @@ export interface ITransaction extends Document {
       preparationNotes?: string;
       mixedBy: string;
       mixedAt: Date;
+      marginPercent?: number;
+      containerType?: unknown; // Can be string ID, object with id, or full ContainerType object
     };
   }>;
   subtotal: number;
@@ -124,7 +126,9 @@ const CustomBlendDataSchema = new Schema({
   totalIngredientCost: { type: Number, required: true },
   preparationNotes: { type: String },
   mixedBy: { type: String, required: true },
-  mixedAt: { type: Date, required: true }
+  mixedAt: { type: Date, required: true },
+  marginPercent: { type: Number },
+  containerType: { type: Schema.Types.Mixed } // Can be string ID, object with id, or full ContainerType object
 }, { _id: false });
 
 const TransactionItemSchema = new Schema({

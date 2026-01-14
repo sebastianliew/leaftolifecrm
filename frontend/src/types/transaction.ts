@@ -186,7 +186,7 @@ export interface TransactionItem {
     mixedBy: string
     mixedAt: Date
     marginPercent?: number
-    containerType?: string | ContainerType | { id: string; _id?: string; name?: string }
+    containerType?: string | ContainerType | { id: string; _id?: string; name?: string } | null
   }
 
   // For miscellaneous items

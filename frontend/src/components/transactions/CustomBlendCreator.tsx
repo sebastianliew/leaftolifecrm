@@ -108,13 +108,12 @@ export function CustomBlendCreator({
         
         setBlendName(blendData.name);
         setPreparationNotes(blendData.preparationNotes || '');
-        setFinalPrice(editingBlend.unitPrice ? editingBlend.unitPrice.toString() : '');
-        
+
         // Set ingredients from blend data and find current product info
         setIngredients(blendData.ingredients?.map(ingredient => {
           // Find the product from the products array to get current stock and price
           const currentProduct = products.find(p => p._id === ingredient.productId);
-          
+
           return {
             productId: ingredient.productId,
             name: ingredient.name,
@@ -127,12 +126,29 @@ export function CustomBlendCreator({
             notes: ''
           };
         }));
+
+        // Calculate and restore the original margin ratio so price recalculates with fresh ingredient costs
+        const oldTotalIngredientCost = blendData.totalIngredientCost || 0;
+        const oldUnitPrice = editingBlend.unitPrice || 0;
+
+        if (oldTotalIngredientCost > 0 && oldUnitPrice > 0) {
+          // Calculate what margin was used: margin = ((price / cost) - 1) * 100
+          const calculatedMargin = ((oldUnitPrice / oldTotalIngredientCost) - 1) * 100;
+          setMarginPercent(Math.round(calculatedMargin));
+        } else if (blendData.marginPercent) {
+          // Fallback: use stored margin if available
+          setMarginPercent(blendData.marginPercent);
+        }
+
+        // Don't set finalPrice from old unitPrice - let margin-based pricingSuggestion recalculate
+        // with fresh ingredient prices. This ensures the final price reflects current inventory costs.
         
         // Store container type ID to be set later when container types are loaded
         
         // Check for container type in different locations
         const containerTypeData = (blendData as { containerType?: ContainerType | string | { id: string } }).containerType;
         const containerTypeFromTransaction = editingBlend.containerType;
+
         // containerTypeId doesn't exist on TransactionItem, using containerType instead
         
         // Check if container type is stored in selectedContainers array
@@ -579,7 +595,9 @@ export function CustomBlendCreator({
       totalIngredientCost: calculatedTotalPrice, // Note: field name is 'Cost' but contains sum of selling prices
       preparationNotes,
       mixedBy: 'current_user', // TODO: Get from auth context
-      mixedAt: now
+      mixedAt: now,
+      marginPercent: marginPercent, // Store margin for future edits
+      containerType: selectedContainerType // Store container type for future edits (null is preserved in JSON, undefined is not)
     };
 
     const blendItem: TransactionItem = {
@@ -591,7 +609,7 @@ export function CustomBlendCreator({
       unitPrice: calculatedSellingPrice,
       totalPrice: calculatedSellingPrice * (editingBlend?.quantity || 1),
       discountAmount: editingBlend?.discountAmount || 0,
-      containerType: selectedContainerType || undefined,
+      containerType: selectedContainerType ?? undefined, // Keep undefined here since TransactionItem type allows it
       isService: false,
       saleType: 'quantity',
       unitOfMeasurementId: (() => {
@@ -610,6 +628,8 @@ export function CustomBlendCreator({
         preparationNotes: customBlendData.preparationNotes,
         mixedBy: customBlendData.mixedBy,
         mixedAt: customBlendData.mixedAt,
+        marginPercent: customBlendData.marginPercent,
+        containerType: customBlendData.containerType,
         ingredients: customBlendData.ingredients.map(ingredient => ({
           productId: ingredient.productId,
           name: ingredient.name,

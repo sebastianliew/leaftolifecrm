@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { FaTrash, FaShoppingCart, FaUserPlus, FaEdit } from "react-icons/fa"
+import { FiRefreshCw, FiAlertTriangle } from "react-icons/fi"
 import { ImSpinner8 } from "react-icons/im"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import type { TransactionFormData, TransactionItem, PaymentMethod, PaymentStatus } from "@/types/transaction"
 import type { Product } from "@/types/inventory"
 import type { Transaction } from "@/types/transaction"
@@ -875,6 +877,192 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     }
   }
 
+  // Helper to detect price mismatch between draft item and current inventory
+  const getPriceMismatch = useCallback((item: TransactionItem): {
+    hasMismatch: boolean;
+    currentPrice: number | null;
+    difference: number
+  } => {
+    // Only check regular products with quantity-based pricing
+    // Skip: bundles, blends, services, volume-based, miscellaneous
+    if (
+      item.itemType !== 'product' ||
+      item.saleType === 'volume' ||
+      item.isService
+    ) {
+      return { hasMismatch: false, currentPrice: null, difference: 0 };
+    }
+
+    const currentProduct = products.find(p => p._id === item.productId);
+    if (!currentProduct) {
+      return { hasMismatch: false, currentPrice: null, difference: 0 };
+    }
+
+    const currentPrice = currentProduct.sellingPrice;
+    const draftPrice = item.unitPrice;
+    const hasMismatch = Math.abs(currentPrice - draftPrice) > 0.001;
+    const difference = currentPrice - draftPrice;
+
+    return { hasMismatch, currentPrice, difference };
+  }, [products]);
+
+  // Helper to detect ingredient price mismatches in custom blends
+  const getCustomBlendMismatch = useCallback((item: TransactionItem): {
+    hasMismatch: boolean;
+    changedIngredients: Array<{
+      name: string;
+      originalCost: number;
+      currentCost: number;
+      difference: number;
+    }>;
+    totalDifference: number;
+    newTotalIngredientCost: number;
+  } => {
+    if (item.itemType !== 'custom_blend' || !item.customBlendData?.ingredients) {
+      return { hasMismatch: false, changedIngredients: [], totalDifference: 0, newTotalIngredientCost: 0 };
+    }
+
+    const changedIngredients: Array<{
+      name: string;
+      originalCost: number;
+      currentCost: number;
+      difference: number;
+    }> = [];
+
+    let newTotalIngredientCost = 0;
+
+    for (const ingredient of item.customBlendData.ingredients) {
+      const currentProduct = products.find(p => p._id === ingredient.productId);
+      const originalCost = ingredient.costPerUnit || 0;
+      const currentCost = currentProduct?.sellingPrice || originalCost;
+      const ingredientTotal = ingredient.quantity * currentCost;
+      newTotalIngredientCost += ingredientTotal;
+
+      if (Math.abs(currentCost - originalCost) > 0.001) {
+        changedIngredients.push({
+          name: ingredient.name,
+          originalCost,
+          currentCost,
+          difference: currentCost - originalCost
+        });
+      }
+    }
+
+    const originalTotal = item.customBlendData.totalIngredientCost || 0;
+    const totalDifference = newTotalIngredientCost - originalTotal;
+
+    return {
+      hasMismatch: changedIngredients.length > 0,
+      changedIngredients,
+      totalDifference,
+      newTotalIngredientCost
+    };
+  }, [products]);
+
+  // Handler to refresh single item's price to current inventory price
+  const handleRefreshPrice = useCallback((itemId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map(item => {
+        if (item.id !== itemId) return item;
+
+        const currentProduct = products.find(p => p._id === item.productId);
+        if (!currentProduct) return item;
+
+        const newUnitPrice = currentProduct.sellingPrice;
+        const baseTotal = newUnitPrice * item.quantity;
+
+        // Recalculate member discount if applicable
+        if (selectedPatient?.memberBenefits?.discountPercentage &&
+            item.itemType === 'product' &&
+            !item.isService) {
+          const customerForDiscount = {
+            _id: selectedPatient.id || (selectedPatient as { _id?: string })._id || '',
+            discountRate: selectedPatient.memberBenefits.discountPercentage
+          };
+
+          const discountCalc = DiscountService.calculateItemDiscount(
+            currentProduct,
+            item.quantity,
+            newUnitPrice,
+            customerForDiscount,
+            { itemType: item.itemType }
+          );
+
+          if (discountCalc.eligible && discountCalc.discountCalculation) {
+            return {
+              ...item,
+              unitPrice: newUnitPrice,
+              discountAmount: discountCalc.discountCalculation.discountAmount,
+              totalPrice: discountCalc.discountCalculation.finalPrice
+            };
+          }
+        }
+
+        return {
+          ...item,
+          unitPrice: newUnitPrice,
+          discountAmount: 0,
+          totalPrice: baseTotal
+        };
+      })
+    }));
+
+    toast({
+      title: "Price Updated",
+      description: "Item price has been updated to current inventory price",
+    });
+  }, [products, selectedPatient, toast]);
+
+  // Handler to refresh custom blend ingredient prices to current inventory prices
+  const handleRefreshCustomBlendPrices = useCallback((itemId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map(item => {
+        if (item.id !== itemId || item.itemType !== 'custom_blend' || !item.customBlendData) {
+          return item;
+        }
+
+        // Update each ingredient's costPerUnit to current price
+        const updatedIngredients = item.customBlendData.ingredients.map(ingredient => {
+          const currentProduct = products.find(p => p._id === ingredient.productId);
+          return {
+            ...ingredient,
+            costPerUnit: currentProduct?.sellingPrice ?? ingredient.costPerUnit
+          };
+        });
+
+        // Recalculate total ingredient cost
+        const newTotalIngredientCost = updatedIngredients.reduce(
+          (sum, ing) => sum + (ing.quantity * (ing.costPerUnit || 0)),
+          0
+        );
+
+        // Calculate the ratio to maintain the same margin/markup
+        const originalTotal = item.customBlendData.totalIngredientCost || 1;
+        const priceRatio = item.unitPrice / originalTotal;
+        const newUnitPrice = newTotalIngredientCost * priceRatio;
+        const newTotalPrice = newUnitPrice * item.quantity;
+
+        return {
+          ...item,
+          unitPrice: newUnitPrice,
+          totalPrice: newTotalPrice,
+          customBlendData: {
+            ...item.customBlendData,
+            ingredients: updatedIngredients,
+            totalIngredientCost: newTotalIngredientCost
+          }
+        };
+      })
+    }));
+
+    toast({
+      title: "Blend Prices Updated",
+      description: "Ingredient prices have been updated to current inventory prices",
+    });
+  }, [products, toast]);
+
   const updateItemQuantity = (itemId: string, newQuantity: number) => {
     if (newQuantity <= 0) {
       removeItem(itemId)
@@ -981,14 +1169,15 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   }
 
   const handleUpdateCustomBlend = (updatedBlend: TransactionItem) => {
-    console.log('🔍 handleUpdateCustomBlend - updatedBlend:', updatedBlend)
-    console.log('🔍 handleUpdateCustomBlend - updatedBlend.customBlendData:', updatedBlend.customBlendData)
     // NO member discounts for custom blends
     setFormData(prev => ({
       ...prev,
-      items: prev.items.map(item => 
-        item.id === updatedBlend.id ? updatedBlend : item
-      )
+      items: prev.items.map(item => {
+        // Match by id first, fallback to productId for custom blends (id might not be preserved in drafts)
+        const isMatch = item.id === updatedBlend.id ||
+          (item.itemType === 'custom_blend' && item.productId === updatedBlend.productId)
+        return isMatch ? updatedBlend : item
+      })
     }))
     setShowCustomBlendCreator(false)
     setEditingCustomBlend(null)
@@ -1314,8 +1503,15 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
             </div>
           ) : (
             <div className="space-y-3">
-              {formData.items.map((item) => (
-                <div key={item.id} className={`flex items-center gap-4 p-4 border rounded-lg ${(item.discountAmount || 0) > 0 ? 'bg-green-50 border-green-200' : ''}`}>
+              {formData.items.map((item) => {
+                const priceMismatch = getPriceMismatch(item);
+                const customBlendMismatch = getCustomBlendMismatch(item);
+
+                return (
+                <div key={item.id} className={`flex items-center gap-4 p-4 border rounded-lg ${
+                  (item.discountAmount || 0) > 0 ? 'bg-green-50 border-green-200' :
+                  (priceMismatch.hasMismatch || customBlendMismatch.hasMismatch) ? 'bg-amber-50 border-amber-200' : ''
+                }`}>
                   <div className="flex-1">
                     <h4 className="font-medium">
                       {item.name}
@@ -1330,6 +1526,46 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                     )}
                     {item.description && (
                       <p className="text-sm text-gray-600">{item.description}</p>
+                    )}
+                    {/* Price Mismatch Alert */}
+                    {priceMismatch.hasMismatch && priceMismatch.currentPrice !== null && (
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300">
+                          <FiAlertTriangle className="w-3 h-3 mr-1" />
+                          Price Changed
+                        </span>
+                        <span className="text-xs text-amber-700">
+                          Current in Inventory: {formatCurrency(priceMismatch.currentPrice)}
+                          {priceMismatch.difference > 0
+                            ? ` (+${formatCurrency(priceMismatch.difference)})`
+                            : ` (${formatCurrency(priceMismatch.difference)})`}
+                        </span>
+                      </div>
+                    )}
+                    {/* Custom Blend Ingredient Mismatch Alert */}
+                    {customBlendMismatch.hasMismatch && (
+                      <div className="mt-2 space-y-1">
+                        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300">
+                          <FiAlertTriangle className="w-3 h-3 mr-1" />
+                          Ingredient Prices Changed
+                        </span>
+                        <div className="text-xs text-amber-700 space-y-0.5">
+                          {customBlendMismatch.changedIngredients.map((ing, idx) => (
+                            <div key={idx}>
+                              {ing.name}: Current in Inventory: {formatCurrency(ing.currentCost)}
+                              {ing.difference > 0
+                                ? ` (+${formatCurrency(ing.difference)})`
+                                : ` (${formatCurrency(ing.difference)})`}
+                            </div>
+                          ))}
+                          <div className="font-medium pt-1 border-t border-amber-200 mt-1">
+                            Total Blend Cost: {formatCurrency(customBlendMismatch.newTotalIngredientCost)}
+                            {customBlendMismatch.totalDifference > 0
+                              ? ` (+${formatCurrency(customBlendMismatch.totalDifference)})`
+                              : ` (${formatCurrency(customBlendMismatch.totalDifference)})`}
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                   {!isConsultationItem(item) && (
@@ -1437,6 +1673,27 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                         <FaEdit className="h-4 w-4" />
                       </Button>
                     )}
+                    {/* Custom Blend Price Refresh Button */}
+                    {customBlendMismatch.hasMismatch && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="text-amber-600 hover:text-amber-800 hover:bg-amber-100"
+                              onClick={() => handleRefreshCustomBlendPrices(item.id!)}
+                            >
+                              <FiRefreshCw className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs text-center">
+                            <p>Upon refresh, the price of this item will reflect the currently set price in the inventory</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                     {item.itemType === 'fixed_blend' && (
                       <Button
                         type="button"
@@ -1449,6 +1706,27 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                         <FaEdit className="h-4 w-4" />
                       </Button>
                     )}
+                    {/* Price Refresh Button */}
+                    {priceMismatch.hasMismatch && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="text-amber-600 hover:text-amber-800 hover:bg-amber-100"
+                              onClick={() => handleRefreshPrice(item.id!)}
+                            >
+                              <FiRefreshCw className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs text-center">
+                            <p>Upon refresh, the price of this item will reflect the currently set price in the inventory</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                     <Button
                       type="button"
                       variant="ghost"
@@ -1460,7 +1738,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                     </Button>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           )}
         </CardContent>

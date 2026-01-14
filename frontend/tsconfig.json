@@ -42,6 +42,8 @@
     "node_modules",
     "test/**/*",
     "vitest.config.ts",
-    "migration/**/*"
+    "migration/**/*",
+    "jest.config.ts",
+    "__tests__/**/*"
   ]
 }
