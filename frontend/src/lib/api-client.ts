@@ -24,6 +24,7 @@ interface ApiResponse<T = unknown> {
 interface LoginResponse {
   accessToken?: string;
   token?: string;
+  refreshToken?: string;
   user: {
     _id: string;
     username: string;
@@ -33,6 +34,10 @@ interface LoginResponse {
     [key: string]: unknown;
   };
 }
+
+// Token expiry in days (matches env variables)
+const ACCESS_TOKEN_EXPIRY_DAYS = 1; // 24h (JWT_EXPIRES_IN)
+const REFRESH_TOKEN_EXPIRY_DAYS = 30; // 30d (REFRESH_TOKEN_EXPIRES_IN)
 
 class ApiClient {
   private baseURL: string;
@@ -67,12 +72,12 @@ class ApiClient {
   }
 
   /**
-   * Store token in both cookies and localStorage
+   * Store access token in both cookies and localStorage
    */
   private setToken(token: string): void {
     // Set in both cookie and localStorage for compatibility
-    Cookies.set('authToken', token, { 
-      expires: 7, // 7 days
+    Cookies.set('authToken', token, {
+      expires: ACCESS_TOKEN_EXPIRY_DAYS,
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production'
     });
@@ -82,10 +87,22 @@ class ApiClient {
   }
 
   /**
+   * Store refresh token in cookie
+   */
+  private setRefreshToken(token: string): void {
+    Cookies.set('refreshToken', token, {
+      expires: REFRESH_TOKEN_EXPIRY_DAYS,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production'
+    });
+  }
+
+  /**
    * Clear stored tokens
    */
   private clearTokens(): void {
     Cookies.remove('authToken');
+    Cookies.remove('refreshToken');
     if (typeof window !== 'undefined') {
       localStorage.removeItem('authToken');
     }
@@ -93,10 +110,12 @@ class ApiClient {
 
   /**
    * Refresh access token using refresh token
+   * Uses the frontend Next.js API route which handles cookies properly
    */
   private async refreshAccessToken(): Promise<string | null> {
     try {
-      const response = await fetch(`${this.baseURL}/auth/refresh`, {
+      // Use frontend API route (not backend) to properly handle cookies
+      const response = await fetch('/api/auth/refresh', {
         method: 'POST',
         headers: this.defaultHeaders,
         credentials: 'include'
@@ -285,16 +304,20 @@ class ApiClient {
   // Auth specific methods
   async login(email: string, password: string): Promise<ApiResponse> {
     const response = await this.post<LoginResponse>('/auth/login', { email, password });
-    
+
     if (response.ok && response.data) {
-      const { accessToken, token, user } = response.data;
+      const { accessToken, token, refreshToken, user } = response.data;
       const authToken = accessToken || token;
       if (authToken) {
         this.setToken(authToken);
       }
+      // Store refresh token if provided
+      if (refreshToken) {
+        this.setRefreshToken(refreshToken);
+      }
       return { ...response, data: { user } };
     }
-    
+
     return response;
   }
 

@@ -2,6 +2,7 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import connectDB from '@/lib/mongodb'
 import { User } from '../../models/User.js'
+import { getAccessTokenMaxAge } from '../../auth/jwt.js'
 
 export const authOptions = {
   
@@ -108,7 +109,7 @@ export const authOptions = {
 
   session: {
     strategy: 'jwt',
-    maxAge: 24 * 60 * 60, // 24 hours
+    maxAge: getAccessTokenMaxAge(),
   },
 
   secret: process.env.NEXTAUTH_SECRET,

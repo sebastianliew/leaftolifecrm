@@ -22,24 +22,34 @@ function getRefreshTokenSecret(): string {
   return secret;
 }
 
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '4h';
-const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
+const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '30d';
 
-// Helper function to convert time string to seconds
-function parseTimeToSeconds(timeStr: string): number {
+// Helper function to convert time string to seconds (exported for use in other modules)
+export function parseTimeToSeconds(timeStr: string): number {
   const match = timeStr.match(/^(\d+)([smhd])$/);
-  if (!match) return 14400; // default 4 hours
-  
+  if (!match) return 86400; // default 24 hours
+
   const [, num, unit] = match;
   const value = parseInt(num, 10);
-  
+
   switch (unit) {
     case 's': return value;
     case 'm': return value * 60;
     case 'h': return value * 3600;
     case 'd': return value * 86400;
-    default: return 14400; // default 4 hours
+    default: return 86400; // default 24 hours
   }
+}
+
+// Get access token maxAge in seconds
+export function getAccessTokenMaxAge(): number {
+  return parseTimeToSeconds(JWT_EXPIRES_IN);
+}
+
+// Get refresh token maxAge in seconds
+export function getRefreshTokenMaxAge(): number {
+  return parseTimeToSeconds(REFRESH_TOKEN_EXPIRES_IN);
 }
 
 // Token payload interfaces

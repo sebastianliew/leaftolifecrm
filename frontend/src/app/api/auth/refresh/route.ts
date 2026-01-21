@@ -1,20 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyJWT, signJWT } from '@/lib/auth/jwt'
+import { getAccessTokenExpiry, getRefreshTokenExpiry, getAccessTokenMaxAge, getRefreshTokenMaxAge } from '@/lib/auth/token-config'
+import connectDB from '@/lib/mongodb'
+import { User } from '@/models/User'
 
 export async function POST(request: NextRequest) {
   try {
     // Get refresh token from cookie
     const refreshToken = request.cookies.get('refreshToken')?.value
-    
+
     if (!refreshToken) {
       return NextResponse.json(
         { error: 'Refresh token not found' },
         { status: 401 }
       )
     }
-    
-    // Check if JWT_SECRET exists
+
+    // Check if secrets exist
     const jwtSecret = process.env.JWT_SECRET
+    const refreshTokenSecret = process.env.REFRESH_TOKEN_SECRET
+
     if (!jwtSecret) {
       console.error('JWT_SECRET is not set in environment variables')
       return NextResponse.json(
@@ -22,11 +27,19 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
-    
-    // Verify the refresh token
+
+    if (!refreshTokenSecret) {
+      console.error('REFRESH_TOKEN_SECRET is not set in environment variables')
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      )
+    }
+
+    // Verify the refresh token using REFRESH_TOKEN_SECRET
     let payload
     try {
-      payload = await verifyJWT(refreshToken, jwtSecret)
+      payload = await verifyJWT(refreshToken, refreshTokenSecret)
     } catch (error) {
       console.error('Refresh token verification failed:', error)
       return NextResponse.json(
@@ -34,29 +47,50 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
-    
-    // Generate new tokens
+
+    // Get user ID from the refresh token payload
     const userId = (payload.sub || payload.userId) as string
+
+    // Connect to database and fetch user details
+    await connectDB()
+    const user = await User.findById(userId).select('-password')
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 401 }
+      )
+    }
+
+    if (!user.isActive) {
+      return NextResponse.json(
+        { error: 'User account is inactive' },
+        { status: 401 }
+      )
+    }
+
+    // Generate new access token using JWT_SECRET with user data from database
     const accessToken = await signJWT(
       {
         sub: userId,
         userId: userId,
-        email: payload.email as string,
-        username: payload.username as string,
-        role: payload.role as string
+        email: user.email,
+        username: user.username,
+        role: user.role
       },
       jwtSecret,
-      '24h'
+      getAccessTokenExpiry()
     )
-    
+
+    // Generate new refresh token using REFRESH_TOKEN_SECRET
     const newRefreshToken = await signJWT(
       {
         sub: userId,
         userId: userId,
         type: 'refresh'
       },
-      jwtSecret,
-      '7d'
+      refreshTokenSecret,
+      getRefreshTokenExpiry()
     )
     
     // Create response
@@ -72,15 +106,15 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax',
-      maxAge: 24 * 60 * 60, // 24 hours
+      maxAge: getAccessTokenMaxAge(),
       path: '/'
     })
-    
+
     response.cookies.set('refreshToken', newRefreshToken, {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60, // 7 days
+      maxAge: getRefreshTokenMaxAge(),
       path: '/'
     })
     

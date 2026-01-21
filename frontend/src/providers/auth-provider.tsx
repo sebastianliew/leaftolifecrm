@@ -40,9 +40,13 @@ const getToken = (): string | undefined => {
   return undefined;
 };
 
+// Token expiry in days (matches env variables)
+const ACCESS_TOKEN_EXPIRY_DAYS = 1; // 24h (JWT_EXPIRES_IN)
+const REFRESH_TOKEN_EXPIRY_DAYS = 30; // 30d (REFRESH_TOKEN_EXPIRES_IN)
+
 const setToken = (token: string) => {
-  Cookies.set('authToken', token, { 
-    expires: 7, // 7 days
+  Cookies.set('authToken', token, {
+    expires: ACCESS_TOKEN_EXPIRY_DAYS,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production'
   });
@@ -51,8 +55,17 @@ const setToken = (token: string) => {
   }
 };
 
+const setRefreshToken = (token: string) => {
+  Cookies.set('refreshToken', token, {
+    expires: REFRESH_TOKEN_EXPIRY_DAYS,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production'
+  });
+};
+
 const removeToken = () => {
   Cookies.remove('authToken');
+  Cookies.remove('refreshToken');
   if (typeof window !== 'undefined') {
     localStorage.removeItem('authToken');
   }
@@ -154,6 +167,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const token = data.accessToken || data.token;
         if (token) {
           setToken(token);
+        }
+        // Store refresh token if provided
+        if (data.refreshToken) {
+          setRefreshToken(data.refreshToken);
         }
         setUser(data.user);
         setError(null);

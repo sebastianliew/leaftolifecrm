@@ -261,9 +261,9 @@ export class JWTService {
   constructor() {
     this.accessTokenSecret = process.env.JWT_SECRET || '';
     this.refreshTokenSecret = process.env.REFRESH_TOKEN_SECRET || '';
-    this.accessTokenExpiry = process.env.JWT_EXPIRES_IN || '15m';
-    this.refreshTokenExpiry = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
-    
+    this.accessTokenExpiry = process.env.JWT_EXPIRES_IN || '24h';
+    this.refreshTokenExpiry = process.env.REFRESH_TOKEN_EXPIRES_IN || '30d';
+
     // Only throw errors at runtime when actually using the service
     // This allows the build to succeed even without env vars
   }
