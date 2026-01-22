@@ -110,8 +110,9 @@ export const requireAnyPermission = (permissions: Array<{ category: keyof Featur
 
 /**
  * Middleware to check permission for editing transactions.
- * - For drafts: Requires canEditDrafts (any user with this permission can edit any draft)
+ * - For drafts and cancelled: Requires canEditDrafts (any user with this permission can edit)
  * - For non-drafts: Requires canEditTransactions
+ * Note: Cancelled transactions are treated like drafts for editing permissions
  */
 export const requireDraftOrEditPermission = () => {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -133,22 +134,23 @@ export const requireDraftOrEditPermission = () => {
         return;
       }
 
-      // For drafts: check permissions with proper hierarchy
-      if (transaction.status === 'draft') {
-        // Super admin can edit any draft
+      // For drafts and cancelled: check permissions with proper hierarchy
+      // Cancelled transactions are treated like drafts - editing them will restore them to draft status
+      if (transaction.status === 'draft' || transaction.status === 'cancelled') {
+        // Super admin can edit any draft/cancelled
         if (user.role === 'super_admin') {
           next();
           return;
         }
 
-        // Users with canEditTransactions can edit any draft (they can edit completed transactions anyway)
+        // Users with canEditTransactions can edit any draft/cancelled (they can edit completed transactions anyway)
         const canEditTransactions = permissionService.hasPermission(user, 'transactions', 'canEditTransactions');
         if (canEditTransactions) {
           next();
           return;
         }
 
-        // Otherwise, check canEditDrafts (allows staff to edit any draft for delegation workflow)
+        // Otherwise, check canEditDrafts (allows staff to edit any draft/cancelled for delegation workflow)
         const canEditDrafts = permissionService.hasPermission(user, 'transactions', 'canEditDrafts');
 
         if (canEditDrafts) {
@@ -156,12 +158,13 @@ export const requireDraftOrEditPermission = () => {
           return;
         }
 
-        // Debug logging for draft permission checks
-        console.log('[Permission Debug - Draft]', {
+        // Debug logging for draft/cancelled permission checks
+        console.log('[Permission Debug - Draft/Cancelled]', {
           userId: user._id,
           username: user.username,
           role: user.role,
           transactionId: id,
+          transactionStatus: transaction.status,
           createdBy: transaction.createdBy,
           canEditDrafts,
           canEditTransactions
@@ -170,12 +173,12 @@ export const requireDraftOrEditPermission = () => {
         res.status(403).json({
           error: 'Permission denied',
           required: { category: 'transactions', permission: 'canEditDrafts' },
-          message: 'You do not have permission to edit drafts'
+          message: `You do not have permission to edit ${transaction.status === 'cancelled' ? 'cancelled transactions' : 'drafts'}`
         });
         return;
       }
 
-      // For non-drafts: require canEditTransactions
+      // For non-drafts (completed, refunded, etc.): require canEditTransactions
       const canEdit = permissionService.hasPermission(user, 'transactions', 'canEditTransactions');
 
       if (canEdit) {

@@ -38,7 +38,18 @@ router.get('/me', authenticateToken, (req: AuthenticatedRequest, res) => {
   // Return the authenticated user
   res.json({ user: req.user });
 });
-router.post('/create-admin', authRateLimit, createAdmin); // Rate limited to prevent abuse
+// Admin creation endpoint - disabled by default for security
+// Set ALLOW_ADMIN_CREATION=true in environment to enable (for initial setup only)
+router.post('/create-admin', authRateLimit, (req, res, next): void => {
+  if (process.env.ALLOW_ADMIN_CREATION !== 'true') {
+    res.status(403).json({
+      error: 'Admin creation is disabled',
+      message: 'Set ALLOW_ADMIN_CREATION=true in environment variables to enable this endpoint'
+    });
+    return;
+  }
+  next();
+}, createAdmin);
 router.post('/create-temp-user', authenticateToken, requireRole('admin'), createTempUser);
 router.post('/force-logout', authenticateToken, forceLogout);
 router.post('/switch-user', authenticateToken, requireRole(['admin', 'super_admin']), switchUser);

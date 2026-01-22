@@ -62,6 +62,11 @@ declare global {
 }
 
 const app: Express = express();
+
+// Trust first proxy (Render.com) for correct client IP in rate limiting
+// Without this, all requests appear from the same IP behind a reverse proxy
+app.set('trust proxy', 1);
+
 // Use dynamic port allocation with fallback
 const PORT: number = parseInt(process.env.BACKEND_PORT || process.env.PORT || '5000', 10);
 

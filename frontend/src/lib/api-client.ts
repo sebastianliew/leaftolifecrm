@@ -232,15 +232,9 @@ class ApiClient {
 
       // Handle 429 Too Many Requests - rate limit exceeded
       if (response.status === 429) {
-        const retryAfter = response.headers.get('Retry-After');
-        const retrySeconds = retryAfter ? parseInt(retryAfter, 10) : 60;
-        const retryMinutes = Math.ceil(retrySeconds / 60);
-
         toast({
-          title: 'Too Many Requests',
-          description: retryMinutes > 1
-            ? `Please wait ${retryMinutes} minutes before trying again.`
-            : 'Please wait a minute before trying again.',
+          title: data?.error || 'Too Many Requests',
+          description: data?.message || 'Please try again later.',
           variant: 'destructive',
         });
       }

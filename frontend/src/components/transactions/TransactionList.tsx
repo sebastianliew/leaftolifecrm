@@ -415,7 +415,9 @@ export function TransactionList() {
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingTransaction?.status === 'draft' ? 'Edit Draft' : 'Edit Transaction'}
+              {editingTransaction?.status === 'draft' || editingTransaction?.status === 'cancelled'
+                ? `Edit ${editingTransaction.status === 'cancelled' ? 'Cancelled Transaction' : 'Draft'}`
+                : 'Edit Transaction'}
             </DialogTitle>
           </DialogHeader>
           {editingTransaction && (
@@ -423,7 +425,7 @@ export function TransactionList() {
               products={products}
               initialData={editingTransaction}
               onSubmit={handleUpdateTransaction}
-              onSaveDraft={editingTransaction.status === 'draft' ? handleUpdateDraft : undefined}
+              onSaveDraft={editingTransaction.status === 'draft' || editingTransaction.status === 'cancelled' ? handleUpdateDraft : undefined}
               onCancel={() => setEditingTransactionId(null)}
               loading={updateTransactionMutation.isPending}
             />

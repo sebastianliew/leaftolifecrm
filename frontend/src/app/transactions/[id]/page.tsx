@@ -72,21 +72,13 @@ export default function TransactionDetailPage() {
     if (!transaction) return
 
     try {
-      // Try to preview existing invoice
-      const downloadUrl = `/api/invoices/${transaction.invoiceNumber}-LeafToLife.pdf`
-      await previewInvoicePDF(downloadUrl)
-    } catch (_err) {
-      // If invoice not found (404), generate it first then preview
-      console.log('[Invoice] Not found, generating...')
-      setError(null) // Clear any previous error
-      try {
-        const result = await generateInvoice(transaction._id) as GenerateInvoiceResponse
-        await loadTransaction() // Refresh transaction data
-        await previewInvoicePDF(result.downloadUrl)
-      } catch (genErr) {
-        console.error('[Invoice] Generation failed:', genErr)
-        setError('Failed to generate invoice. Please try again.')
-      }
+      // Always regenerate to ensure PDF reflects current transaction data
+      const result = await generateInvoice(transaction._id) as GenerateInvoiceResponse
+      await loadTransaction() // Refresh transaction data
+      await previewInvoicePDF(result.downloadUrl)
+    } catch (err) {
+      console.error('[Invoice] Generation failed:', err)
+      setError('Failed to generate invoice. Please try again.')
     }
   }
 
