@@ -174,6 +174,57 @@ export default function TransactionDetailPage() {
     }
   }, [pdfUrl])
 
+  const renderInvoiceStatus = (txn: Transaction) => {
+    if (txn.invoiceStatus === 'completed' && txn.invoiceEmailSent && txn.invoiceEmailSentAt) {
+      return (
+        <div className="flex items-start gap-2">
+          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
+          <div>
+            <p className="font-medium text-green-700">Email Sent</p>
+            <p className="text-xs text-gray-600">
+              {new Date(txn.invoiceEmailSentAt).toLocaleString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </p>
+            {txn.invoiceEmailRecipient && (
+              <p className="text-xs text-gray-600">
+                to: {txn.invoiceEmailRecipient}
+              </p>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    if (txn.invoiceStatus === 'completed') {
+      return <p className="font-medium text-gray-600">Generated &bull; Not sent via email</p>
+    }
+
+    if (txn.invoiceStatus === 'failed') {
+      return (
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5" />
+          <div>
+            <p className="font-medium text-red-600">Generation Failed</p>
+            {txn.invoiceError && (
+              <p className="text-xs text-gray-600">{txn.invoiceError}</p>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    if (txn.invoiceStatus === 'generating') {
+      return <p className="font-medium text-blue-600">Generating...</p>
+    }
+
+    return <p className="font-medium text-gray-500">Pending</p>
+  }
+
   const getPaymentStatusColor = (status: string) => {
     switch (status) {
       case 'paid':
@@ -244,28 +295,29 @@ export default function TransactionDetailPage() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Transactions
           </Button>
-          {/* Only show View Invoice if invoice was successfully generated (status = completed) */}
           {transaction.invoiceStatus === 'completed' && transaction.invoicePath ? (
-            <>
-              <Button onClick={handleViewInvoice} variant="default">
-                <FileText className="mr-2 h-4 w-4" />
-                View Invoice
-              </Button>
-              {transaction.customerEmail && (
-                <Button
-                  onClick={handleSendInvoiceEmail}
-                  disabled={emailLoading}
-                  variant="secondary"
-                >
-                  <Mail className="mr-2 h-4 w-4" />
-                  {emailLoading ? 'Sending...' : transaction.invoiceEmailSent ? 'Resend Email' : 'Send Email'}
-                </Button>
-              )}
-            </>
+            <Button onClick={handleViewInvoice} variant="default">
+              <FileText className="mr-2 h-4 w-4" />
+              View Invoice
+            </Button>
           ) : (
             <Button onClick={handleGenerateInvoice} disabled={loading} variant="default">
               <Printer className="mr-2 h-4 w-4" />
               {transaction.invoiceStatus === 'failed' ? 'Retry Invoice' : 'Download PDF'}
+            </Button>
+          )}
+          {transaction.customerEmail && (
+            <Button
+              onClick={handleSendInvoiceEmail}
+              disabled={emailLoading}
+              variant="secondary"
+            >
+              <Mail className="mr-2 h-4 w-4" />
+              {emailLoading
+                ? 'Sending...'
+                : transaction.invoiceEmailSent
+                  ? 'Resend Email'
+                  : 'Send Email'}
             </Button>
           )}
         </div>
@@ -340,46 +392,7 @@ export default function TransactionDetailPage() {
             {(transaction.invoiceStatus && transaction.invoiceStatus !== 'none') && (
               <div>
                 <p className="text-sm text-gray-500">Invoice Status</p>
-                {transaction.invoiceStatus === 'completed' ? (
-                  transaction.invoiceEmailSent && transaction.invoiceEmailSentAt ? (
-                    <div className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-green-700">Email Sent</p>
-                        <p className="text-xs text-gray-600">
-                          {new Date(transaction.invoiceEmailSentAt).toLocaleString('en-US', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                        {transaction.invoiceEmailRecipient && (
-                          <p className="text-xs text-gray-600">
-                            to: {transaction.invoiceEmailRecipient}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="font-medium text-gray-600">Generated • Not sent via email</p>
-                  )
-                ) : transaction.invoiceStatus === 'failed' ? (
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-red-600">Generation Failed</p>
-                      {transaction.invoiceError && (
-                        <p className="text-xs text-gray-600">{transaction.invoiceError}</p>
-                      )}
-                    </div>
-                  </div>
-                ) : transaction.invoiceStatus === 'generating' ? (
-                  <p className="font-medium text-blue-600">Generating...</p>
-                ) : (
-                  <p className="font-medium text-gray-500">Pending</p>
-                )}
+                {renderInvoiceStatus(transaction)}
               </div>
             )}
           </CardContent>
@@ -424,7 +437,7 @@ export default function TransactionDetailPage() {
         <CardContent className="space-y-2">
           <div className="flex justify-between">
             <span className="text-gray-600">Subtotal</span>
-            <span>{formatCurrency((transaction.items || []).reduce((sum, item) => sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)), 0))}</span>
+            <span>{formatCurrency(subtotal)}</span>
           </div>
           {totalDiscounts > 0 && (
             <div className="flex justify-between text-green-600">

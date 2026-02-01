@@ -119,32 +119,6 @@ async function generateInvoiceAsync(
 
     console.log('[Transaction] Background invoice generated:', invoiceNumber);
 
-    // Email sending (non-critical, also async)
-    if (savedTransaction.customerEmail && emailService.isEnabled()) {
-      try {
-        const emailSent = await emailService.sendInvoiceEmail(
-          savedTransaction.customerEmail,
-          savedTransaction.customerName,
-          invoiceNumber,
-          invoiceFilePath,
-          calculatedTotal, // Use calculated total instead of stored value
-          savedTransaction.transactionDate,
-          savedTransaction.paymentStatus || 'pending'
-        );
-
-        if (emailSent) {
-          await Transaction.findByIdAndUpdate(transactionId, {
-            invoiceEmailSent: true,
-            invoiceEmailSentAt: new Date(),
-            invoiceEmailRecipient: savedTransaction.customerEmail
-          });
-          console.log('[Transaction] Invoice email sent:', savedTransaction.customerEmail);
-        }
-      } catch (emailError) {
-        console.error('[Transaction] Email sending failed:', emailError);
-      }
-    }
-
   } catch (pdfError) {
     // PDF generation failed - mark transaction but don't delete it
     const invoiceError = pdfError instanceof Error ? pdfError.message : 'Unknown error';
@@ -480,8 +454,7 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
     res.status(201).json({
       ...savedTransaction.toObject(),
       _invoiceGenerated: false,
-      _emailSent: false,
-      _invoiceGenerating: true, // Indicates invoice is being generated in background
+      _invoiceGenerating: true,
       _invoiceError: null
     });
 
@@ -941,59 +914,13 @@ export const generateTransactionInvoice = async (req: AuthenticatedRequest, res:
 
     console.log('[Invoice] Invoice generated successfully:', invoiceNumber);
 
-    // Determine if email will be attempted
-    const willAttemptEmail = !!transaction.customerEmail && emailService.isEnabled();
-
-    // Log email status
-    if (!willAttemptEmail) {
-      if (transaction.customerEmail && !emailService.isEnabled()) {
-        console.warn('[Invoice] Email service not configured. Skipping automatic email send.');
-      } else if (!transaction.customerEmail) {
-        console.warn('[Invoice] No customer email provided. Skipping automatic email send.');
-      }
-    }
-
-    // Return response IMMEDIATELY after PDF is generated (fire-and-forget pattern)
     res.status(200).json({
       success: true,
       message: 'Invoice generated successfully',
       invoiceNumber,
       invoicePath: relativeInvoicePath,
-      downloadUrl: `/api/invoices/${invoiceFileName}`,
-      emailSent: false,
-      emailPending: willAttemptEmail
+      downloadUrl: `/api/invoices/${invoiceFileName}`
     });
-
-    // Fire-and-forget: Send email in background AFTER response
-    if (willAttemptEmail) {
-      (async () => {
-        try {
-          console.log('[Invoice] Background: sending invoice email to:', transaction.customerEmail);
-
-          const emailSent = await emailService.sendInvoiceEmail(
-            transaction.customerEmail!,
-            transaction.customerName,
-            invoiceNumber,
-            invoiceFilePath,
-            calculatedTotal,
-            transaction.transactionDate,
-            transaction.paymentStatus || 'pending'
-          );
-
-          if (emailSent) {
-            await Transaction.findByIdAndUpdate(id, {
-              invoiceEmailSent: true,
-              invoiceEmailSentAt: new Date(),
-              invoiceEmailRecipient: transaction.customerEmail!
-            });
-            console.log('[Invoice] Background: email sent successfully to:', transaction.customerEmail);
-          }
-        } catch (error) {
-          console.error('[Invoice] Background: failed to send email:', error);
-          // Don't throw - this is fire-and-forget
-        }
-      })();
-    }
   } catch (error) {
     console.error('[Invoice] Error generating invoice:', error);
     res.status(500).json({ error: 'Failed to generate invoice' });
@@ -1040,7 +967,6 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
 
     // Delete existing invoice if it exists
     if (transaction.invoiceGenerated && transaction.invoicePath) {
-      // Use process.cwd() for consistent path resolution
       const invoiceFilePath = path.join(process.cwd(), transaction.invoicePath);
       if (fs.existsSync(invoiceFilePath)) {
         console.log('[Email] Deleting existing invoice:', invoiceFilePath);
@@ -1048,11 +974,9 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
       }
     }
 
-    // Generate invoice number
     const invoiceNumber = transaction.transactionNumber;
 
     // Ensure invoices directory exists
-    // Use process.cwd() for consistent path in both dev and production
     const invoicesDir = path.join(process.cwd(), 'invoices');
     if (!fs.existsSync(invoicesDir)) {
       fs.mkdirSync(invoicesDir, { recursive: true });
@@ -1126,6 +1050,7 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
       const emailSentAt = new Date();
       const emailUpdateData: Record<string, unknown> = {
         invoiceGenerated: true,
+        invoiceStatus: 'completed',
         invoiceNumber,
         invoicePath: relativeInvoicePath,
         invoiceEmailSent: true,

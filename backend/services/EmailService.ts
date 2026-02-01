@@ -19,10 +19,6 @@ class EmailService {
   private emailFrom: string = '';
   private initialized: boolean = false;
 
-  constructor() {
-    // Don't initialize in constructor - wait for explicit call
-  }
-
   private initialize() {
     if (this.initialized) {
       return; // Already initialized
@@ -141,7 +137,6 @@ class EmailService {
 
     const isPaid = paymentStatus === 'paid';
     const paymentStatusText = isPaid ? 'Paid' : 'Payment Required';
-    const paymentStatusColor = isPaid ? '#10b981' : '#f59e0b';
 
     const html = `
 <!DOCTYPE html>
@@ -151,19 +146,19 @@ class EmailService {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Invoice ${invoiceNumber}</title>
 </head>
-<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #ffffff;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #ffffff;">
     <tr>
       <td align="center" style="padding: 40px 0;">
-        <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); border-radius: 8px; overflow: hidden;">
+        <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff;">
 
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 30px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+            <td style="padding: 40px 30px 24px 30px; border-bottom: 1px solid #e5e7eb;">
+              <h1 style="margin: 0; color: #333333; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">
                 Leaf to Life
               </h1>
-              <p style="margin: 8px 0 0 0; color: #d1fae5; font-size: 14px;">
+              <p style="margin: 4px 0 0 0; color: #6b7280; font-size: 13px;">
                 Sebastian Liew Centre Pte Ltd.
               </p>
             </td>
@@ -171,90 +166,82 @@ class EmailService {
 
           <!-- Main Content -->
           <tr>
-            <td style="padding: 40px 30px;">
+            <td style="padding: 32px 30px;">
 
               <!-- Greeting -->
-              <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px; font-weight: 600;">
+              <p style="margin: 0 0 20px 0; color: #333333; font-size: 16px; line-height: 1.6;">
                 Hello ${customerName},
-              </h2>
-
-              <p style="margin: 0 0 24px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Thank you for your purchase! Your invoice is attached to this email.
               </p>
 
-              <!-- Invoice Details Card -->
-              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f9fafb; border-radius: 8px; margin-bottom: 24px; overflow: hidden;">
+              <p style="margin: 0 0 28px 0; color: #555555; font-size: 15px; line-height: 1.6;">
+                Thank you for your purchase. Your invoice is attached to this email.
+              </p>
+
+              <!-- Invoice Details -->
+              <table role="presentation" style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
                 <tr>
-                  <td style="padding: 24px;">
-                    <table role="presentation" style="width: 100%; border-collapse: collapse;">
-                      <tr>
-                        <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">
-                          Invoice Number:
-                        </td>
-                        <td style="padding: 8px 0; text-align: right; color: #1f2937; font-size: 14px; font-weight: 600;">
-                          ${invoiceNumber}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">
-                          Date:
-                        </td>
-                        <td style="padding: 8px 0; text-align: right; color: #1f2937; font-size: 14px; font-weight: 600;">
-                          ${formatDate(transactionDate)}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">
-                          Total Amount:
-                        </td>
-                        <td style="padding: 8px 0; text-align: right; color: #1f2937; font-size: 18px; font-weight: 700;">
-                          ${formatCurrency(transactionAmount)}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">
-                          Status:
-                        </td>
-                        <td style="padding: 8px 0; text-align: right;">
-                          <span style="background-color: ${paymentStatusColor}; color: #ffffff; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; text-transform: uppercase;">
-                            ${paymentStatusText}
-                          </span>
-                        </td>
-                      </tr>
-                    </table>
+                  <td style="padding: 10px 0; color: #6b7280; font-size: 14px; border-bottom: 1px solid #f0f0f0;">
+                    Invoice Number
+                  </td>
+                  <td style="padding: 10px 0; text-align: right; color: #333333; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f0f0f0;">
+                    ${invoiceNumber}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 0; color: #6b7280; font-size: 14px; border-bottom: 1px solid #f0f0f0;">
+                    Date
+                  </td>
+                  <td style="padding: 10px 0; text-align: right; color: #333333; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f0f0f0;">
+                    ${formatDate(transactionDate)}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 0; color: #6b7280; font-size: 14px; border-bottom: 1px solid #f0f0f0;">
+                    Total Amount
+                  </td>
+                  <td style="padding: 10px 0; text-align: right; color: #333333; font-size: 16px; font-weight: 700; border-bottom: 1px solid #f0f0f0;">
+                    ${formatCurrency(transactionAmount)}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 10px 0; color: #6b7280; font-size: 14px;">
+                    Status
+                  </td>
+                  <td style="padding: 10px 0; text-align: right; color: #333333; font-size: 14px; font-weight: 600; text-transform: uppercase;">
+                    ${paymentStatusText}
                   </td>
                 </tr>
               </table>
 
               ${!isPaid ? `
               <!-- Payment Required Notice -->
-              <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px 20px; margin-bottom: 24px; border-radius: 4px;">
-                <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.5;">
-                  <strong>Payment Required:</strong> Please complete your payment using PayNow or Bank Transfer. Payment details are included in the attached invoice.
+              <div style="border-left: 3px solid #333333; padding: 12px 16px; margin-bottom: 28px;">
+                <p style="margin: 0; color: #555555; font-size: 14px; line-height: 1.5;">
+                  <strong>Payment Required:</strong> Please complete your payment using PayNow or Bank Transfer. Details are included in the attached invoice.
                 </p>
               </div>
 
               <!-- Payment Methods -->
-              <div style="margin-bottom: 24px;">
-                <h3 style="margin: 0 0 16px 0; color: #1f2937; font-size: 18px; font-weight: 600;">
+              <div style="margin-bottom: 28px;">
+                <p style="margin: 0 0 14px 0; color: #333333; font-size: 15px; font-weight: 600;">
                   Payment Methods
-                </h3>
+                </p>
 
-                <div style="background-color: #eff6ff; padding: 16px; border-radius: 6px; margin-bottom: 12px;">
-                  <p style="margin: 0 0 8px 0; color: #1e40af; font-weight: 600; font-size: 14px;">
+                <div style="padding: 14px 16px; border: 1px solid #e5e7eb; border-radius: 4px; margin-bottom: 10px;">
+                  <p style="margin: 0 0 6px 0; color: #333333; font-weight: 600; font-size: 13px;">
                     PayNow (UEN)
                   </p>
-                  <p style="margin: 0; color: #1e3a8a; font-size: 14px;">
+                  <p style="margin: 0; color: #555555; font-size: 13px; line-height: 1.6;">
                     UEN: <strong>202527780C</strong><br>
                     Company: Leaf to Life Pte Ltd
                   </p>
                 </div>
 
-                <div style="background-color: #eff6ff; padding: 16px; border-radius: 6px;">
-                  <p style="margin: 0 0 8px 0; color: #1e40af; font-weight: 600; font-size: 14px;">
+                <div style="padding: 14px 16px; border: 1px solid #e5e7eb; border-radius: 4px;">
+                  <p style="margin: 0 0 6px 0; color: #333333; font-weight: 600; font-size: 13px;">
                     Bank Transfer
                   </p>
-                  <p style="margin: 0; color: #1e3a8a; font-size: 14px;">
+                  <p style="margin: 0; color: #555555; font-size: 13px; line-height: 1.6;">
                     Account: <strong>0721361590</strong><br>
                     Bank: DBS Bank (Singapore)<br>
                     Account Name: Leaf to Life Pte Ltd
@@ -263,29 +250,26 @@ class EmailService {
               </div>
               ` : `
               <!-- Payment Confirmed -->
-              <div style="background-color: #d1fae5; border-left: 4px solid #10b981; padding: 16px 20px; margin-bottom: 24px; border-radius: 4px;">
-                <p style="margin: 0; color: #065f46; font-size: 14px; line-height: 1.5;">
+              <div style="border-left: 3px solid #333333; padding: 12px 16px; margin-bottom: 28px;">
+                <p style="margin: 0; color: #555555; font-size: 14px; line-height: 1.5;">
                   <strong>Payment Confirmed:</strong> Thank you for your payment. Your transaction has been completed successfully.
                 </p>
               </div>
               `}
 
               <!-- Attached Invoice -->
-              <p style="margin: 0 0 24px 0; color: #4b5563; font-size: 14px; line-height: 1.6;">
-                Your detailed invoice is attached as a PDF file to this email.
+              <p style="margin: 0 0 28px 0; color: #555555; font-size: 14px; line-height: 1.6;">
+                Your detailed invoice is attached as a PDF file.
               </p>
 
               <!-- Contact Information -->
-              <div style="background-color: #f9fafb; border-radius: 6px; padding: 20px; margin-bottom: 24px;">
-                <h3 style="margin: 0 0 12px 0; color: #1f2937; font-size: 16px; font-weight: 600;">
-                  Questions or Concerns?
-                </h3>
-                <p style="margin: 0; color: #4b5563; font-size: 14px; line-height: 1.6;">
-                  If you have any questions about this invoice, please contact us:
+              <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-bottom: 24px;">
+                <p style="margin: 0 0 8px 0; color: #333333; font-size: 14px; font-weight: 600;">
+                  Questions?
                 </p>
-                <p style="margin: 12px 0 0 0; color: #4b5563; font-size: 14px; line-height: 1.6;">
-                  📧 <a href="mailto:customerservice@leaftolife.com.sg" style="color: #10b981; text-decoration: none;">customerservice@leaftolife.com.sg</a><br>
-                  📞 <a href="tel:+6565389978" style="color: #10b981; text-decoration: none;">+65 6538 9978</a>
+                <p style="margin: 0; color: #555555; font-size: 13px; line-height: 1.8;">
+                  <a href="mailto:customerservice@leaftolife.com.sg" style="color: #333333; text-decoration: underline;">customerservice@leaftolife.com.sg</a><br>
+                  <a href="tel:+6565389978" style="color: #333333; text-decoration: underline;">+65 6538 9978</a>
                 </p>
               </div>
 
@@ -294,17 +278,17 @@ class EmailService {
 
           <!-- Footer -->
           <tr>
-            <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 13px; line-height: 1.5;">
+            <td style="padding: 24px 30px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0 0 4px 0; color: #6b7280; font-size: 12px; line-height: 1.5;">
                 <strong>Sebastian Liew Centre Pte Ltd.</strong> (Leaf to Life)
               </p>
-              <p style="margin: 0 0 8px 0; color: #9ca3af; font-size: 12px; line-height: 1.5;">
+              <p style="margin: 0 0 4px 0; color: #9ca3af; font-size: 11px; line-height: 1.5;">
                 10 Sinaran Drive, #10-03 Novena Medical Center, Singapore 307506
               </p>
-              <p style="margin: 0 0 16px 0; color: #9ca3af; font-size: 12px; line-height: 1.5;">
+              <p style="margin: 0 0 12px 0; color: #9ca3af; font-size: 11px; line-height: 1.5;">
                 UEN: 202527780C
               </p>
-              <p style="margin: 0; color: #9ca3af; font-size: 11px; line-height: 1.5;">
+              <p style="margin: 0; color: #9ca3af; font-size: 10px;">
                 This is an automated email. Please do not reply directly to this message.
               </p>
             </td>
@@ -330,7 +314,7 @@ class EmailService {
       ],
     };
 
-    return await this.sendEmail(emailOptions);
+    return this.sendEmail(emailOptions);
   }
 
   isEnabled(): boolean {
