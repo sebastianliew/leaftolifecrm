@@ -350,6 +350,7 @@ export default function PatientsPage() {
               }
             } : undefined}
             onDeletePatient={canDeletePatients ? handleDeletePatient : undefined}
+            onCreateClick={canCreatePatients ? () => setIsCreateDialogOpen(true) : undefined}
             isSubmitting={isSubmitting}
           />
 

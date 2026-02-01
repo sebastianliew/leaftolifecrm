@@ -24,6 +24,7 @@ interface TransactionTableProps {
   transactions: Transaction[]
   onEdit: (transaction: Transaction) => void
   onDelete: (transactionId: string) => void
+  onDuplicate?: (transaction: Transaction) => void
   onCancelDraft?: (transaction: Transaction) => void
   onGenerateInvoice: (transactionId: string) => void
   onBulkDelete?: (transactionIds: string[]) => void
@@ -39,12 +40,14 @@ interface TransactionTableProps {
   activeSearchTerm?: string
   canEditTransactions?: boolean
   canDeleteTransactions?: boolean
+  canCreateTransactions?: boolean
 }
 
 export function TransactionTable({
   transactions,
   onEdit,
   onDelete,
+  onDuplicate,
   onCancelDraft,
   onGenerateInvoice,
   onBulkDelete,
@@ -59,7 +62,8 @@ export function TransactionTable({
   onItemsPerPageChange,
   activeSearchTerm,
   canEditTransactions = false,
-  canDeleteTransactions = false
+  canDeleteTransactions = false,
+  canCreateTransactions = false
 }: TransactionTableProps) {
   const [selectedTransactions, setSelectedTransactions] = useState<string[]>([])
 
@@ -198,10 +202,12 @@ export function TransactionTable({
                   onSelect={handleSelectTransaction}
                   onEdit={onEdit}
                   onDelete={onDelete}
+                  onDuplicate={onDuplicate}
                   onCancelDraft={onCancelDraft}
                   onGenerateInvoice={onGenerateInvoice}
                   canEdit={canEditTransactions}
                   canDelete={canDeleteTransactions}
+                  canCreate={canCreateTransactions}
                 />
               ))
             )}

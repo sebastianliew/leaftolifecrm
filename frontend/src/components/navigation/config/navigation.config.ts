@@ -123,22 +123,6 @@ export const navigationItems: NavigationItem[] = [
     name: 'Patients',
     href: '/patients',
     icon: 'patients',
-    children: [
-      {
-        id: 'patient-list',
-        name: 'Patient List',
-        href: '/patients',
-        icon: 'patient-list',
-        description: 'View and manage all patients'
-      },
-      {
-        id: 'new-patient',
-        name: 'New Patient',
-        href: '/patients/new',
-        icon: 'new-patient',
-        description: 'Register a new patient'
-      }
-    ]
   },
   {
     id: 'schedules',

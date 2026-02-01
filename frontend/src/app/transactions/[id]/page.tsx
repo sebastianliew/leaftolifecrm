@@ -117,9 +117,13 @@ export default function TransactionDetailPage() {
     if (!pdfUrl || !transaction?.invoiceNumber) return
 
     try {
+      // Use the filename provided by the backend (virtual field extracted from invoicePath)
+      // This eliminates the need to duplicate the formatInvoiceFilename logic in frontend
+      const filename = transaction.invoiceFilename || `${transaction.invoiceNumber}.pdf`
+
       const a = document.createElement('a')
       a.href = pdfUrl
-      a.download = `${transaction.invoiceNumber}.pdf`
+      a.download = filename
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)

@@ -103,9 +103,9 @@ export function useDeleteTransaction() {
 
 export function useVoidTransaction() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) => 
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       fetchAPI(`/transactions/${id}/void`, {
         method: 'POST',
         body: JSON.stringify({ reason }),
@@ -114,6 +114,26 @@ export function useVoidTransaction() {
       queryClient.invalidateQueries({ queryKey: queryKeys.transaction(variables.id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
       queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
+    },
+  });
+}
+
+export function useDuplicateTransaction() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetchAPI<Transaction>(`/transactions/${id}/duplicate`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      // Invalidate transaction queries to refresh the list
+      queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          Array.isArray(query.queryKey) &&
+          query.queryKey[0] === 'transactions'
+      });
     },
   });
 }

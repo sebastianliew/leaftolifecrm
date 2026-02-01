@@ -76,6 +76,10 @@ export class PatientService {
   // Get patient by ID
   async getPatientById(id: string) {
     try {
+      // Validate ID before querying to prevent Mongoose CastError
+      if (!id || id === 'undefined' || id === 'null') {
+        throw new Error('Patient not found');
+      }
       const patient = await Patient.findById(id).lean();
       
       if (!patient) {
@@ -92,44 +96,35 @@ export class PatientService {
   // Create new patient
   async createPatient(patientData: PatientFormData) {
     try {
+      // Strip _id and id from input data to prevent MongoDB casting errors
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { _id: _unusedId, id: _unusedIdAlias, ...cleanPatientData } = patientData as PatientFormData & { _id?: string; id?: string };
+
       // Normalize email and NRIC
-      const normalizedEmail = patientData.email?.trim().toLowerCase();
-      const normalizedNric = patientData.nric?.trim().toUpperCase();
+      const normalizedEmail = cleanPatientData.email?.trim().toLowerCase();
+      const normalizedNric = cleanPatientData.nric?.trim().toUpperCase();
 
       // Treat empty strings as "no value"
       const hasEmail = normalizedEmail && normalizedEmail.length > 0;
       const hasNric = normalizedNric && normalizedNric.length > 0;
 
-      // Build query conditions for case-insensitive email matching
-      const orConditions: Record<string, unknown>[] = [];
-      if (hasEmail) {
-        orConditions.push({ email: { $regex: new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
-      }
+      // Check for duplicate NRIC only (email duplicates are allowed)
       if (hasNric) {
-        orConditions.push({ nric: normalizedNric });
-      }
-
-      // Check for duplicate email or NRIC
-      if (orConditions.length > 0) {
-        const existingPatient = await Patient.findOne({ $or: orConditions });
-
+        const existingPatient = await Patient.findOne({ nric: normalizedNric });
         if (existingPatient) {
-          // Determine which field caused the duplicate
-          const existingEmail = (existingPatient.email as string | undefined)?.toLowerCase();
-          const duplicateField = hasEmail && existingEmail === normalizedEmail ? 'email' : 'NRIC';
-          throw new Error(`Patient with this ${duplicateField} already exists`);
+          throw new Error('Patient with this NRIC already exists');
         }
       }
 
       // Normalize the data being saved for consistency
       if (hasEmail) {
-        patientData.email = normalizedEmail;
+        cleanPatientData.email = normalizedEmail;
       }
       if (hasNric) {
-        patientData.nric = normalizedNric;
+        cleanPatientData.nric = normalizedNric;
       }
 
-      const patient = new Patient(patientData);
+      const patient = new Patient(cleanPatientData);
       const savedPatient = await patient.save();
 
       return savedPatient.toJSON();
@@ -142,6 +137,10 @@ export class PatientService {
   // Update patient
   async updatePatient(id: string, updateData: Partial<PatientFormData>) {
     try {
+      // Validate ID before querying to prevent Mongoose CastError
+      if (!id || id === 'undefined' || id === 'null') {
+        throw new Error('Patient not found');
+      }
       // First, get the current patient to compare values
       const currentPatient = await Patient.findById(id).lean() as PatientType | null;
       if (!currentPatient) {
@@ -151,38 +150,24 @@ export class PatientService {
       // Normalize email and NRIC for comparison
       const normalizedEmail = updateData.email?.trim().toLowerCase();
       const normalizedNric = updateData.nric?.trim().toUpperCase();
-      const currentEmail = currentPatient.email?.trim().toLowerCase();
       const currentNric = currentPatient.nric?.trim().toUpperCase();
 
       // Treat empty strings as "no value"
       const hasEmail = normalizedEmail && normalizedEmail.length > 0;
       const hasNric = normalizedNric && normalizedNric.length > 0;
 
-      // Only check for duplicates if the value is CHANGING to a new value
-      const emailIsChanging = hasEmail && normalizedEmail !== currentEmail;
+      // Only check for NRIC duplicates if the value is CHANGING to a new value
       const nricIsChanging = hasNric && normalizedNric !== currentNric;
 
-      // Check if trying to update email/NRIC to existing value (owned by another patient)
-      if (emailIsChanging || nricIsChanging) {
-        // Build query conditions for case-insensitive email matching
-        const orConditions: Record<string, unknown>[] = [];
-        if (emailIsChanging) {
-          orConditions.push({ email: { $regex: new RegExp(`^${normalizedEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } });
-        }
-        if (nricIsChanging) {
-          orConditions.push({ nric: normalizedNric });
-        }
-
+      // Check if trying to update NRIC to existing value (owned by another patient)
+      if (nricIsChanging) {
         const existingPatient = await Patient.findOne({
           _id: { $ne: id },
-          $or: orConditions
+          nric: normalizedNric
         });
 
         if (existingPatient) {
-          // Determine which field caused the duplicate
-          const existingEmail = (existingPatient.email as string | undefined)?.toLowerCase();
-          const duplicateField = emailIsChanging && existingEmail === normalizedEmail ? 'email' : 'NRIC';
-          throw new Error(`Patient with this ${duplicateField} already exists`);
+          throw new Error('Patient with this NRIC already exists');
         }
       }
 
@@ -214,6 +199,10 @@ export class PatientService {
   // Delete patient
   async deletePatient(id: string) {
     try {
+      // Validate ID before querying to prevent Mongoose CastError
+      if (!id || id === 'undefined' || id === 'null') {
+        throw new Error('Patient not found');
+      }
       const patient = await Patient.findByIdAndDelete(id);
       
       if (!patient) {

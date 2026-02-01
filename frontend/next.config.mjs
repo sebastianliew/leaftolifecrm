@@ -16,17 +16,23 @@ const nextConfig = {
     if (dev) {
       config.devtool = false;
     }
-    
+
+    // Use JS-based hash to avoid WasmHash crash on Node.js 22+
+    config.output = {
+      ...config.output,
+      hashFunction: 'xxhash64',
+    };
+
     config.module.rules.push({
       test: /\.afm$/,
       type: 'asset/source'
     });
-    
+
     // Fix for mysql2 module resolution
     if (isServer) {
       config.externals = [...(config.externals || []), 'mysql2'];
     }
-    
+
     return config;
   }
 }

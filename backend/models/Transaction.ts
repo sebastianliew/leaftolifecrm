@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import { getNextSequence } from './Counter.js';
+import { normalizeTransactionForPayment } from '../utils/transactionUtils.js';
 
 // Invoice status enum for proper state tracking
 export type InvoiceStatus = 'none' | 'pending' | 'generating' | 'completed' | 'failed';
@@ -87,6 +88,7 @@ export interface ITransaction extends Document {
   invoiceError?: string; // Error message if invoice generation failed
   invoicePath?: string;
   invoiceNumber?: string;
+  invoiceFilename?: string; // Virtual: extracted from invoicePath for frontend convenience
   invoiceEmailSent?: boolean;
   invoiceEmailSentAt?: Date;
   invoiceEmailRecipient?: string;
@@ -251,6 +253,18 @@ const TransactionSchema = new Schema<ITransaction>({
   toObject: { virtuals: true }
 });
 
+// Virtual field: invoiceFilename
+// Extracts the filename from invoicePath so frontend doesn't need to recompute it.
+// This eliminates the need for duplicate formatInvoiceFilename logic in the frontend
+// when downloading server-generated PDFs.
+TransactionSchema.virtual('invoiceFilename').get(function() {
+  if (!this.invoicePath) return undefined;
+  // invoicePath format: 'invoices/TXN-001_John_Smith_22012026.pdf'
+  // Extract just the filename portion
+  const parts = this.invoicePath.split('/');
+  return parts[parts.length - 1];
+});
+
 // Indexes for better performance
 // Note: transactionNumber index is already created by unique: true option
 TransactionSchema.index({ customerName: 1 });
@@ -292,6 +306,41 @@ TransactionSchema.pre('save', async function(next) {
     const seq = await getNextSequence(counterId);
     this.transactionNumber = `TXN-${dateStr}-${String(seq).padStart(4, '0')}`;
   }
+  next();
+});
+
+/**
+ * ============================================================================
+ * TRANSACTION NORMALIZATION ARCHITECTURE
+ * ============================================================================
+ *
+ * Business Rule: Paid transactions cannot be drafts.
+ * When paymentStatus === 'paid', the transaction must be COMPLETED, not DRAFT.
+ *
+ * IMPLEMENTATION STRATEGY:
+ * Normalization is enforced through TWO complementary mechanisms:
+ *
+ * 1. PRE-SAVE MIDDLEWARE (below)
+ *    - Triggers on: new Transaction().save(), existingDoc.save()
+ *    - Coverage: All direct Mongoose document operations
+ *    - Advantage: Automatic, cannot be bypassed when using .save()
+ *
+ * 2. CONTROLLER LOGIC (transactions.controller.ts)
+ *    - Triggers on: Transaction.findByIdAndUpdate() calls
+ *    - Why needed: findByIdAndUpdate() DOES NOT trigger pre-save middleware
+ *    - Advantage: Controller has full context (existing doc + updates)
+ *
+ * WHY NOT USE pre-findOneAndUpdate MIDDLEWARE?
+ * - pre-findOneAndUpdate only receives the update object, not existing values
+ * - Cannot determine: "Is this a draft being completed?" without existing doc
+ * - Controllers already fetch existing doc for business logic decisions
+ * - Explicit controller calls are clearer and more maintainable
+ *
+ * See: transactionUtils.ts for the shared normalization function
+ * ============================================================================
+ */
+TransactionSchema.pre('save', function(next) {
+  normalizeTransactionForPayment(this);
   next();
 });
 

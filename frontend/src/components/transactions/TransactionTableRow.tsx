@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
-import { MoreVertical, Ban } from "lucide-react"
+import { MoreVertical, Ban, Copy } from "lucide-react"
 import { FaEye, FaEdit, FaReceipt, FaTrash } from "react-icons/fa"
 import type { Transaction } from "@/types/transaction"
 
@@ -23,10 +23,12 @@ interface TransactionTableRowProps {
   onSelect: (transactionId: string, checked: boolean) => void
   onEdit: (transaction: Transaction) => void
   onDelete: (transactionId: string) => void
+  onDuplicate?: (transaction: Transaction) => void
   onCancelDraft?: (transaction: Transaction) => void
   onGenerateInvoice: (transactionId: string) => void
   canEdit?: boolean
   canDelete?: boolean
+  canCreate?: boolean
 }
 
 const getStatusColor = (status: string) => {
@@ -86,10 +88,12 @@ export const TransactionTableRow = React.memo(({
   onSelect,
   onEdit,
   onDelete,
+  onDuplicate,
   onCancelDraft,
   onGenerateInvoice,
   canEdit = false,
-  canDelete = false
+  canDelete = false,
+  canCreate = false
 }: TransactionTableRowProps) => {
   const itemCount = transaction.items.reduce((sum, item) => sum + item.quantity, 0)
   
@@ -148,6 +152,12 @@ export const TransactionTableRow = React.memo(({
                 Edit
               </DropdownMenuItem>
             )}
+            {canCreate && onDuplicate && (
+              <DropdownMenuItem onClick={() => onDuplicate(transaction)}>
+                <Copy className="mr-2 h-4 w-4" />
+                Duplicate
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => onGenerateInvoice(transaction._id)}>
               <FaReceipt className="mr-2 h-4 w-4" />
               Generate invoice
@@ -194,7 +204,8 @@ export const TransactionTableRow = React.memo(({
          prevProps.transaction.updatedAt === nextProps.transaction.updatedAt &&
          prevProps.isSelected === nextProps.isSelected &&
          prevProps.canEdit === nextProps.canEdit &&
-         prevProps.canDelete === nextProps.canDelete
+         prevProps.canDelete === nextProps.canDelete &&
+         prevProps.canCreate === nextProps.canCreate
 })
 
 TransactionTableRow.displayName = 'TransactionTableRow'

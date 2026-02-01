@@ -14,7 +14,7 @@ export interface Patient {
   occupation?: string
 
   // Contact Information
-  email: string
+  email?: string
   phone: string
   altPhone?: string
   fax?: string
@@ -31,7 +31,7 @@ export interface Patient {
   memberBenefits?: {
     discountPercentage: number
     discountReason?: string
-    membershipTier: 'standard' | 'silver' | 'vip' | 'platinum'
+    membershipTier: 'standard' | 'silver' | 'gold' | 'vip' | 'platinum'
     discountStartDate?: Date
     discountEndDate?: Date | null
   }
@@ -61,7 +61,7 @@ export interface PatientPreference {
   notes?: string
 }
 
-export type PatientFormData = Omit<Patient, "id" | "createdAt" | "updatedAt">
+export type PatientFormData = Omit<Patient, "id" | "_id" | "createdAt" | "updatedAt">
 
 export interface PatientNotification {
   id: string

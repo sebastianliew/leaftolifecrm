@@ -2,10 +2,11 @@
 
 import type { Transaction } from "@/types/transaction"
 import { jsPDF } from "jspdf"
+import { formatInvoiceFilename } from "./invoice-filename"
 
 // Company information
 const defaultCompanyInfo = {
-  name: "Sebastian Liew Centre Ltd.",
+  name: "Sebastian Liew Centre Pte Ltd.",
   address: {
     street: "320 Serangoon Road, Centrium square, #11-10",
     city: "Singapore",
@@ -317,8 +318,12 @@ export function generateInvoicePDF(transaction: Transaction): void {
     doc.text("Total:", totalsX, yPos);
     doc.text(`${transaction.currency} ${calculatedTotal.toFixed(2)}`, pageWidth - margin, yPos, { align: "right" });
 
-    // Save the PDF
-    const fileName = `${transaction.invoiceNumber || transaction.transactionNumber}-LeafToLife.pdf`;
+    // Save the PDF with format: TXN_CustomerName_DDMMYYYY.pdf
+    const fileName = formatInvoiceFilename(
+      transaction.invoiceNumber || transaction.transactionNumber,
+      transaction.customerName,
+      transaction.transactionDate
+    );
     doc.save(fileName);
 
 

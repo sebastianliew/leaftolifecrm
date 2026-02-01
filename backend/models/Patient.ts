@@ -110,7 +110,7 @@ const patientSchema = new mongoose.Schema({
   occupation: { type: String },
 
   // Contact Information
-  email: { type: String, required: true },
+  email: { type: String },
   phone: { type: String, required: true },
   altPhone: { type: String },
   fax: { type: String },

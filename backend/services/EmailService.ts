@@ -164,7 +164,7 @@ class EmailService {
                 Leaf to Life
               </h1>
               <p style="margin: 8px 0 0 0; color: #d1fae5; font-size: 14px;">
-                Sebastian Liew Centre Ltd.
+                Sebastian Liew Centre Pte Ltd.
               </p>
             </td>
           </tr>
@@ -296,7 +296,7 @@ class EmailService {
           <tr>
             <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
               <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 13px; line-height: 1.5;">
-                <strong>Sebastian Liew Centre Ltd.</strong> (Leaf to Life)
+                <strong>Sebastian Liew Centre Pte Ltd.</strong> (Leaf to Life)
               </p>
               <p style="margin: 0 0 8px 0; color: #9ca3af; font-size: 12px; line-height: 1.5;">
                 10 Sinaran Drive, #10-03 Novena Medical Center, Singapore 307506

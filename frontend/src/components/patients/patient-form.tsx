@@ -210,14 +210,21 @@ export function PatientForm({ patient, onSubmit, onCancel, loading }: PatientFor
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email Address *</Label>
+              <Label htmlFor="email">Email Address</Label>
               <Input
                 id="email"
                 type="email"
-                value={formData.email}
+                value={formData.email || ""}
                 onChange={(e) => handleInputChange("email", e.target.value)}
-                required
               />
+              {dateOfBirth && (() => {
+                const today = new Date();
+                const age = today.getFullYear() - dateOfBirth.getFullYear() -
+                  (today < new Date(today.getFullYear(), dateOfBirth.getMonth(), dateOfBirth.getDate()) ? 1 : 0);
+                return age < 18 ? (
+                  <p className="text-xs text-muted-foreground">Optional for minors under 18</p>
+                ) : null;
+              })()}
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Primary Phone *</Label>

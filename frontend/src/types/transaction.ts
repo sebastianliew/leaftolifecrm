@@ -45,7 +45,8 @@ export interface Transaction {
   invoiceError?: string
   invoicePath?: string
   invoiceNumber?: string
-  
+  invoiceFilename?: string // Virtual field from backend - extracted from invoicePath
+
   // Invoice Email Information
   invoiceEmailSent?: boolean
   invoiceEmailSentAt?: string

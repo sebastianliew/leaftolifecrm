@@ -1,7 +1,7 @@
 import type { Transaction } from '@/types/transaction';
 
 const defaultCompanyInfo = {
-  name: "Sebastian Liew Centre Ltd.",
+  name: "Sebastian Liew Centre Pte Ltd.",
   address: {
     street: "320 Serangoon Road, Centrium square, #11-10",
     city: "Singapore",

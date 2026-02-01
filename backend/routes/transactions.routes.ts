@@ -16,7 +16,8 @@ import {
   sendInvoiceEmail,
   saveDraft,
   getDrafts,
-  deleteDraft
+  deleteDraft,
+  duplicateTransaction
 } from '../controllers/transactions.controller.js';
 
 const router: IRouter = express.Router();
@@ -48,6 +49,9 @@ router.post('/:id/invoice', fileGenerationRateLimit, requirePermission('transact
 
 // POST /api/transactions/:id/send-invoice-email - Send or resend invoice email (rate limited)
 router.post('/:id/send-invoice-email', emailRateLimit, requirePermission('transactions', 'canViewTransactions'), sendInvoiceEmail);
+
+// POST /api/transactions/:id/duplicate - Duplicate a transaction as a new draft
+router.post('/:id/duplicate', requirePermission('transactions', 'canCreateTransactions'), duplicateTransaction);
 
 // PUT /api/transactions/:id - Update transaction
 // Uses draft-aware permission: drafts require canEditDrafts + ownership, completed transactions require canEditTransactions

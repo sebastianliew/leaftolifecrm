@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useMemo, useCallback } from 'react'
-import { useTransactions, useDeleteTransaction, useUpdateTransaction } from '@/hooks/queries/use-transaction-queries'
+import { useRouter } from 'next/navigation'
+import { useTransactions, useDeleteTransaction, useUpdateTransaction, useDuplicateTransaction } from '@/hooks/queries/use-transaction-queries'
 import { TransactionTable } from './TransactionTable'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -9,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Button } from '@/components/ui/button'
 import { SimpleTransactionForm } from './SimpleTransactionForm'
 import { TransactionDeleteDialog } from './transaction-delete-dialog'
+import { TransactionDuplicateDialog } from './transaction-duplicate-dialog'
 import { useToast } from '@/components/ui/use-toast'
 import { useInventory } from '@/hooks/useInventory'
 import { useTransactions as useTransactionsHook } from '@/hooks/useTransactions'
@@ -31,11 +33,13 @@ const DEFAULT_FILTERS: TransactionFilterValues = {
 }
 
 export function TransactionList() {
+  const router = useRouter()
   const [searchInput, setSearchInput] = useState('')  // For immediate UI updates
   const [searchTerm, setSearchTerm] = useState('')   // For actual API calls
   const [filters, setFilters] = useState<TransactionFilterValues>(DEFAULT_FILTERS)
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null)
   const [deletingTransaction, setDeletingTransaction] = useState<Transaction | null>(null)
+  const [duplicatingTransaction, setDuplicatingTransaction] = useState<Transaction | null>(null)
   const [cancellingTransaction, setCancellingTransaction] = useState<Transaction | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(20)
@@ -43,10 +47,11 @@ export function TransactionList() {
   const { products, getProducts } = useInventory()
   const { generateInvoice } = useTransactionsHook()
   const { hasPermission } = usePermissions()
-  
+
   // Get transaction permissions
   const canEditTransactions = hasPermission('transactions', 'canEditTransactions')
   const canDeleteTransactions = hasPermission('transactions', 'canDeleteTransactions')
+  const canCreateTransactions = hasPermission('transactions', 'canCreateTransactions')
 
   // Handle search input change (only updates UI, no API call)
   const handleSearchChange = useCallback((value: string) => {
@@ -122,6 +127,7 @@ export function TransactionList() {
 
   const deleteTransactionMutation = useDeleteTransaction()
   const updateTransactionMutation = useUpdateTransaction()
+  const duplicateTransactionMutation = useDuplicateTransaction()
 
   // Pagination handlers
   const handlePageChange = useCallback((page: number) => {
@@ -177,6 +183,32 @@ export function TransactionList() {
     }
   }
 
+  // Handle duplicate transaction
+  const handleDuplicate = (transaction: Transaction) => {
+    setDuplicatingTransaction(transaction)
+  }
+
+  const handleConfirmDuplicate = async () => {
+    if (!duplicatingTransaction) return
+
+    try {
+      const newTransaction = await duplicateTransactionMutation.mutateAsync(duplicatingTransaction._id)
+      toast({
+        title: 'Transaction Duplicated',
+        description: `Created new draft: ${newTransaction.transactionNumber}`
+      })
+      setDuplicatingTransaction(null)
+      // Redirect to the new transaction
+      router.push(`/transactions/${newTransaction._id}`)
+    } catch (_error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to duplicate transaction',
+        variant: 'destructive'
+      })
+    }
+  }
+
   // Handle cancel draft (sets status to 'cancelled')
   const handleCancelDraft = (transaction: Transaction) => {
     if (transaction.status === 'draft') {
@@ -217,8 +249,8 @@ export function TransactionList() {
       const result = await generateInvoice(transactionId) as InvoiceGenerationResult;
       console.log('[Invoice] Generated successfully:', result);
 
-      // Download PDF with authentication
-      await downloadInvoicePDF(result.downloadUrl, result.invoiceNumber);
+      // Download PDF with authentication (filename extracted from downloadUrl)
+      await downloadInvoicePDF(result.downloadUrl);
 
       toast({
         title: 'Invoice Generated',
@@ -239,7 +271,7 @@ export function TransactionList() {
     }
   }
 
-  const downloadInvoicePDF = async (downloadUrl: string, filename: string) => {
+  const downloadInvoicePDF = async (downloadUrl: string) => {
     try {
       // Get token from authToken (used by api-client)
       const token = localStorage.getItem('authToken') || localStorage.getItem('token');
@@ -257,11 +289,14 @@ export function TransactionList() {
         throw new Error('Failed to download invoice');
       }
 
+      // Extract filename from downloadUrl (e.g., /api/invoices/TXN_Name_DDMMYYYY.pdf)
+      const filename = downloadUrl.split('/').pop() || 'invoice.pdf';
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${filename}.pdf`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -393,6 +428,7 @@ export function TransactionList() {
         transactions={transactions}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        onDuplicate={handleDuplicate}
         onCancelDraft={handleCancelDraft}
         onGenerateInvoice={handleGenerateInvoice}
         onBulkDelete={handleBulkDelete}
@@ -408,6 +444,7 @@ export function TransactionList() {
         activeSearchTerm={searchTerm}
         canEditTransactions={canEditTransactions}
         canDeleteTransactions={canDeleteTransactions}
+        canCreateTransactions={canCreateTransactions}
       />
 
       {/* Edit Transaction Dialog */}
@@ -440,6 +477,15 @@ export function TransactionList() {
         onOpenChange={(open) => !open && setDeletingTransaction(null)}
         onConfirm={handleConfirmDelete}
         loading={deleteTransactionMutation.isPending}
+      />
+
+      {/* Duplicate Transaction Dialog */}
+      <TransactionDuplicateDialog
+        transaction={duplicatingTransaction}
+        open={!!duplicatingTransaction}
+        onOpenChange={(open) => !open && setDuplicatingTransaction(null)}
+        onConfirm={handleConfirmDuplicate}
+        loading={duplicateTransactionMutation.isPending}
       />
 
       {/* Cancel Draft Dialog */}

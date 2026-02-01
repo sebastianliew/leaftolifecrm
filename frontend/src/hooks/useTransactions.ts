@@ -33,6 +33,7 @@ export function useTransactions() {
     type?: string
     customerId?: string
     search?: string
+    includeCancelled?: boolean
   }) => {
     setLoading(true)
     try {
@@ -43,6 +44,7 @@ export function useTransactions() {
       if (params?.type) searchParams.set('type', params.type)
       if (params?.customerId) searchParams.set('customerId', params.customerId)
       if (params?.search) searchParams.set('search', params.search)
+      if (params?.includeCancelled) searchParams.set('includeCancelled', 'true')
       
       const { data, error, status, ok } = await api.get('/transactions', Object.fromEntries(searchParams))
       

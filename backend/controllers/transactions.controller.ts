@@ -11,6 +11,7 @@ import { PermissionService } from '../lib/permissions/PermissionService.js';
 import type { FeaturePermissions } from '../lib/permissions/types.js';
 import { createAuditLog } from '../models/AuditLog.js';
 import { transactionInventoryService } from '../services/TransactionInventoryService.js';
+import { normalizeTransactionForPayment, formatInvoiceFilename } from '../utils/transactionUtils.js';
 
 const permissionService = PermissionService.getInstance();
 
@@ -92,7 +93,7 @@ async function generateInvoiceAsync(
     };
 
     // Generate PDF
-    const invoiceFileName = `${invoiceNumber}-LeafToLife.pdf`;
+    const invoiceFileName = formatInvoiceFilename(savedTransaction.transactionNumber, savedTransaction.customerName, savedTransaction.transactionDate);
     const invoiceFilePath = path.join(invoicesDir, invoiceFileName);
     const relativeInvoicePath = `invoices/${invoiceFileName}`;
 
@@ -191,7 +192,7 @@ export const getTransactions = async (req: AuthenticatedRequest, res: Response):
         customerEmail?: { $regex: unknown; $options: string };
       }>;
       paymentStatus?: string;
-      status?: string;
+      status?: string | { $ne: string };
       transactionDate?: {
         $gte?: Date;
         $lte?: Date;
@@ -206,8 +207,14 @@ export const getTransactions = async (req: AuthenticatedRequest, res: Response):
     }
 
     // Transaction status filter
+    // By default, exclude cancelled transactions unless explicitly requested
+    const includeCancelled = req.query.includeCancelled === 'true';
+
     if (status && typeof status === 'string') {
       filter.status = status;
+    } else if (!includeCancelled) {
+      // Exclude cancelled transactions by default
+      filter.status = { $ne: 'cancelled' };
     }
 
     // Date range filter
@@ -400,15 +407,20 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
     try {
       session.startTransaction();
 
-      // Set type to COMPLETED for non-draft transactions
+      // Set initial type to COMPLETED for non-draft transactions, otherwise DRAFT
       const transactionType = transactionData.status !== 'draft' ? 'COMPLETED' : 'DRAFT';
 
-      const transaction = new Transaction({
+      // Prepare transaction data
+      // Note: normalization for paid transactions is handled by pre-save middleware
+      const transactionFields = {
         ...transactionData,
         type: transactionType,
+        status: transactionData.status,
         createdBy: req.user?.id || 'system',
         invoiceStatus: 'pending'
-      });
+      };
+
+      const transaction = new Transaction(transactionFields);
 
       savedTransaction = await transaction.save({ session });
       transactionId = savedTransaction._id;
@@ -555,13 +567,30 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
 
     // Check if this is a draft being converted to a completed transaction
     const wasDraft = existingTransaction.status === 'draft' || wasCancelled;
-    const isBeingCompleted = updateData.status && updateData.status !== 'draft';
+    const isBeingCompleted = (updateData.status && updateData.status !== 'draft') ||
+                              updateData.paymentStatus === 'paid';
     const needsInventoryDeduction = wasDraft && isBeingCompleted;
     const needsInvoice = needsInventoryDeduction && !existingTransaction.invoiceGenerated;
 
     // When a draft is being completed, update type to COMPLETED
     if (wasDraft && isBeingCompleted) {
       updateData.type = 'COMPLETED';
+      // -----------------------------------------------------------------------
+      // TRANSACTION NORMALIZATION - Explicit Controller Call
+      // -----------------------------------------------------------------------
+      // This call is REQUIRED because findByIdAndUpdate() (used below) does NOT
+      // trigger Mongoose pre-save middleware. The pre-save hook in Transaction.ts
+      // handles .save() calls, but updates via findByIdAndUpdate bypass it.
+      //
+      // Why call here instead of using pre-findOneAndUpdate middleware?
+      // - We have full context: existing transaction state + update payload
+      // - Can make informed decisions (e.g., "was this actually a draft?")
+      // - pre-findOneAndUpdate lacks access to existing document values
+      //
+      // This ensures: if paymentStatus === 'paid', type/status become COMPLETED
+      // See: transactionUtils.ts for business rule documentation
+      // -----------------------------------------------------------------------
+      normalizeTransactionForPayment(updateData);
     }
 
     // Check if this is a completed transaction being cancelled (needs inventory reversal)
@@ -721,7 +750,7 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
         };
 
         // Generate PDF
-        const invoiceFileName = `${invoiceNumber}-LeafToLife.pdf`;
+        const invoiceFileName = formatInvoiceFilename(updatedTransaction.transactionNumber, updatedTransaction.customerName, updatedTransaction.transactionDate);
         const invoiceFilePath = path.join(invoicesDir, invoiceFileName);
         const relativeInvoicePath = `invoices/${invoiceFileName}`;
 
@@ -883,8 +912,8 @@ export const generateTransactionInvoice = async (req: AuthenticatedRequest, res:
       status: transaction.paymentStatus
     };
 
-    // Generate PDF with proper filename format: TXN-XX_XX_XXXX-XXXX-LeafToLife.pdf
-    const invoiceFileName = `${invoiceNumber}-LeafToLife.pdf`;
+    // Generate PDF with proper filename format: TXN_CustomerName_DDMMYYYY.pdf
+    const invoiceFileName = formatInvoiceFilename(transaction.transactionNumber, transaction.customerName, transaction.transactionDate);
     const invoiceFilePath = path.join(invoicesDir, invoiceFileName);
     const relativeInvoicePath = `invoices/${invoiceFileName}`;
 
@@ -1067,7 +1096,7 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
     };
 
     // Generate PDF
-    const invoiceFileName = `${invoiceNumber}-LeafToLife.pdf`;
+    const invoiceFileName = formatInvoiceFilename(transaction.transactionNumber, transaction.customerName, transaction.transactionDate);
     const invoiceFilePath = path.join(invoicesDir, invoiceFileName);
     const relativeInvoicePath = `invoices/${invoiceFileName}`;
 
@@ -1263,6 +1292,134 @@ export const deleteDraft = async (req: AuthenticatedRequest, res: Response): Pro
     console.error('Error deleting draft:', error);
     res.status(500).json({
       error: 'Failed to delete draft',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// POST /api/transactions/:id/duplicate - Duplicate a transaction as a new draft
+export const duplicateTransaction = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({ error: 'Invalid transaction ID' });
+      return;
+    }
+
+    if (!req.user?.id) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    // Fetch the original transaction
+    const original = await Transaction.findById(id);
+
+    if (!original) {
+      res.status(404).json({ error: 'Transaction not found' });
+      return;
+    }
+
+    // Deep clone items array, removing _id from each item
+    const clonedItems = original.items.map(item => {
+      // Use type assertion since Mongoose subdocuments have toObject method at runtime
+      const itemObj = typeof (item as unknown as { toObject?: () => Record<string, unknown> }).toObject === 'function'
+        ? (item as unknown as { toObject: () => Record<string, unknown> }).toObject()
+        : { ...item };
+      // Remove _id to let MongoDB generate new ones
+      delete itemObj._id;
+
+      // Deep clone customBlendData if present
+      if (itemObj.customBlendData) {
+        const blendData = itemObj.customBlendData as Record<string, unknown>;
+        itemObj.customBlendData = {
+          ...blendData,
+          ingredients: Array.isArray(blendData.ingredients)
+            ? blendData.ingredients.map((ing: Record<string, unknown>) => ({ ...ing }))
+            : []
+        };
+      }
+
+      return itemObj;
+    });
+
+    // Clone customer address if present
+    const clonedAddress = original.customerAddress ? {
+      street: original.customerAddress.street,
+      city: original.customerAddress.city,
+      state: original.customerAddress.state,
+      postalCode: original.customerAddress.postalCode
+    } : undefined;
+
+    // Create the duplicate transaction as a DRAFT
+    const duplicateData = {
+      // Clone customer info
+      customerId: original.customerId,
+      customerName: original.customerName,
+      customerEmail: original.customerEmail,
+      customerPhone: original.customerPhone,
+      customerAddress: clonedAddress,
+
+      // Clone items (deep copy)
+      items: clonedItems,
+
+      // Clone pricing
+      subtotal: original.subtotal,
+      discountAmount: original.discountAmount,
+      totalAmount: original.totalAmount,
+      currency: original.currency || 'SGD',
+
+      // Clone other fields
+      paymentMethod: original.paymentMethod,
+      notes: original.notes,
+      terms: original.terms,
+
+      // Reset to DRAFT - always create as draft regardless of source status
+      type: 'DRAFT' as const,
+      status: 'draft' as const,
+      paymentStatus: 'pending' as const,
+      paidAmount: 0,
+      changeAmount: 0,
+
+      // Set new transaction date
+      transactionDate: new Date(),
+
+      // Reset invoice fields
+      invoiceGenerated: false,
+      invoiceStatus: 'none' as const,
+      invoicePath: undefined,
+      invoiceNumber: undefined,
+      invoiceError: undefined,
+      invoiceEmailSent: false,
+      invoiceEmailSentAt: undefined,
+      invoiceEmailRecipient: undefined,
+
+      // Reset refund fields
+      refundStatus: 'none' as const,
+      totalRefunded: 0,
+      refundHistory: [],
+      refundCount: 0,
+      lastRefundDate: undefined,
+      refundableAmount: undefined,
+
+      // Set creator
+      createdBy: req.user.id,
+      lastModifiedBy: req.user.id,
+
+      // Do NOT set transactionNumber - let pre-save middleware generate it
+      // Do NOT set draftId - this is not a draft from autosave
+    };
+
+    const duplicate = new Transaction(duplicateData);
+    const savedDuplicate = await duplicate.save();
+
+    console.log('[Transaction] Duplicated transaction:', original.transactionNumber, '-> new draft:', savedDuplicate.transactionNumber);
+
+    res.status(201).json(savedDuplicate);
+  } catch (error) {
+    console.error('Error duplicating transaction:', error);
+    res.status(500).json({
+      error: 'Failed to duplicate transaction',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }

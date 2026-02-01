@@ -93,6 +93,10 @@ export function usePatients() {
   }, [])
 
   const getPatient = useCallback(async (id: string) => {
+    // Validate ID before making API call to prevent sending "undefined" as string
+    if (!id || id === 'undefined' || id === 'null') {
+      throw new Error('Invalid patient ID')
+    }
     setLoading(true)
     try {
       const response = await api.get(`/patients/${id}`)
@@ -120,13 +124,20 @@ export function usePatients() {
   const createPatient = useCallback(async (data: PatientFormData): Promise<{ success: true; data: Patient } | { error: string }> => {
     setLoading(true)
     try {
-      const response = await api.post('/patients', data)
+      // Strip _id and id from data to prevent MongoDB casting errors
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { _id: _unusedId, id: _unusedIdAlias, ...cleanData } = data as PatientFormData & { _id?: string; id?: string }
+      const response = await api.post('/patients', cleanData)
       if (!response.ok) {
         // Return error object instead of throwing
         setError(response.error || "Failed to create patient")
         return { error: response.error || "Failed to create patient" }
       }
-      const newPatient = response.data as Patient
+      const responsePatient = response.data as Patient & { _id?: string }
+      const newPatient = {
+        ...responsePatient,
+        id: responsePatient._id || responsePatient.id
+      }
       setPatients((prev) => [newPatient, ...prev])
       clearSearchCache() // Clear cache to force refresh
       setError(null)
@@ -141,6 +152,10 @@ export function usePatients() {
   }, [clearSearchCache])
 
   const updatePatient = useCallback(async (id: string, data: Partial<PatientFormData>) => {
+    // Validate ID before making API call
+    if (!id || id === 'undefined' || id === 'null') {
+      throw new Error('Invalid patient ID')
+    }
     setLoading(true)
     try {
       const response = await api.put(`/patients/${id}`, data)
@@ -162,6 +177,10 @@ export function usePatients() {
   }, [])
 
   const deletePatient = useCallback(async (id: string) => {
+    // Validate ID before making API call
+    if (!id || id === 'undefined' || id === 'null') {
+      throw new Error('Invalid patient ID')
+    }
     setLoading(true)
     try {
       const response = await api.delete(`/patients/${id}`)

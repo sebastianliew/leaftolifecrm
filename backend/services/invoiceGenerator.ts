@@ -93,7 +93,7 @@ export class InvoiceGenerator {
       .fontSize(18)
       .font('Helvetica-Bold')
       .fillColor('#000000')
-      .text('Sebastian Liew Centre Ltd.', this.margin, this.yPosition);
+      .text('Sebastian Liew Centre Pte Ltd.', this.margin, this.yPosition);
 
     this.yPosition += 25;
 

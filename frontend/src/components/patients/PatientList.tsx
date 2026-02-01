@@ -21,14 +21,16 @@ interface PatientListProps {
   loading?: boolean;
   onUpdatePatient?: (id: string, data: PatientFormData) => Promise<void>;
   onDeletePatient?: (patient: Patient) => Promise<void>;
+  onCreateClick?: () => void;
   isSubmitting?: boolean;
 }
 
-export function PatientList({ 
-  patients, 
-  loading = false, 
+export function PatientList({
+  patients,
+  loading = false,
   onDeletePatient,
-  isSubmitting = false 
+  onCreateClick,
+  isSubmitting = false
 }: PatientListProps) {
   const handleDeletePatient = async (patient: Patient) => {
     if (onDeletePatient) {
@@ -51,9 +53,9 @@ export function PatientList({
     return (
       <div className="text-center py-8">
         <p className="text-gray-500 mb-4">No patients found</p>
-        <Link href="/patients/new">
-          <Button>Add First Patient</Button>
-        </Link>
+        {onCreateClick && (
+          <Button onClick={onCreateClick}>Add First Patient</Button>
+        )}
       </div>
     );
   }

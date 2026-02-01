@@ -112,7 +112,7 @@ export default function DashboardPage() {
             </div>
             <div className="flex gap-4">
               <Button variant="outline" asChild>
-                <Link href="/patients/new">
+                <Link href="/patients">
                   <HiUsers className="w-4 h-4 mr-2" />
                   New Patient
                 </Link>
