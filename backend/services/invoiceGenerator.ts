@@ -466,11 +466,7 @@ export class InvoiceGenerator {
     const boxY = this.yPosition;
     const boxWidth = this.pageWidth - 2 * this.margin;
 
-    // Yellow warning background for header
     const headerHeight = 50;
-    this.doc
-      .rect(boxX, boxY, boxWidth, headerHeight)
-      .fillAndStroke('#fff3cd', '#ffc107');
 
     // Warning icon (triangle)
     const iconX = boxX + 15;
@@ -522,10 +518,6 @@ export class InvoiceGenerator {
     const sectionX = boxX + 15;
     const sectionWidth = boxWidth - 30;
     const payNowHeight = 110;
-
-    this.doc
-      .rect(sectionX, contentY, sectionWidth, payNowHeight)
-      .fillAndStroke('#e7f3ff', '#0d6efd');
 
     const payNowY = contentY + 10;
 
@@ -590,10 +582,6 @@ export class InvoiceGenerator {
     // Bank Transfer section
     const bankHeight = 180;
     const bankStartY = contentY;
-
-    this.doc
-      .rect(sectionX, contentY, sectionWidth, bankHeight)
-      .fillAndStroke('#e7f3ff', '#0d6efd');
 
     contentY += 10;
 
@@ -702,10 +690,6 @@ export class InvoiceGenerator {
     // No Refund Policy section
     const refundHeight = 55;
     const refundStartY = contentY;
-
-    this.doc
-      .rect(sectionX, contentY, sectionWidth, refundHeight)
-      .fillAndStroke('#f8d7da', '#dc3545');
 
     contentY += 12;
 
