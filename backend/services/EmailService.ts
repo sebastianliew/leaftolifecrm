@@ -283,7 +283,7 @@ class EmailService {
                 <strong>Sebastian Liew Centre Pte Ltd.</strong> (Leaf to Life)
               </p>
               <p style="margin: 0 0 4px 0; color: #9ca3af; font-size: 11px; line-height: 1.5;">
-                10 Sinaran Drive, #10-03 Novena Medical Center, Singapore 307506
+                320 Serangoon Road, Centrium square, #11-10, Singapore 218108
               </p>
               <p style="margin: 0 0 12px 0; color: #9ca3af; font-size: 11px; line-height: 1.5;">
                 UEN: 202527780C
