@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { Transaction } from '../models/Transaction.js';
 import { Product } from '../models/Product.js';
+import { Bundle } from '../models/Bundle.js';
 import { getNextSequence } from '../models/Counter.js';
 import { InvoiceGenerator } from '../services/invoiceGenerator.js';
 import { emailService } from '../services/EmailService.js';
@@ -403,6 +404,31 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
         products.forEach((p: { _id: unknown; costPrice?: number }) => {
           costPriceMap.set(String(p._id), p.costPrice || 0);
         });
+
+        // Bundle fallback: IDs not found in Product might be Bundle IDs
+        const foundProductIds = new Set(products.map((p: { _id: unknown }) => String(p._id)));
+        const possibleBundleIds = productIds.filter((id: string) => !foundProductIds.has(id));
+        if (possibleBundleIds.length > 0) {
+          const bundles = await Bundle.find(
+            { _id: { $in: possibleBundleIds } }
+          ).select('_id bundleProducts').lean().session(session);
+
+          for (const bundle of bundles) {
+            let bundleCost = 0;
+            if (bundle.bundleProducts && Array.isArray(bundle.bundleProducts)) {
+              for (const bp of bundle.bundleProducts) {
+                const bpId = String(bp.productId || '');
+                let compCost = costPriceMap.get(bpId);
+                if (compCost === undefined) {
+                  const prod = await Product.findOne({ _id: bpId }, { costPrice: 1 }).lean().session(session);
+                  compCost = (prod as { costPrice?: number } | null)?.costPrice || 0;
+                }
+                bundleCost += compCost * (bp.quantity || 1);
+              }
+            }
+            costPriceMap.set(String(bundle._id), bundleCost);
+          }
+        }
       }
 
       // Enrich items with costPrice from Product collection

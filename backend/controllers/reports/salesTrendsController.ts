@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { Transaction } from '../../models/Transaction.js';
 import { Product } from '../../models/Product.js';
+import { Bundle } from '../../models/Bundle.js';
 
 interface SalesTrendData {
   date: string;
@@ -141,13 +142,40 @@ async function generateDailyData(transactions: LeanTransaction[], startDate: Dat
   // Fetch cost prices for products that need it (historical data fallback)
   const fallbackCostMap = new Map<string, number>();
   if (productIdsNeedingLookup.size > 0) {
+    const lookupIds = Array.from(productIdsNeedingLookup);
     const products = await Product.find(
-      { _id: { $in: Array.from(productIdsNeedingLookup) } },
+      { _id: { $in: lookupIds } },
       { _id: 1, costPrice: 1 }
     ).lean();
     products.forEach((p: { _id: unknown; costPrice?: number }) => {
       fallbackCostMap.set(String(p._id), p.costPrice || 0);
     });
+
+    // Bundle fallback: IDs not found in Product might be Bundle IDs
+    const foundProductIds = new Set(products.map((p: { _id: unknown }) => String(p._id)));
+    const possibleBundleIds = lookupIds.filter(id => !foundProductIds.has(id));
+    if (possibleBundleIds.length > 0) {
+      const bundles = await Bundle.find(
+        { _id: { $in: possibleBundleIds } }
+      ).select('_id bundleProducts').lean();
+
+      for (const bundle of bundles) {
+        let bundleCost = 0;
+        if (bundle.bundleProducts && Array.isArray(bundle.bundleProducts)) {
+          for (const bp of bundle.bundleProducts) {
+            const bpId = String(bp.productId || '');
+            // Look up component product cost
+            let compCost = fallbackCostMap.get(bpId);
+            if (compCost === undefined) {
+              const prod = await Product.findOne({ _id: bpId }, { costPrice: 1 }).lean();
+              compCost = (prod as { costPrice?: number } | null)?.costPrice || 0;
+            }
+            bundleCost += compCost * (bp.quantity || 1);
+          }
+        }
+        fallbackCostMap.set(String(bundle._id), bundleCost);
+      }
+    }
   }
   
   // Aggregate transaction data with real cost calculations

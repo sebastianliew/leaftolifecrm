@@ -1,0 +1,271 @@
+{
+  "timestamp": "2026-02-05T03:02:07.416Z",
+  "mode": "applied",
+  "txnsModified": 4265,
+  "itemsMatched": 6233,
+  "itemsCostStamped": 8848,
+  "itemsNonProduct": 4021,
+  "itemsUnmatched": 1063,
+  "matchMethods": {
+    "normalized": 1610,
+    "word_overlap(1.00)": 1964,
+    "prefix": 1284,
+    "clean": 935,
+    "word_overlap(0.75)": 184,
+    "stripped": 143,
+    "exact": 61,
+    "word_overlap(0.67)": 52
+  },
+  "unmatchedItems": [
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 5400
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 2700
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 2700
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 2700
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 2700
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Retreat2025earlybirdendmarch",
+      "name": "Retreat2025earlybirdendmarch",
+      "revenue": 1350
+    },
+    {
+      "pid": "Estrogen elite dried urine",
+      "name": "Estrogen elite dried urine",
+      "revenue": 441
+    },
+    {
+      "pid": "PhytoXin 100ml",
+      "name": "PhytoXin 100ml",
+      "revenue": 420
+    },
+    {
+      "pid": "Phytoxcel 200 (UOM Code)",
+      "name": "Phytoxcel 200 (UOM Code)",
+      "revenue": 351
+    },
+    {
+      "pid": "Mediherb Andrographis bottle",
+      "name": "Mediherb Andrographis bottle",
+      "revenue": 337.5
+    },
+    {
+      "pid": "Phytoxcel 200 (UOM Code)",
+      "name": "Phytoxcel 200 (UOM Code)",
+      "revenue": 331.5
+    },
+    {
+      "pid": "Mediherb Brocafet (BOTTLE)",
+      "name": "Mediherb Brocafet (BOTTLE)",
+      "revenue": 315
+    },
+    {
+      "pid": "Mediherb Andrographis bottle",
+      "name": "Mediherb Andrographis bottle",
+      "revenue": 300
+    },
+    {
+      "pid": "Phyto-Zest (BOTTLE)",
+      "name": "Phyto-Zest (BOTTLE)",
+      "revenue": 270
+    },
+    {
+      "pid": "Phytoxcel 200 (UOM Code)",
+      "name": "Phytoxcel 200 (UOM Code)",
+      "revenue": 260
+    },
+    {
+      "pid": "Phytoxcel 200 (UOM Code)",
+      "name": "Phytoxcel 200 (UOM Code)",
+      "revenue": 260
+    },
+    {
+      "pid": "Phytoxcel 200 (UOM Code)",
+      "name": "Phytoxcel 200 (UOM Code)",
+      "revenue": 260
+    },
+    {
+      "pid": "CONSULTATION 250",
+      "name": "CONSULTATION 250",
+      "revenue": 250
+    },
+    {
+      "pid": "Phytoxcel 200 (UOM Code)",
+      "name": "Phytoxcel 200 (UOM Code)",
+      "revenue": 234
+    },
+    {
+      "pid": "Phytoxcel 200 (UOM Code)",
+      "name": "Phytoxcel 200 (UOM Code)",
+      "revenue": 234
+    },
+    {
+      "pid": "Youth oil",
+      "name": "Youth oil",
+      "revenue": 216.75
+    },
+    {
+      "pid": "MH Tissue Rejenex (60 TABLETS) (BOTTLE)",
+      "name": "MH Tissue Rejenex (60 TABLETS) (BOTTLE)",
+      "revenue": 210
+    },
+    {
+      "pid": "PhytoXin 100ml",
+      "name": "PhytoXin 100ml",
+      "revenue": 210
+    },
+    {
+      "pid": "Mediherb Brocafet (BOTTLE)",
+      "name": "Mediherb Brocafet (BOTTLE)",
+      "revenue": 210
+    },
+    {
+      "pid": "Phyto-Xin  100ml(BOTTLE)",
+      "name": "Phyto-Xin  100ml(BOTTLE)",
+      "revenue": 210
+    },
+    {
+      "pid": "PHYTOSHEN 100",
+      "name": "PHYTOSHEN 100",
+      "revenue": 210
+    },
+    {
+      "pid": "PhytoXin 100ml",
+      "name": "PhytoXin 100ml",
+      "revenue": 210
+    },
+    {
+      "pid": "MH Rhodiola-Schz",
+      "name": "MH Rhodiola-Schz",
+      "revenue": 202.5
+    },
+    {
+      "pid": "Mediherb Andrographis bottle",
+      "name": "Mediherb Andrographis bottle",
+      "revenue": 202.5
+    },
+    {
+      "pid": "MH Tissue Rejenex (60 TABLETS) (BOTTLE)",
+      "name": "MH Tissue Rejenex (60 TABLETS) (BOTTLE)",
+      "revenue": 189
+    },
+    {
+      "pid": "Phyto-Xin 3 x 100ML",
+      "name": "Phyto-Xin 3 x 100ML",
+      "revenue": 184.8
+    },
+    {
+      "pid": "Phyto-Xin 3 x 100ML",
+      "name": "Phyto-Xin 3 x 100ML",
+      "revenue": 184.8
+    },
+    {
+      "pid": "Phyto-Xin 3 x 100ML",
+      "name": "Phyto-Xin 3 x 100ML",
+      "revenue": 184.8
+    },
+    {
+      "pid": "CONSULTATION 180",
+      "name": "CONSULTATION 180",
+      "revenue": 180
+    },
+    {
+      "pid": "CONSULTATION 180",
+      "name": "CONSULTATION 180",
+      "revenue": 180
+    },
+    {
+      "pid": "CONSULTATION 180",
+      "name": "CONSULTATION 180",
+      "revenue": 180
+    },
+    {
+      "pid": "CONSULTATION 180",
+      "name": "CONSULTATION 180",
+      "revenue": 180
+    }
+  ]
+}

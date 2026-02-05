@@ -3,6 +3,7 @@ import { PipelineStage } from 'mongoose';
 import { ItemSalesData, ItemSalesResponse, ItemSalesFilters } from '../../types/reports/item-sales.types.js';
 import { Transaction } from '../../models/Transaction.js';
 import { Product } from '../../models/Product.js';
+import { Bundle } from '../../models/Bundle.js';
 
 export class ItemSalesController {
   static async getItemSalesReport(
@@ -66,7 +67,8 @@ export class ItemSalesController {
         });
       }
 
-      // Group by product to calculate metrics (without cost for now)
+      // Group by product to calculate metrics
+      // Include costPrice from transaction items (stamped at point of sale)
       pipeline.push({
         $group: {
           _id: '$items.productId',
@@ -85,7 +87,24 @@ export class ItemSalesController {
           base_unit: { $first: { $ifNull: ['$items.baseUnit', 'unit'] } },
           average_list_price: { $avg: '$items.unitPrice' },
           last_sale_date: { $max: '$createdAt' },
-          item_type: { $first: { $ifNull: ['$items.itemType', 'product'] } }
+          item_type: { $first: { $ifNull: ['$items.itemType', 'product'] } },
+          // Sum cost directly from transaction items that have costPrice stamped
+          total_cost_from_items: {
+            $sum: {
+              $cond: [
+                { $gt: [{ $ifNull: ['$items.costPrice', 0] }, 0] },
+                { $multiply: [{ $ifNull: ['$items.costPrice', 0] }, '$items.quantity'] },
+                0
+              ]
+            }
+          },
+          // Count how many items in this group have costPrice stamped
+          items_with_cost: {
+            $sum: {
+              $cond: [{ $gt: [{ $ifNull: ['$items.costPrice', 0] }, 0] }, 1, 0]
+            }
+          },
+          total_items_count: { $sum: 1 }
         }
       });
 
@@ -132,9 +151,26 @@ export class ItemSalesController {
         'PHYTO': 'Phyto',
       };
 
+      // Generic/short names that should NOT be matched to products
+      const genericNames = new Set([
+        'herb', 'blend', 'oil', 'cream', 'spray', 'tincture', 'tinture',
+        'body oil', 'skin cream', 'skin oil', 'herb cream', 'herbal oil',
+        'herbal cream', 'herb oil', 'herb blend', 'herb spray', 'eye spray',
+        'rose oil', 'limb oil', 'nasal wash', 'oil pull', 'mouth pulling',
+        'lymph', 'cough', 'dry cough', 'dry throat', 'rhinitis', 'prostate',
+        'adrenal', 'hormonal', 'ecm', 'ptsd', 'violet', 'yarrow', 'peony',
+        'baptisa', 'sleep blend', 'mouth gargle',
+      ]);
+
       const namePatterns = productNames.map(name => {
         // Remove ALL parenthetical suffixes like (BOTTLE), (GRAM), (ML), (60 TABLETS), (1x unit), etc.
         let baseName = name.replace(/\s*\([^)]+\)/g, '').trim();
+
+        // Skip generic/short names that would false-match real products
+        const lowerBase = baseName.toLowerCase().trim();
+        if (genericNames.has(lowerBase) || baseName.length <= 4) {
+          return { original: name, pattern: null };
+        }
 
         // Apply brand prefix mappings
         for (const [from, to] of Object.entries(brandMappings)) {
@@ -145,13 +181,12 @@ export class ItemSalesController {
         }
 
         // Normalize apostrophes: "Johns" should match "John's"
-        // Create pattern that matches with or without apostrophe
         let escaped = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        // Make apostrophes optional and handle missing apostrophes
-        escaped = escaped.replace(/(\w)'(\w)/g, "$1'?$2"); // "John's" matches "Johns"
-        escaped = escaped.replace(/(\w)s\b/g, "$1'?s"); // "Johns" matches "John's"
+        escaped = escaped.replace(/(\w)'(\w)/g, "$1'?$2");
+        escaped = escaped.replace(/(\w)s\b/g, "$1'?s");
 
-        return { original: name, pattern: new RegExp(escaped, 'i') };
+        // Anchor to full string match (not substring) — prevents "Herb" matching "MH Herb Complex"
+        return { original: name, pattern: new RegExp(`^${escaped}$`, 'i') };
       });
 
       // Fetch all products once for name matching (more efficient than multiple queries)
@@ -164,6 +199,7 @@ export class ItemSalesController {
       // Match products by name using flexible matching
       const productsByName: Array<{ originalName: string; product: { _id: unknown; name: string; costPrice?: number } }> = [];
       for (const { original, pattern } of namePatterns) {
+        if (!pattern) continue; // Skip generic/short names
         const match = (allProducts as Array<{ _id: unknown; name: string; costPrice?: number }>).find(p => pattern.test(p.name));
         if (match) {
           productsByName.push({ originalName: original, product: match });
@@ -172,43 +208,102 @@ export class ItemSalesController {
 
       // Create a map of identifier -> costPrice
       // Keys will be either ObjectId strings or product names, matching what's in transactions
+      // ONLY store entries with costPrice > 0 — zero/undefined means "no cost data"
       const costPriceMap = new Map<string, number>();
 
-      // Add products found by ObjectId
+      // Add products found by ObjectId (only if they have a real cost)
       productsById.forEach(product => {
-        costPriceMap.set(String(product._id), product.costPrice || 0);
+        if (product.costPrice && product.costPrice > 0) {
+          costPriceMap.set(String(product._id), product.costPrice);
+        }
       });
 
-      // Add products found by name (use original transaction name as key)
+      // Add products found by name (only if they have a real cost)
       productsByName.forEach(({ originalName, product }) => {
-        costPriceMap.set(originalName, product.costPrice || 0);
+        if (product.costPrice && product.costPrice > 0) {
+          costPriceMap.set(originalName, product.costPrice);
+        }
       });
+
+      // ================================================================
+      // Bundle cost lookup: for IDs not found in Product collection,
+      // check Bundle collection and calculate cost from bundle products
+      // ================================================================
+      const unmatchedObjectIds = validObjectIds.filter(id => !costPriceMap.has(id));
+      if (unmatchedObjectIds.length > 0) {
+        const bundles = await Bundle.find(
+          { _id: { $in: unmatchedObjectIds } }
+        ).select('_id bundleProducts bundlePrice').lean();
+
+        for (const bundle of bundles) {
+          // Calculate bundle cost from its component products
+          let bundleCost = 0;
+          if (bundle.bundleProducts && Array.isArray(bundle.bundleProducts)) {
+            for (const bp of bundle.bundleProducts) {
+              const bpId = String(bp.productId || '');
+              // Try from existing cost map first, then from products fetched by ID
+              let componentCost = costPriceMap.get(bpId);
+              if (componentCost === undefined) {
+                const prod = await Product.findOne(
+                  { _id: bpId },
+                  { costPrice: 1 }
+                ).lean();
+                componentCost = (prod as { costPrice?: number } | null)?.costPrice || 0;
+              }
+              bundleCost += componentCost * (bp.quantity || 1);
+            }
+          }
+          // Store the per-unit cost (bundle is sold as 1 unit) — only if we got real costs
+          if (bundleCost > 0) {
+            costPriceMap.set(String(bundle._id), bundleCost);
+          }
+        }
+      }
 
       // Calculate final results with actual cost data
+      // Priority: (1) costPrice from transaction items, (2) Product/Bundle lookup
       const results: ItemSalesData[] = salesResults.map((item, index) => {
-        // Use the normalized ID we already computed
         const productId = normalizedIds[index];
-        const hasCostData = costPriceMap.has(productId);
-        const costPrice = costPriceMap.get(productId) || 0;
-        const total_cost = item.quantity_sold * costPrice;
-        
-        // Special handling for non-product items
         const itemType = item.item_type || 'product';
-        const isSpecialItem = ['consultation', 'service', 'custom_blend'].includes(itemType);
-        
-        // Calculate margin - set to null if cost data is missing for products
+
+        // Check if we have cost data from the transaction items themselves
+        const hasItemLevelCost = item.items_with_cost > 0 && item.total_cost_from_items > 0;
+        // Check if we have cost data from Product/Bundle lookup
+        const hasLookupCost = costPriceMap.has(productId);
+
+        let total_cost: number;
+        let costPerUnit: number;
+        let hasCostData: boolean;
+
+        if (hasItemLevelCost) {
+          // Best source: costPrice stamped on the transaction items at point of sale
+          total_cost = item.total_cost_from_items;
+          costPerUnit = item.quantity_sold > 0 ? total_cost / item.quantity_sold : 0;
+          hasCostData = true;
+        } else if (hasLookupCost) {
+          // Fallback: Product/Bundle lookup
+          costPerUnit = costPriceMap.get(productId) || 0;
+          total_cost = item.quantity_sold * costPerUnit;
+          hasCostData = costPerUnit > 0;
+        } else {
+          // No cost data available
+          total_cost = 0;
+          costPerUnit = 0;
+          hasCostData = false;
+        }
+
+        // Calculate margin
         let margin: number;
         if (item.total_sales > 0) {
-          if (hasCostData || isSpecialItem) {
+          if (hasCostData) {
             margin = (item.total_sales - total_cost) / item.total_sales;
           } else {
-            // For products without cost data, we'll indicate this in the UI
-            margin = -1; // Special value to indicate missing data
+            margin = -1; // N/A — no cost data
           }
         } else {
           margin = 0;
         }
-        
+
         return {
           item_name: item.item_name,
           total_sales: item.total_sales,
@@ -218,10 +313,10 @@ export class ItemSalesController {
           quantity_sold: item.quantity_sold,
           base_unit: item.base_unit,
           average_list_price: item.average_list_price,
-          average_cost_price: costPrice,
+          average_cost_price: costPerUnit,
           last_sale_date: item.last_sale_date,
           margin: margin,
-          has_cost_data: hasCostData || isSpecialItem,
+          has_cost_data: hasCostData,
           item_type: itemType
         };
       });
@@ -229,11 +324,31 @@ export class ItemSalesController {
       // Filter out non-product entries (invoices, misc items, shipping, credits, etc.)
       const excludePatterns = [
         /^Invoice\s+dated/i,           // "Invoice dated 29/08/2025, posted 05/10/2025"
-        /^Unknown\s+Item$/i,           // "Unknown Item"
-        /^Shipping\s+(Fees?|Cost)/i,   // "Shipping Fees", "Shipping Cost"
-        /^Credit[:]/i,                 // "Credit: test"
+        /^Unknown\s+(Item|Product)$/i, // "Unknown Item", "Unknown Product"
+        /^Shipping/i,                  // "Shipping", "Shipping Fees", "Shipping Cost", "Shipping Ninjavan"
+        /^Shipment$/i,                 // "Shipment"
+        /^Delivery$/i,                 // "Delivery"
+        /^Postage/i,                   // "Postage"
+        /^Credit/i,                    // "Credit: test", "Credit Card Fees"
         /^Pay\s*Now\s+fees?/i,         // "Pay Now fees"
         /^Misc(ellaneous)?[:]/i,       // "Misc:" entries
+        /^CONSULTATION/i,              // "CONSULTATION 80", "CONSULTATION 180", etc.
+        /^Consultation\s+Fee/i,        // "Consultation Fee"
+        /EPIMAPPING/i,                 // "EPIMAPPING", "EPIMAPPINGFeb28"
+        /^EPI-?MAP/i,                  // "EPI-MAP Mum day"
+        /^Complete\s+microbiome/i,     // "Complete microbiome map"
+        /^(Advanced|Essential)\s+(hormone|mineral)/i, // Lab tests
+        /^Estrogen\s+elite/i,          // "Estrogen elite dried urine"
+        /Retreat/i,                    // "Retreat2025earlybirdendmarch", "Retreat Nov 25 - 29"
+        /^No\s+show\s+charge/i,        // "No show charge"
+        /^Rental/i,                    // "rental dec 25", "Oct 25 Rental"
+        /^Offset/i,                    // "offset" entries
+        /^test\b/i,                    // "test", "test blend", "test bottle"
+        /^aaa\b/i,                     // "aaa product test miko...", "aaaa CSA test produt 1"
+        /^asd$/i,                      // "asd"
+        /^xxx/i,                       // test entries
+        /\btest\s+prod/i,             // "test product", "test produt"
+        /^CR\d+\s+test/i,             // "CR08 test"
       ];
 
       let filteredResults = results.filter(item => {
