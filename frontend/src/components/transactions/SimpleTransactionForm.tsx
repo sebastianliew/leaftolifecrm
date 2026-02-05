@@ -1367,8 +1367,9 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     if (!onSaveDraft) return
 
     // Prevent duplicate draft saves using the same ref lock
-    if (isSubmittingRef.current) {
-      console.log('[SimpleTransactionForm] Blocked duplicate draft save (ref lock)')
+    // Also check loading prop which now includes draft saving state
+    if (isSubmittingRef.current || loading) {
+      console.log('[SimpleTransactionForm] Blocked duplicate draft save (ref lock or loading)')
       return
     }
 
@@ -1386,15 +1387,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         status: 'draft' as const
       }
 
+      // Call parent handler - it will show toast
       await onSaveDraft(draftData)
-
-      // Show immediate feedback to the user
-      toast({
-        title: initialData ? "Draft Updated" : "Draft Saved",
-        description: initialData
-          ? "Your changes have been saved to the draft. Refresh the page to see latest updates."
-          : "Transaction saved as draft successfully. Refresh the page to see latest updates.",
-      })
     } finally {
       isSubmittingRef.current = false
     }

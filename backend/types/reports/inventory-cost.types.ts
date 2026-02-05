@@ -5,6 +5,8 @@ export interface InventoryCostData {
   total_cost: number
   category?: string
   unit?: string
+  supplier?: string
+  brand?: string
   last_updated?: string
   stock_status?: 'optimal' | 'low' | 'overstock' | 'out'
 }

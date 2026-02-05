@@ -35,6 +35,8 @@ interface InventoryCostData {
   total_cost: number
   category?: string
   unit?: string
+  supplier?: string
+  brand?: string
   last_updated?: string
   stock_status?: 'optimal' | 'low' | 'overstock' | 'out'
 }
@@ -156,9 +158,12 @@ export default function InventoryCostReport() {
     if (!searchTerm) {
       setFilteredData(data)
     } else {
+      const searchLower = searchTerm.toLowerCase()
       const filtered = data.filter(item =>
-        item.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.category && item.category.toLowerCase().includes(searchTerm.toLowerCase()))
+        item.product_name.toLowerCase().includes(searchLower) ||
+        (item.category && item.category.toLowerCase().includes(searchLower)) ||
+        (item.supplier && item.supplier.toLowerCase().includes(searchLower)) ||
+        (item.brand && item.brand.toLowerCase().includes(searchLower))
       )
       setFilteredData(filtered)
     }
@@ -207,8 +212,9 @@ export default function InventoryCostReport() {
     // Define CSV headers
     const headers = [
       'Product Name',
+      'Supplier/Brand',
       'Cost Price',
-      'Total Stock',
+      'Qty',
       'Total Cost', 
       'Category',
       'Status',
@@ -220,8 +226,9 @@ export default function InventoryCostReport() {
       headers.join(','),
       ...filteredData.map(item => [
         `"${item.product_name.replace(/"/g, '""')}"`, // Escape quotes in product name
+        `"${(item.supplier || item.brand || '-').replace(/"/g, '""')}"`, // Supplier/Brand
         item.cost_price.toFixed(2),
-        `${item.total_stock} ${item.unit || 'units'}`,
+        item.total_stock, // Numerical only
         item.total_cost.toFixed(2),
         `"${(item.category || 'Uncategorized').replace(/"/g, '""')}"`, // Escape quotes in category
         item.stock_status || 'Unknown',
@@ -230,6 +237,7 @@ export default function InventoryCostReport() {
       // Add grand totals row
       ...(filteredData.length > 0 ? [[
         '"GRAND TOTAL"',
+        '—',
         grandTotals.totalCostPrice.toFixed(2),
         '—',
         grandTotals.totalTotalCost.toFixed(2),
@@ -442,54 +450,58 @@ export default function InventoryCostReport() {
             </div>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            <div className="min-w-[800px] h-[600px] overflow-y-auto">
-              <Table className="w-full table-fixed">
+            <div className="min-w-[900px] h-[600px] overflow-y-auto">
+              <Table className="w-full">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="whitespace-nowrap w-1/7">Product Name</TableHead>
-                    <TableHead className="text-right whitespace-nowrap w-1/7">Cost Price</TableHead>
-                    <TableHead className="text-right whitespace-nowrap w-1/7">Total Stock</TableHead>
-                    <TableHead className="text-right whitespace-nowrap w-1/7">Total Cost</TableHead>
-                    <TableHead className="whitespace-nowrap w-1/7">Category</TableHead>
-                    <TableHead className="whitespace-nowrap w-1/7">Status</TableHead>
-                    <TableHead className="text-right whitespace-nowrap w-1/7">Last Updated</TableHead>
+                    <TableHead className="whitespace-nowrap">Product Name</TableHead>
+                    <TableHead className="whitespace-nowrap">Supplier/Brand</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Cost Price</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Qty</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Total Cost</TableHead>
+                    <TableHead className="whitespace-nowrap">Category</TableHead>
+                    <TableHead className="whitespace-nowrap">Status</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Last Updated</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-4">
+                      <TableCell colSpan={8} className="text-center py-4">
                         Loading...
                       </TableCell>
                     </TableRow>
                   ) : error ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-4 text-red-600">
+                      <TableCell colSpan={8} className="text-center py-4 text-red-600">
                         Error: {error}
                       </TableCell>
                     </TableRow>
                   ) : filteredData.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-4">
+                      <TableCell colSpan={8} className="text-center py-4">
                         No data available
                       </TableCell>
                     </TableRow>
                   ) : (
                     filteredData.map((item, index) => (
                       <TableRow key={index}>
-                        <TableCell className="font-medium w-1/7 truncate" title={item.product_name}>{item.product_name}</TableCell>
-                        <TableCell className="text-right w-1/7">{formatCurrency(item.cost_price)}</TableCell>
-                        <TableCell className="text-right w-1/7">
-                          {item.total_stock} {item.unit || 'units'}
+                        <TableCell className="font-medium truncate" title={item.product_name}>{item.product_name}</TableCell>
+                        <TableCell className="truncate" title={item.supplier || item.brand || '-'}>
+                          {item.supplier || item.brand || '-'}
                         </TableCell>
-                        <TableCell className="text-right w-1/7">{formatCurrency(item.total_cost)}</TableCell>
-                        <TableCell className="w-1/7 truncate" title={item.category || 'Uncategorized'}>{item.category || 'Uncategorized'}</TableCell>
-                        <TableCell className="w-1/7">
+                        <TableCell className="text-right">{formatCurrency(item.cost_price)}</TableCell>
+                        <TableCell className="text-right font-mono">
+                          {item.total_stock}
+                        </TableCell>
+                        <TableCell className="text-right">{formatCurrency(item.total_cost)}</TableCell>
+                        <TableCell className="truncate" title={item.category || 'Uncategorized'}>{item.category || 'Uncategorized'}</TableCell>
+                        <TableCell>
                           <Badge className={getStockStatusColor(item.stock_status)}>
                             {item.stock_status || 'Unknown'}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right w-1/7">{formatDate(item.last_updated)}</TableCell>
+                        <TableCell className="text-right">{formatDate(item.last_updated)}</TableCell>
                       </TableRow>
                     ))
                   )}
@@ -500,16 +512,17 @@ export default function InventoryCostReport() {
             {/* Grand Total Row - Fixed at bottom */}
             {!loading && !error && filteredData.length > 0 && (
               <div className="border-t-2 border-gray-300 bg-gray-50 p-0">
-                <Table className="w-full table-fixed">
+                <Table className="w-full">
                   <TableBody>
                     <TableRow className="bg-gray-50 font-bold">
-                      <TableCell className="font-bold w-1/7">GRAND TOTAL</TableCell>
-                      <TableCell className="text-right w-1/7 font-bold">{formatCurrency(grandTotals.totalCostPrice)}</TableCell>
-                      <TableCell className="text-right w-1/7 text-gray-500">—</TableCell>
-                      <TableCell className="text-right w-1/7 font-bold">{formatCurrency(grandTotals.totalTotalCost)}</TableCell>
-                      <TableCell className="w-1/7 text-gray-500">—</TableCell>
-                      <TableCell className="w-1/7 text-gray-500">—</TableCell>
-                      <TableCell className="text-right w-1/7 text-gray-500">—</TableCell>
+                      <TableCell className="font-bold">GRAND TOTAL</TableCell>
+                      <TableCell className="text-gray-500">—</TableCell>
+                      <TableCell className="text-right font-bold">{formatCurrency(grandTotals.totalCostPrice)}</TableCell>
+                      <TableCell className="text-right text-gray-500">—</TableCell>
+                      <TableCell className="text-right font-bold">{formatCurrency(grandTotals.totalTotalCost)}</TableCell>
+                      <TableCell className="text-gray-500">—</TableCell>
+                      <TableCell className="text-gray-500">—</TableCell>
+                      <TableCell className="text-right text-gray-500">—</TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>

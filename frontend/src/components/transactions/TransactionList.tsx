@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTransactions, useDeleteTransaction, useUpdateTransaction, useDuplicateTransaction } from '@/hooks/queries/use-transaction-queries'
 import { TransactionTable } from './TransactionTable'
@@ -47,6 +47,8 @@ export function TransactionList() {
   const { products, getProducts } = useInventory()
   const { generateInvoice } = useTransactionsHook()
   const { hasPermission } = usePermissions()
+  // Ref-based lock to prevent duplicate submissions
+  const isSubmittingRef = useRef(false)
 
   // Get transaction permissions
   const canEditTransactions = hasPermission('transactions', 'canEditTransactions')
@@ -333,6 +335,14 @@ export function TransactionList() {
   const handleUpdateTransaction = async (data: TransactionFormData) => {
     if (!editingTransaction?._id) return
 
+    // Prevent duplicate submissions
+    if (isSubmittingRef.current || updateTransactionMutation.isPending) {
+      console.log('[TransactionList] Blocked duplicate transaction update')
+      return
+    }
+
+    isSubmittingRef.current = true
+
     try {
       await updateTransactionMutation.mutateAsync({
         id: editingTransaction._id,
@@ -351,11 +361,21 @@ export function TransactionList() {
         description: error instanceof Error ? error.message : "Failed to update transaction",
         variant: "destructive",
       })
+    } finally {
+      isSubmittingRef.current = false
     }
   }
 
   const handleUpdateDraft = async (data: TransactionFormData) => {
     if (!editingTransaction?._id) return
+
+    // Prevent duplicate submissions
+    if (isSubmittingRef.current || updateTransactionMutation.isPending) {
+      console.log('[TransactionList] Blocked duplicate draft update')
+      return
+    }
+
+    isSubmittingRef.current = true
 
     try {
       const updatedData = {
@@ -370,13 +390,10 @@ export function TransactionList() {
         data: updatedData
       })
       
-      // Show toast after a small delay to avoid interference with React Query's automatic refetch
-      setTimeout(() => {
-        toast({
-          title: "Draft Updated",
-          description: "Draft has been updated successfully",
-        })
-      }, 100)
+      toast({
+        title: "Draft Updated",
+        description: "Draft has been updated successfully",
+      })
       
       // Keep the dialog open so user can see the toast
       // The user can close it manually or continue editing
@@ -389,6 +406,8 @@ export function TransactionList() {
         description: error instanceof Error ? error.message : "Failed to update draft",
         variant: "destructive",
       })
+    } finally {
+      isSubmittingRef.current = false
     }
   }
 

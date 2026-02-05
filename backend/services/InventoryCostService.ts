@@ -55,6 +55,8 @@ export class InventoryCostService {
           },
           category: { $ifNull: ['$categoryName', 'Uncategorized'] },
           unit: { $ifNull: ['$unitName', 'units'] },
+          supplier: { $ifNull: ['$supplierName', ''] },
+          brand: { $ifNull: ['$brandName', ''] },
           last_updated: { 
             $ifNull: [
               '$updatedAt',
@@ -103,6 +105,8 @@ export class InventoryCostService {
           total_cost: 1,
           category: 1,
           unit: 1,
+          supplier: 1,
+          brand: 1,
           last_updated: 1,
           stock_status: 1
         }
@@ -137,6 +141,8 @@ export class InventoryCostService {
       total_cost: item.total_cost,
       category: item.category,
       unit: item.unit,
+      supplier: item.supplier,
+      brand: item.brand,
       last_updated: item.last_updated?.toISOString(),
       stock_status: item.stock_status as InventoryCostData['stock_status']
     }))

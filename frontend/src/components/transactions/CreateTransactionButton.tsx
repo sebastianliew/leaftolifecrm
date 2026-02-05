@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { SimpleTransactionForm } from './SimpleTransactionForm'
@@ -13,6 +13,9 @@ import type { TransactionFormData } from '@/types/transaction'
 
 export function CreateTransactionButton() {
   const [isOpen, setIsOpen] = useState(false)
+  const [isDraftSaving, setIsDraftSaving] = useState(false)
+  // Persist draftId across saves to prevent duplicate drafts
+  const [currentDraftId, setCurrentDraftId] = useState<string | null>(null)
   const { products, getProducts } = useInventory()
   const createTransactionMutation = useCreateTransaction()
   const { toast } = useToast()
@@ -23,6 +26,11 @@ export function CreateTransactionButton() {
   useEffect(() => {
     if (isOpen) {
       getProducts().catch(console.error)
+    } else {
+      // Reset draft state when dialog closes
+      setCurrentDraftId(null)
+      setIsDraftSaving(false)
+      isSubmittingRef.current = false
     }
   }, [isOpen, getProducts])
 
@@ -55,18 +63,26 @@ export function CreateTransactionButton() {
     }
   }
 
-  const handleSaveDraft = async (data: TransactionFormData) => {
-    // Prevent duplicate draft saves
-    if (isSubmittingRef.current) {
+  const handleSaveDraft = useCallback(async (data: TransactionFormData) => {
+    // Prevent duplicate draft saves - check both ref and state
+    if (isSubmittingRef.current || isDraftSaving) {
       console.log('[CreateTransactionButton] Blocked duplicate draft save')
       return
     }
 
+    // Set both ref (immediate) and state (for UI) to block duplicates
     isSubmittingRef.current = true
+    setIsDraftSaving(true)
 
     try {
-      const draftId = `draft_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
+      // Reuse existing draftId or create new one - prevents duplicate drafts!
+      const draftId = currentDraftId || `draft_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
       const draftName = `Draft ${new Date().toLocaleString()}`
+
+      // Store draftId for future saves (only on first save)
+      if (!currentDraftId) {
+        setCurrentDraftId(draftId)
+      }
 
       // Save to database via API using fetchAPI (handles auth automatically)
       await fetchAPI('/transactions/drafts/autosave', {
@@ -82,8 +98,10 @@ export function CreateTransactionButton() {
       queryClient.invalidateQueries({ queryKey: queryKeys.transactions })
 
       toast({
-        title: "Draft Saved",
-        description: "Transaction saved as draft successfully.",
+        title: currentDraftId ? "Draft Updated" : "Draft Saved",
+        description: currentDraftId 
+          ? "Draft updated successfully." 
+          : "Transaction saved as draft successfully.",
       })
     } catch (error) {
       console.error('Failed to save draft:', error)
@@ -94,8 +112,9 @@ export function CreateTransactionButton() {
       })
     } finally {
       isSubmittingRef.current = false
+      setIsDraftSaving(false)
     }
-  }
+  }, [currentDraftId, isDraftSaving, queryClient, toast])
 
   return (
     <>
@@ -117,7 +136,7 @@ export function CreateTransactionButton() {
             onSubmit={handleSubmit}
             onSaveDraft={handleSaveDraft}
             onCancel={() => setIsOpen(false)}
-            loading={createTransactionMutation.isPending}
+            loading={createTransactionMutation.isPending || isDraftSaving}
           />
         </DialogContent>
       </Dialog>
