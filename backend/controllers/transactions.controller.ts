@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import path from 'path';
 import fs from 'fs';
 import { Transaction } from '../models/Transaction.js';
+import { Product } from '../models/Product.js';
 import { getNextSequence } from '../models/Counter.js';
 import { InvoiceGenerator } from '../services/invoiceGenerator.js';
 import { emailService } from '../services/EmailService.js';
@@ -384,10 +385,48 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
       // Set initial type to COMPLETED for non-draft transactions, otherwise DRAFT
       const transactionType = transactionData.status !== 'draft' ? 'COMPLETED' : 'DRAFT';
 
+      // ================================================================
+      // Capture cost prices at point of sale for accurate margin tracking
+      // This ensures historical margin calculations remain correct even
+      // if product cost prices change later.
+      // ================================================================
+      const productIds = transactionData.items
+        .map((item: { productId?: string }) => item.productId)
+        .filter((id: string | undefined): id is string => !!id && /^[a-fA-F0-9]{24}$/.test(id));
+
+      const costPriceMap = new Map<string, number>();
+      if (productIds.length > 0) {
+        const products = await Product.find(
+          { _id: { $in: productIds } },
+          { _id: 1, costPrice: 1 }
+        ).lean().session(session);
+        products.forEach((p: { _id: unknown; costPrice?: number }) => {
+          costPriceMap.set(String(p._id), p.costPrice || 0);
+        });
+      }
+
+      // Enrich items with costPrice from Product collection
+      const enrichedItems = transactionData.items.map((item: { productId?: string; costPrice?: number; itemType?: string; customBlendData?: { totalIngredientCost?: number } }) => {
+        // If costPrice already provided by frontend (e.g. custom blends), keep it
+        if (item.costPrice !== undefined && item.costPrice !== null) {
+          return item;
+        }
+        // For custom blends, use totalIngredientCost as cost
+        if (item.itemType === 'custom_blend' && item.customBlendData?.totalIngredientCost) {
+          const qty = (item as { quantity?: number }).quantity || 1;
+          return { ...item, costPrice: item.customBlendData.totalIngredientCost / qty };
+        }
+        // Look up from Product collection
+        const productId = item.productId ? String(item.productId) : '';
+        const costPrice = costPriceMap.get(productId) ?? 0;
+        return { ...item, costPrice };
+      });
+
       // Prepare transaction data
       // Note: normalization for paid transactions is handled by pre-save middleware
       const transactionFields = {
         ...transactionData,
+        items: enrichedItems,
         type: transactionType,
         status: transactionData.status,
         createdBy: req.user?.id || 'system',

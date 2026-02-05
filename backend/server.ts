@@ -1,3 +1,7 @@
+// Fix Globe Broadband DNS — can't resolve MongoDB SRV records
+import dns from 'node:dns';
+dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+
 // Load environment variables BEFORE any other imports
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';

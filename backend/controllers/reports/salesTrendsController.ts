@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Transaction } from '../../models/Transaction.js';
+import { Product } from '../../models/Product.js';
 
 interface SalesTrendData {
   date: string;
@@ -26,10 +27,16 @@ interface LeanTransaction {
   createdAt: Date;
   totalAmount?: number;
   items?: Array<{
+    productId?: string;
     name?: string;
     itemType?: string;
     totalPrice?: number;
+    unitPrice?: number;
+    costPrice?: number; // Captured at point of sale (new transactions)
     quantity?: number;
+    customBlendData?: {
+      totalIngredientCost?: number;
+    };
   }>;
 }
 
@@ -113,8 +120,37 @@ async function generateDailyData(transactions: LeanTransaction[], startDate: Dat
       transactions: 0
     });
   }
+
+  // ========================================================================
+  // Build a cost price lookup for historical transactions that don't have
+  // costPrice embedded. New transactions capture costPrice at point of sale.
+  // ========================================================================
+  const productIdsNeedingLookup = new Set<string>();
+  transactions.forEach(transaction => {
+    transaction.items?.forEach(item => {
+      // Only need lookup if item doesn't have costPrice stored
+      if (item.costPrice === undefined || item.costPrice === null) {
+        const pid = item.productId ? String(item.productId) : '';
+        if (pid && /^[a-fA-F0-9]{24}$/.test(pid)) {
+          productIdsNeedingLookup.add(pid);
+        }
+      }
+    });
+  });
+
+  // Fetch cost prices for products that need it (historical data fallback)
+  const fallbackCostMap = new Map<string, number>();
+  if (productIdsNeedingLookup.size > 0) {
+    const products = await Product.find(
+      { _id: { $in: Array.from(productIdsNeedingLookup) } },
+      { _id: 1, costPrice: 1 }
+    ).lean();
+    products.forEach((p: { _id: unknown; costPrice?: number }) => {
+      fallbackCostMap.set(String(p._id), p.costPrice || 0);
+    });
+  }
   
-  // Aggregate transaction data
+  // Aggregate transaction data with real cost calculations
   transactions.forEach(transaction => {
     const dateKey = transaction.createdAt.toISOString().split('T')[0];
     const existing = dailyMap.get(dateKey);
@@ -123,11 +159,29 @@ async function generateDailyData(transactions: LeanTransaction[], startDate: Dat
       existing.revenue += transaction.totalAmount || 0;
       existing.transactions += 1;
 
-      // Note: Cost data not available in transaction items
-      // Transaction items store name, unitPrice, quantity but not costPrice
-      // Cost and profit calculations would require product lookup if needed
-      existing.cost += 0;
-      existing.profit += transaction.totalAmount || 0;
+      // Calculate cost from item-level data
+      let transactionCost = 0;
+      if (transaction.items && Array.isArray(transaction.items)) {
+        transaction.items.forEach(item => {
+          const qty = item.quantity || 0;
+
+          if (item.costPrice !== undefined && item.costPrice !== null) {
+            // New transactions: costPrice captured at point of sale
+            transactionCost += qty * item.costPrice;
+          } else if (item.itemType === 'custom_blend' && item.customBlendData?.totalIngredientCost) {
+            // Custom blends: use totalIngredientCost
+            transactionCost += item.customBlendData.totalIngredientCost;
+          } else {
+            // Historical fallback: look up current Product costPrice
+            const pid = item.productId ? String(item.productId) : '';
+            const fallbackCost = fallbackCostMap.get(pid) || 0;
+            transactionCost += qty * fallbackCost;
+          }
+        });
+      }
+
+      existing.cost += transactionCost;
+      existing.profit += (transaction.totalAmount || 0) - transactionCost;
     }
   });
   

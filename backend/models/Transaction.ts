@@ -32,6 +32,7 @@ export interface ITransaction extends Document {
     brand?: string;
     quantity: number;
     unitPrice: number;
+    costPrice?: number; // Cost price captured at point of sale for accurate margin calculations
     totalPrice: number;
     discountAmount?: number;
     isService?: boolean;
@@ -140,6 +141,7 @@ const TransactionItemSchema = new Schema({
   brand: { type: String },
   quantity: { type: Number, required: true },
   unitPrice: { type: Number, required: true },
+  costPrice: { type: Number }, // Cost price captured at point of sale
   totalPrice: { type: Number, required: true },
   discountAmount: { type: Number, default: 0 },
   isService: { type: Boolean, default: false },
