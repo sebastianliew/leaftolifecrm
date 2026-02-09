@@ -156,10 +156,10 @@ class EmailService {
           <tr>
             <td style="padding: 40px 30px 24px 30px; border-bottom: 1px solid #e5e7eb;">
               <h1 style="margin: 0; color: #333333; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">
-                Leaf to Life
+                Leaf to Life &reg;
               </h1>
               <p style="margin: 4px 0 0 0; color: #6b7280; font-size: 13px;">
-                Sebastian Liew Centre Pte Ltd.
+                by Sebastian Liew Centre Pte Ltd
               </p>
             </td>
           </tr>
@@ -280,7 +280,7 @@ class EmailService {
           <tr>
             <td style="padding: 24px 30px; border-top: 1px solid #e5e7eb;">
               <p style="margin: 0 0 4px 0; color: #6b7280; font-size: 12px; line-height: 1.5;">
-                <strong>Sebastian Liew Centre Pte Ltd.</strong> (Leaf to Life)
+                <strong>Leaf to Life &reg;</strong> by Sebastian Liew Centre Pte Ltd
               </p>
               <p style="margin: 0 0 4px 0; color: #9ca3af; font-size: 11px; line-height: 1.5;">
                 320 Serangoon Road, Centrium square, #11-10, Singapore 218108

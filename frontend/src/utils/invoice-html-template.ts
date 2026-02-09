@@ -453,7 +453,8 @@ export function generateInvoiceHTML(transaction: Transaction): string {
         <!-- Header -->
         <div class="header">
             <div class="company-info">
-                <h1>${companyInfo.name}</h1>
+                <h1>Leaf to Life &reg;</h1>
+                <p style="font-size: 12px; color: #374151; margin-top: 2px; margin-bottom: 8px;">by Sebastian Liew Centre Pte Ltd</p>
                 <p>${companyInfo.address.street}</p>
                 <p>${companyInfo.address.city}, ${companyInfo.address.state} ${companyInfo.address.postalCode}</p>
                 <p>Phone: ${companyInfo.phone}</p>

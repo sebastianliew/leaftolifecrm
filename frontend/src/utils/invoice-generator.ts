@@ -39,9 +39,15 @@ export function generateInvoicePDF(transaction: Transaction): void {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
     doc.setTextColor(...black);
-    doc.text(defaultCompanyInfo.name, margin, yPos);
+    doc.text("Leaf to Life \u00AE", margin, yPos);
 
-    yPos += 8;
+    yPos += 6;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...darkGray);
+    doc.text("by Sebastian Liew Centre Pte Ltd", margin, yPos);
+
+    yPos += 6;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(...gray);

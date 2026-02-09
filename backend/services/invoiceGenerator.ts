@@ -93,9 +93,16 @@ export class InvoiceGenerator {
       .fontSize(18)
       .font('Helvetica-Bold')
       .fillColor('#000000')
-      .text('Sebastian Liew Centre Pte Ltd.', this.margin, this.yPosition);
+      .text('Leaf to Life \u00AE', this.margin, this.yPosition);
 
-    this.yPosition += 25;
+    this.yPosition += 20;
+
+    this.doc
+      .fontSize(10)
+      .font('Helvetica')
+      .text('by Sebastian Liew Centre Pte Ltd', this.margin, this.yPosition);
+
+    this.yPosition += 18;
 
     this.doc
       .fontSize(9)
