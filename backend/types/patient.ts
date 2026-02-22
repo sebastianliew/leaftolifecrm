@@ -31,7 +31,7 @@ export interface Patient {
   memberBenefits?: {
     discountPercentage: number
     discountReason?: string
-    membershipTier: 'standard' | 'silver' | 'vip' | 'platinum'
+    membershipTier: 'standard' | 'silver' | 'gold' | 'vip' | 'platinum'
     discountStartDate?: Date
     discountEndDate?: Date | null
   }

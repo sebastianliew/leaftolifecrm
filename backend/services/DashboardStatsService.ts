@@ -10,8 +10,8 @@ export class DashboardStatsService {
     // Get total products count
     const totalProducts = await Product.countDocuments();
 
-    // Get active patients count
-    const activePatients = await Patient.countDocuments();
+    // Get active patients count (exclude deactivated)
+    const activePatients = await Patient.countDocuments({ status: 'active' });
 
     // Get low stock alerts (products with currentStock <= reorderPoint or negative)
     const lowStockCount = await Product.countDocuments({
@@ -68,11 +68,11 @@ export class DashboardStatsService {
       : 0;
 
     // For patient growth, we'll calculate based on creation date if available
-    const currentMonthPatients = await Patient.countDocuments({
+    const currentMonthPatients = await Patient.countDocuments({ status: 'active',
       createdAt: { $gte: thirtyDaysAgo }
     });
     
-    const previousMonthPatients = await Patient.countDocuments({
+    const previousMonthPatients = await Patient.countDocuments({ status: 'active',
       createdAt: { 
         $gte: sixtyDaysAgo,
         $lt: thirtyDaysAgo

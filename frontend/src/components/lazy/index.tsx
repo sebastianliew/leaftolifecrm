@@ -3,15 +3,6 @@
 import dynamic from 'next/dynamic'
 import { Skeleton } from '@/components/ui/skeleton'
 
-// Transaction Form
-export const TransactionForm = dynamic(
-  () => import('@/components/transactions/transaction-form').then(mod => ({ default: mod.TransactionForm })),
-  {
-    loading: () => <FormSkeleton />,
-    ssr: false
-  }
-)
-
 // Patient Form
 export const PatientForm = dynamic(
   () => import('@/components/patients/patient-form').then(mod => ({ default: mod.PatientForm })),

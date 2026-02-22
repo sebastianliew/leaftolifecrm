@@ -157,12 +157,4 @@ patientSchema.index({ nric: 1 }, { unique: true, sparse: true });
 patientSchema.index({ legacyCustomerNo: 1 }, { unique: true, sparse: true });
 patientSchema.index({ 'migrationInfo.sourceSystem': 1 });
 
-// Pre-save middleware to remove unwanted fields
-patientSchema.pre('save', function(next) {
-  // Remove medicalInfo and emergencyContacts if they exist
-  this.set('medicalInfo', undefined);
-  this.set('emergencyContacts', undefined);
-  next();
-});
-
 export const Patient = mongoose.models.Patient || mongoose.model('Patient', patientSchema);

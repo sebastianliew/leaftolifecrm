@@ -11,7 +11,8 @@ import { usePatients } from "@/hooks/usePatients"
 import { PatientList } from "@/components/patients/PatientList"
 import { PatientForm } from "@/components/patients/patient-form"
 import type { Patient, PatientFormData } from "@/types/patient"
-import { HiPlus, HiSearch, HiFilter } from "react-icons/hi"
+import { HiPlus, HiSearch } from "react-icons/hi"
+import { TIER_CONFIG, type MembershipTier } from "@/config/membership-tiers"
 import { useToast } from "@/components/ui/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 
@@ -38,7 +39,7 @@ export default function PatientsPage() {
 
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
-  const [tierFilter, setTierFilter] = useState<'all' | 'standard' | 'silver' | 'vip' | 'platinum'>('all')
+  const [tierFilter, setTierFilter] = useState<'all' | MembershipTier>('all')
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -60,7 +61,7 @@ export default function PatientsPage() {
   const loadAllPatients = useCallback(async (page: number = 1) => {
     try {
       setCurrentPage(page)
-      await getPatients(undefined, page, itemsPerPage)
+      await getPatients(undefined, page, itemsPerPage, statusFilter, tierFilter)
     } catch (error) {
       console.error('Failed to load patients:', error)
       toast({
@@ -69,26 +70,26 @@ export default function PatientsPage() {
         variant: "destructive"
       })
     }
-  }, [getPatients, itemsPerPage, toast])
+  }, [getPatients, itemsPerPage, statusFilter, tierFilter, toast])
 
   useEffect(() => {
     // Load all patients on initial mount with pagination
     loadAllPatients(1)
   }, [loadAllPatients])
 
-  // Reload when items per page changes
+  // Reload when items per page or filters change
   useEffect(() => {
     if (searchTerm.trim().length >= 2) {
-      getPatients(searchTerm.trim(), 1, itemsPerPage)
+      getPatients(searchTerm.trim(), 1, itemsPerPage, statusFilter, tierFilter)
     } else {
       loadAllPatients(1)
     }
     setCurrentPage(1)
-  }, [itemsPerPage, getPatients, loadAllPatients, searchTerm])
+  }, [itemsPerPage, statusFilter, tierFilter, getPatients, loadAllPatients, searchTerm])
 
   const handlePageChange = async (page: number) => {
     if (searchTerm.trim().length >= 2) {
-      await getPatients(searchTerm.trim(), page, itemsPerPage)
+      await getPatients(searchTerm.trim(), page, itemsPerPage, statusFilter, tierFilter)
     } else {
       await loadAllPatients(page)
     }
@@ -99,7 +100,7 @@ export default function PatientsPage() {
     if (searchTerm.trim().length >= 2) {
       try {
         setCurrentPage(1)
-        await getPatients(searchTerm.trim(), 1, itemsPerPage)
+        await getPatients(searchTerm.trim(), 1, itemsPerPage, statusFilter, tierFilter)
       } catch (error) {
         console.error('Failed to search patients:', error)
         toast({
@@ -137,9 +138,9 @@ export default function PatientsPage() {
       setIsCreateDialogOpen(false)
       // Refresh the current view
       if (searchTerm.trim().length >= 2) {
-        await getPatients(searchTerm.trim())
+        await getPatients(searchTerm.trim(), 1, itemsPerPage, statusFilter, tierFilter)
       } else {
-        await loadRecentPatients()
+        await loadAllPatients(1)
       }
     } catch (error) {
       console.error('Failed to create patient:', error)
@@ -163,9 +164,9 @@ export default function PatientsPage() {
       })
       // Refresh the current view
       if (searchTerm.trim().length >= 2) {
-        await getPatients(searchTerm.trim())
+        await getPatients(searchTerm.trim(), 1, itemsPerPage, statusFilter, tierFilter)
       } else {
-        await loadRecentPatients()
+        await loadAllPatients(1)
       }
     } catch (error) {
       console.error('Failed to delete patient:', error)
@@ -177,25 +178,8 @@ export default function PatientsPage() {
     }
   }
 
-  // Always show patients from the main list (with pagination)
-  const displayPatients = patients
-
-  // Apply status and tier filters
-  const filteredPatients = displayPatients.filter(patient => {
-    // Status filter
-    if (statusFilter !== 'all' && patient.status !== statusFilter) {
-      return false
-    }
-    
-    // Tier filter
-    if (tierFilter !== 'all') {
-      if (tierFilter === 'standard') {
-        return !patient.memberBenefits
-      } else {
-        return patient.memberBenefits?.membershipTier === tierFilter
-      }
-    }
-    
+  // Filters are server-side now — no client-side filtering needed
+  const filteredPatients = patients.filter(() => {
     return true
   })
 
@@ -218,107 +202,76 @@ export default function PatientsPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Patient Management</h1>
-          <p className="text-gray-600">Manage patient records and information</p>
+      {/* Header row: search + filters + create button */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
+          <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Input
+            placeholder="Search patients... (min 2 chars)"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 h-9"
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          />
         </div>
-        
-        {canCreatePatients && (
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <HiPlus className="w-4 h-4 mr-2" />
-                Add Patient
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Create New Patient</DialogTitle>
-              </DialogHeader>
-              <PatientForm
-                onSubmit={handleCreatePatient}
-                onCancel={() => setIsCreateDialogOpen(false)}
-                loading={isSubmitting}
-              />
-            </DialogContent>
-          </Dialog>
-        )}
-      </div>
 
-      {/* Search and Filters */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <HiFilter className="w-5 h-5" />
-            Search & Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Search Patients</label>
-              <div className="relative">
-                <HiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Search by name, email, phone... (min 2 chars)"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+        <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'all' | 'active' | 'inactive')}>
+          <SelectTrigger className="w-[130px] h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={tierFilter} onValueChange={(value) => setTierFilter(value as 'all' | MembershipTier)}>
+          <SelectTrigger className="w-[140px] h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Tiers</SelectItem>
+            {Object.entries(TIER_CONFIG).map(([tier, { label }]) => (
+              <SelectItem key={tier} value={tier}>{label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={itemsPerPage.toString()} onValueChange={(value) => setItemsPerPage(parseInt(value))}>
+          <SelectTrigger className="w-[80px] h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="25">25</SelectItem>
+            <SelectItem value="50">50</SelectItem>
+            <SelectItem value="100">100</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <div className="ml-auto">
+          {canCreatePatients && (
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" className="h-9">
+                  <HiPlus className="w-4 h-4 mr-1" />
+                  Add Patient
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Create New Patient</DialogTitle>
+                </DialogHeader>
+                <PatientForm
+                  onSubmit={handleCreatePatient}
+                  onCancel={() => setIsCreateDialogOpen(false)}
+                  loading={isSubmitting}
                 />
-              </div>
-              <p className="text-xs text-gray-500">
-                Enter at least 2 characters to search. Leave empty to show all patients.
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Status</label>
-              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'all' | 'active' | 'inactive')}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Membership Tier</label>
-              <Select value={tierFilter} onValueChange={(value) => setTierFilter(value as 'all' | 'standard' | 'silver' | 'vip' | 'platinum')}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Tiers</SelectItem>
-                  <SelectItem value="standard">Standard</SelectItem>
-                  <SelectItem value="silver">Silver</SelectItem>
-                  <SelectItem value="vip">VIP</SelectItem>
-                  <SelectItem value="platinum">Platinum</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Items per page</label>
-              <Select value={itemsPerPage.toString()} onValueChange={(value) => setItemsPerPage(parseInt(value))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="25">25</SelectItem>
-                  <SelectItem value="50">50</SelectItem>
-                  <SelectItem value="100">100</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
+      </div>
 
       {/* Patients Table */}
       <Card>
@@ -344,7 +297,7 @@ export default function PatientsPage() {
               await updatePatient(id, data)
               // Refresh the current view
               if (searchTerm.trim().length >= 2) {
-                await getPatients(searchTerm.trim(), currentPage, itemsPerPage)
+                await getPatients(searchTerm.trim(), currentPage, itemsPerPage, statusFilter, tierFilter)
               } else {
                 await loadAllPatients(currentPage)
               }

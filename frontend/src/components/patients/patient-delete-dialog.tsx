@@ -27,23 +27,22 @@ export function PatientDeleteDialog({ patient, open, onOpenChange, onConfirm, lo
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Patient</AlertDialogTitle>
+          <AlertDialogTitle>Deactivate Patient</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete patient{" "}
+            Are you sure you want to deactivate patient{" "}
             <strong>
               {patient.firstName} {patient.lastName}
-            </strong>{" "}
-            (ID: {patient.id})?
+            </strong>
+            ?
             <br />
             <br />
-            This action cannot be undone. All patient data, including medical records, allergies, and preferences will
-            be permanently removed.
+            The patient will be set to inactive and hidden from default views. Their data and transaction history will be preserved.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
           <AlertDialogAction onClick={onConfirm} disabled={loading} className="bg-red-600 hover:bg-red-700">
-            {loading ? "Deleting..." : "Delete Patient"}
+            {loading ? "Deactivating..." : "Deactivate Patient"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

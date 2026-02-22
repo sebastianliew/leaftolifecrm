@@ -153,7 +153,7 @@ export function PatientList({
                           <AlertDialogHeader>
                             <AlertDialogTitle>Delete Patient</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to delete {patientName}? This action cannot be undone.
+                              Are you sure you want to deactivate {patientName}? The patient will be set to inactive.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>

@@ -477,7 +477,7 @@ export default function TransactionDetailPage() {
             </div>
 
             <p className="text-gray-700 mb-4">
-              Please complete your payment using one of the following methods. EXCEPT orders completed at the CLINIC COUNTER:
+              Please complete your payment:
             </p>
 
             {/* PayNow Option */}

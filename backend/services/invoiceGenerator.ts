@@ -513,7 +513,7 @@ export class InvoiceGenerator {
       .font('Helvetica')
       .fillColor('#000000')
       .text(
-        'Please complete your payment using one of the following methods. EXCEPT orders completed at the CLINIC COUNTER:',
+        'Please complete your payment:',
         boxX + 15,
         contentY,
         { width: boxWidth - 30, lineGap: 2 }

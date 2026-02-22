@@ -15,6 +15,7 @@ import type { TransactionFormData, TransactionItem, PaymentMethod, PaymentStatus
 import type { Product } from "@/types/inventory"
 import type { Transaction } from "@/types/transaction"
 import type { Patient } from "@/types/patient"
+import { normalizePatient } from "@/types/patient"
 import { TransactionTypeSelector } from "./TransactionTypeSelector"
 import { SimpleProductSelector } from "./SimpleProductSelector"
 import { SimpleQuantityInput } from "./SimpleQuantityInput"
@@ -27,10 +28,20 @@ import { PatientSelector } from "./PatientSelector"
 import { ConsultationSelector } from "./ConsultationSelector"
 import { MiscellaneousSelector } from "./MiscellaneousSelector"
 import { useUnits } from "@/hooks/useUnits"
-import { ReorderSuggestions } from "./ReorderSuggestions"
+// TODO: Re-enable when /api/customers/:id/purchase-history is implemented
+// import { ReorderSuggestions } from "./ReorderSuggestions"
 import { DiscountService } from "@/services/DiscountService"
 import { formatCurrency } from "@/utils/currency"
 import { useToast } from "@/hooks/use-toast"
+import { api } from "@/lib/api-client"
+
+/** Fetch a patient by ID from the backend and normalize _id → id. */
+async function fetchPatient(patientId: string): Promise<Patient | null> {
+  // Use summary endpoint — only fetches fields needed for transactions (no medical data)
+  const response = await api.get<Patient & { _id?: string }>(`/patients/${patientId}/summary`)
+  if (!response.ok || !response.data) return null
+  return normalizePatient(response.data)
+}
 
 interface SimpleTransactionFormProps {
   products: Product[]
@@ -61,7 +72,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   const [editingCustomBlend, setEditingCustomBlend] = useState<TransactionItem | null>(null)
   const [editingFixedBlend, setEditingFixedBlend] = useState<TransactionItem | null>(null)
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
-  const [hasPurchaseHistory, setHasPurchaseHistory] = useState(false)
+  // TODO: Implement purchase history API endpoint to enable ReorderSuggestions
+  // const [hasPurchaseHistory, setHasPurchaseHistory] = useState(false)
   const [discountMode, setDiscountMode] = useState<'amount' | 'percentage'>('amount')
   const [discountValue, setDiscountValue] = useState<string>('')
   const [isTyping, setIsTyping] = useState(false)
@@ -156,9 +168,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     const restorePatientFromDraft = async () => {
       if (initialData?.customerId) {
         try {
-          const response = await fetch(`/api/patients/${initialData.customerId}`)
-          if (response.ok) {
-            const patient = await response.json()
+          const patient = await fetchPatient(initialData.customerId)
+          if (patient) {
             console.log('[Discount] Restoring patient in edit mode:', patient.firstName, patient.lastName, {
               membershipTier: patient.memberBenefits?.membershipTier,
               discountPercentage: patient.memberBenefits?.discountPercentage
@@ -180,7 +191,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                 return;
               }
 
-              console.log('[Discount] Recalculating discounts for edit mode with patient discount:', patient.memberBenefits.discountPercentage + '%');
+              console.log('[Discount] Recalculating discounts for edit mode with patient discount:', patient.memberBenefits!.discountPercentage + '%');
               setFormData(prev => {
                 const updatedItems = prev.items.map((item) => {
                   // Skip non-eligible items (services, custom blends, bundles, etc.)
@@ -216,7 +227,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                   if (product) {
                     const customerForDiscount = {
                       _id: patient.id,
-                      discountRate: patient.memberBenefits.discountPercentage
+                      discountRate: patient.memberBenefits!.discountPercentage
                     };
 
                     const discountResult = DiscountService.calculateItemDiscount(
@@ -246,7 +257,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                 if (discountedCount > 0) {
                   toast({
                     title: "Member Discount Restored",
-                    description: `${patient.memberBenefits.discountPercentage}% ${patient.memberBenefits.membershipTier?.toUpperCase()} discount applied to ${discountedCount} eligible item(s)`,
+                    description: `${patient.memberBenefits!.discountPercentage}% ${patient.memberBenefits!.membershipTier?.toUpperCase()} discount applied to ${discountedCount} eligible item(s)`,
                   });
                 }
 
@@ -254,16 +265,6 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               });
             }
 
-            // Check if customer has purchase history for reorder suggestions
-            try {
-              const historyResponse = await fetch(`/api/customers/${patient.id}/purchase-history?limit=1`)
-              if (historyResponse.ok) {
-                const historyData = await historyResponse.json()
-                setHasPurchaseHistory(historyData.transactions && historyData.transactions.length > 0)
-              }
-            } catch {
-              // Silently fail - purchase history is optional
-            }
           }
         } catch {
           // Silently fail - patient restoration is optional
@@ -283,9 +284,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     const handleFocus = async () => {
       if (selectedPatient?.id) {
         try {
-          const response = await fetch(`/api/patients/${selectedPatient.id}`)
-          if (response.ok) {
-            const updatedPatient = await response.json()
+          const updatedPatient = await fetchPatient(selectedPatient.id)
+          if (updatedPatient) {
 
             // Check if discount rate changed
             const oldDiscount = selectedPatient.memberBenefits?.discountPercentage || 0
@@ -797,7 +797,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         // Create customer object compatible with DiscountService
         const customerForDiscount = patient.memberBenefits?.discountPercentage ? {
           _id: patient.id,
-          discountRate: patient.memberBenefits.discountPercentage
+          discountRate: patient.memberBenefits!.discountPercentage
         } : null;
 
         if (customerForDiscount && product) {
@@ -856,25 +856,12 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       if (discountedCount > 0) {
         toast({
           title: "Member Discount Applied",
-          description: `${patient.memberBenefits.discountPercentage}% ${patient.memberBenefits.membershipTier?.toUpperCase()} discount applied to ${discountedCount} eligible item(s)`,
+          description: `${patient.memberBenefits!.discountPercentage}% ${patient.memberBenefits!.membershipTier?.toUpperCase()} discount applied to ${discountedCount} eligible item(s)`,
         });
       }
     }
 
     setSelectedPatient(patient)
-    
-    // Check if customer has purchase history
-    try {
-      const response = await fetch(`/api/customers/${patient.id}/purchase-history?limit=1`)
-      if (response.ok) {
-        const data = await response.json()
-        setHasPurchaseHistory(data.patterns && data.patterns.length > 0)
-      } else {
-        setHasPurchaseHistory(false)
-      }
-    } catch {
-      setHasPurchaseHistory(false)
-    }
   }
 
   // Helper to detect price mismatch between draft item and current inventory
@@ -1201,56 +1188,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     return item.isService && item.productId === "consultation-fee"
   }
 
-  const handleAddReorderItems = (items: Array<{
-    productId: string;
-    name: string;
-    quantity?: number;
-    itemType: string;
-  }>) => {
-    const newItems: TransactionItem[] = []
-
-    for (const item of items) {
-      // Try to find the product in the products array for full data
-      const product = products.find(p => p._id === item.productId)
-
-      // Validate and get the item name - never allow empty or "Unknown Item"
-      const itemName = product?.name || item.name
-      if (!itemName || itemName.trim() === '' || itemName === 'Unknown Item') {
-        console.warn(`⚠️ Skipping item with invalid name: productId=${item.productId}`)
-        continue
-      }
-
-      newItems.push({
-        id: `item_${Date.now()}_${Math.random()}`,
-        productId: item.productId,
-        name: itemName,
-        quantity: item.quantity || 1,
-        unitPrice: product?.sellingPrice || 0,
-        totalPrice: (product?.sellingPrice || 0) * (item.quantity || 1),
-        discountAmount: 0,
-        isService: false,
-        product: product,
-        itemType: (item.itemType || 'product') as 'product' | 'fixed_blend' | 'custom_blend' | 'bundle',
-        saleType: 'quantity' as const,
-        unitOfMeasurementId: product?.unitOfMeasurement?._id || '',
-        baseUnit: product?.unitOfMeasurement?.abbreviation || '',
-        convertedQuantity: item.quantity || 1
-      })
-    }
-
-    if (newItems.length === 0) {
-      alert('Could not add items - product information is missing')
-      return
-    }
-
-    // Apply member discounts to each item before adding
-    const itemsWithDiscounts = newItems.map(item => applyMemberDiscount(item))
-
-    setFormData(prev => ({
-      ...prev,
-      items: [...prev.items, ...itemsWithDiscounts]
-    }))
-  }
+  // TODO: Re-enable when /api/customers/:id/purchase-history is implemented
+  // const handleAddReorderItems = (items: Array<{ productId: string; name: string; quantity?: number; itemType: string }>) => { ... }
 
   // const handleQuickReorder = async (transactionId: string) => {
   //   try {
@@ -1465,12 +1404,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       </Card>
 
       {/* Reorder Suggestions */}
-      {selectedPatient && hasPurchaseHistory && (
-        <ReorderSuggestions
-          customerId={selectedPatient.id}
-          onAddItems={handleAddReorderItems}
-        />
-      )}
+      {/* TODO: ReorderSuggestions — needs /api/customers/:id/purchase-history endpoint */}
 
       {/* Cart Items */}
       <Card>

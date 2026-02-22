@@ -73,3 +73,8 @@ export interface PatientNotification {
   read: boolean
   createdAt: string
 }
+
+/** Normalize a raw MongoDB patient response (_id → id). */
+export function normalizePatient<T extends { _id?: string; id?: string }>(raw: T): T & { id: string } {
+  return { ...raw, id: raw._id || raw.id || '' }
+}

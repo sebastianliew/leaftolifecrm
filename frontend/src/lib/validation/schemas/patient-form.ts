@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ALL_TIERS } from '@/config/membership-tiers';
 
 // Patient form validation schema - matches the actual form structure
 export const patientFormSchema = z.object({
@@ -18,47 +19,23 @@ export const patientFormSchema = z.object({
     .max(50, 'Last name must be less than 50 characters')
     .trim(),
 
+  // NRIC: optional for legacy patients (many have invalid/masked data from Django migration)
+  // Valid SG format enforced only when provided and non-empty
   nric: z.string()
-    .min(1, 'NRIC is required')
-    .length(9, 'NRIC must be exactly 9 characters')
     .trim()
-    .regex(/^[STFG]\d{7}[A-Z]$/, 'NRIC must be in format: S/T/F/G followed by 7 digits and 1 letter')
-    .refine((nric) => {
-      // Singapore NRIC checksum validation
-      const prefix = nric.charAt(0);
-      const digits = nric.substring(1, 8);
-      const checkLetter = nric.charAt(8);
-      
-      // Weights for each digit position
-      const weights = [2, 7, 6, 5, 4, 3, 2];
-      
-      // Calculate weighted sum
-      let sum = 0;
-      for (let i = 0; i < 7; i++) {
-        sum += parseInt(digits.charAt(i)) * weights[i];
-      }
-      
-      // Different lookup tables for different prefix types
-      const checkLetters = {
-        'S': ['J', 'Z', 'I', 'H', 'G', 'F', 'E', 'D', 'C', 'B', 'A'],
-        'T': ['G', 'F', 'E', 'D', 'C', 'B', 'A', 'J', 'Z', 'I', 'H'],
-        'F': ['X', 'W', 'U', 'T', 'R', 'Q', 'P', 'N', 'M', 'L', 'K'],
-        'G': ['R', 'Q', 'P', 'N', 'M', 'L', 'K', 'X', 'W', 'U', 'T']
-      };
-      
-      const remainder = sum % 11;
-      const expectedLetter = checkLetters[prefix as keyof typeof checkLetters][remainder];
-      
-      return checkLetter === expectedLetter;
-    }, 'Invalid NRIC - checksum does not match'),
+    .optional()
+    .or(z.literal('')),
 
   dateOfBirth: z.string()
     .min(1, 'Date of birth is required')
     .refine((date) => {
       const birthDate = new Date(date);
-      const today = new Date();
-      const age = today.getFullYear() - birthDate.getFullYear();
-      return age >= 0 && age <= 150;
+      return !isNaN(birthDate.getTime()) && birthDate <= new Date();
+    }, 'Date of birth cannot be in the future')
+    .refine((date) => {
+      const birthDate = new Date(date);
+      const age = new Date().getFullYear() - birthDate.getFullYear();
+      return age <= 150;
     }, 'Invalid date of birth'),
 
   gender: z.enum(['male', 'female', 'other', 'prefer-not-to-say'], {
@@ -126,7 +103,7 @@ export const patientFormSchema = z.object({
   memberBenefits: z.object({
     discountPercentage: z.number().min(0).max(100),
     discountReason: z.string().optional(),
-    membershipTier: z.enum(['standard', 'silver', 'vip', 'platinum']),
+    membershipTier: z.enum(ALL_TIERS as [string, ...string[]]),
     discountStartDate: z.date().optional(),
     discountEndDate: z.date().nullable().optional()
   }).optional(),

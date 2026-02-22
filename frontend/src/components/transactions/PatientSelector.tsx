@@ -45,7 +45,8 @@ export function PatientSelector({ open, onClose, onSelectPatient }: PatientSelec
   useEffect(() => {
     if (open && debouncedSearchTerm.length >= 2) {
       setHasSearched(true);
-      getPatients(debouncedSearchTerm);
+      // Only show active patients in the selector
+      getPatients(debouncedSearchTerm, 1, 50, 'active');
     } else if (debouncedSearchTerm.length < 2) {
       setHasSearched(false);
     }

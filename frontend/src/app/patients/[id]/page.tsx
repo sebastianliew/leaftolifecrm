@@ -69,7 +69,7 @@ export default function PatientDetailPage() {
   const handleDeletePatient = async () => {
     if (!patient) return
     
-    if (window.confirm('Are you sure you want to delete this patient? This action cannot be undone.')) {
+    if (window.confirm('Are you sure you want to deactivate this patient? They will be set to inactive.')) {
       try {
         await deletePatient(patient.id)
         router.push('/patients')

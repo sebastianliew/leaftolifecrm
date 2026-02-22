@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { DateInput } from "@/components/ui/date-input"
 import type { Patient, PatientFormData } from "@/types/patient"
+import { TIER_CONFIG, TIER_DISCOUNTS, type MembershipTier } from "@/config/membership-tiers"
+import { patientFormSchema } from "@/lib/validation/schemas/patient-form"
 
 interface PatientFormProps {
   patient?: Patient
@@ -19,6 +21,7 @@ interface PatientFormProps {
 }
 
 export function PatientForm({ patient, onSubmit, onCancel, loading }: PatientFormProps) {
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   const [formData, setFormData] = useState<PatientFormData>({
     firstName: "",
     middleName: "",
@@ -71,8 +74,25 @@ export function PatientForm({ patient, onSubmit, onCancel, loading }: PatientFor
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setValidationErrors({})
+
+    const result = patientFormSchema.safeParse(formData)
+    if (!result.success) {
+      const errors: Record<string, string> = {}
+      result.error.issues.forEach(issue => {
+        const field = issue.path.join('.')
+        if (!errors[field]) errors[field] = issue.message
+      })
+      setValidationErrors(errors)
+      return
+    }
+
     await onSubmit(formData)
   }
+
+  const fieldError = (field: string) => validationErrors[field]
+    ? <p className="text-xs text-red-500 mt-1">{validationErrors[field]}</p>
+    : null
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -92,6 +112,7 @@ export function PatientForm({ patient, onSubmit, onCancel, loading }: PatientFor
                 onChange={(e) => handleInputChange("firstName", e.target.value)}
                 required
               />
+              {fieldError('firstName')}
             </div>
             <div className="space-y-2">
               <Label htmlFor="middleName">Middle Name</Label>
@@ -109,21 +130,21 @@ export function PatientForm({ patient, onSubmit, onCancel, loading }: PatientFor
                 onChange={(e) => handleInputChange("lastName", e.target.value)}
                 required
               />
+              {fieldError('lastName')}
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="nric">NRIC *</Label>
+              <Label htmlFor="nric">NRIC</Label>
               <Input
                 id="nric"
                 value={formData.nric || ""}
                 onChange={(e) => handleInputChange("nric", e.target.value.toUpperCase())}
                 placeholder="S1234567A"
-                required
               />
               <p className="text-xs text-gray-500">
-                Singapore NRIC format: S/T/F/G followed by 7 digits and 1 letter
+                Singapore NRIC format (optional for legacy patients)
               </p>
             </div>
             <div className="space-y-2">
@@ -210,13 +231,14 @@ export function PatientForm({ patient, onSubmit, onCancel, loading }: PatientFor
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email Address</Label>
+              <Label htmlFor="email">Email Address *</Label>
               <Input
                 id="email"
                 type="email"
                 value={formData.email || ""}
                 onChange={(e) => handleInputChange("email", e.target.value)}
               />
+              {fieldError('email')}
               {dateOfBirth && (() => {
                 const today = new Date();
                 const age = today.getFullYear() - dateOfBirth.getFullYear() -
@@ -235,6 +257,7 @@ export function PatientForm({ patient, onSubmit, onCancel, loading }: PatientFor
                 onChange={(e) => handleInputChange("phone", e.target.value)}
                 required
               />
+              {fieldError('phone')}
             </div>
           </div>
 
@@ -341,17 +364,11 @@ export function PatientForm({ patient, onSubmit, onCancel, loading }: PatientFor
             <Select 
               value={formData.memberBenefits?.membershipTier || "standard"} 
               onValueChange={(value) => {
-                const tierDiscounts = {
-                  standard: 0,
-                  silver: 10,
-                  vip: 20,
-                  platinum: 40
-                } as const
-                const tier = value as 'standard' | 'silver' | 'vip' | 'platinum'
+                const tier = value as MembershipTier
                 handleInputChange("memberBenefits", {
                   ...formData.memberBenefits,
                   membershipTier: tier,
-                  discountPercentage: tierDiscounts[tier]
+                  discountPercentage: TIER_DISCOUNTS[tier]
                 })
               }}
             >
@@ -359,10 +376,9 @@ export function PatientForm({ patient, onSubmit, onCancel, loading }: PatientFor
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="standard">Standard (No Discount)</SelectItem>
-                <SelectItem value="silver">Silver (10% Discount)</SelectItem>
-                <SelectItem value="vip">VIP (20% Discount)</SelectItem>
-                <SelectItem value="platinum">Platinum (40% Discount)</SelectItem>
+                {Object.entries(TIER_CONFIG).map(([tier, { label }]) => (
+                  <SelectItem key={tier} value={tier}>{label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             

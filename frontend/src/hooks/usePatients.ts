@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react"
 import { api } from "@/lib/api-client"
 import type { Patient, PatientFormData, PatientNotification } from "@/types/patient"
+import { normalizePatient } from "@/types/patient"
 
 interface PaginationInfo {
   currentPage: number
@@ -30,8 +31,8 @@ export function usePatients() {
   const searchCache = useRef<Map<string, { patients: Patient[], pagination?: PaginationInfo, timestamp: number }>>(new Map())
   const CACHE_DURATION = useRef(60 * 1000) // 60 seconds for better performance
 
-  const getPatients = useCallback(async (search?: string, page: number = 1, limit: number = 25) => {
-    const cacheKey = `${search || 'all'}_${page}_${limit}`
+  const getPatients = useCallback(async (search?: string, page: number = 1, limit: number = 25, statusFilter?: string, tierFilter?: string) => {
+    const cacheKey = `${search || 'all'}_${page}_${limit}_${statusFilter || 'all'}_${tierFilter || 'all'}`
     
     // Check cache first
     const cached = searchCache.current.get(cacheKey)
@@ -56,6 +57,12 @@ export function usePatients() {
       if (search && search.trim().length >= 2) {
         params.search = search.trim()
       }
+      if (statusFilter && statusFilter !== 'all') {
+        params.status = statusFilter
+      }
+      if (tierFilter && tierFilter !== 'all') {
+        params.tier = tierFilter
+      }
       
       const response = await api.get('/patients', params)
 
@@ -65,10 +72,7 @@ export function usePatients() {
 
       // Handle paginated response and transform _id to id
       const responseData = response.data as PatientResponse
-      const patientsList = (responseData?.patients || []).map((patient: Patient & { _id?: string }) => ({
-        ...patient,
-        id: patient._id || patient.id
-      }))
+      const patientsList = (responseData?.patients || []).map(normalizePatient)
       
       const paginationInfo = responseData?.pagination || null
       
@@ -104,11 +108,7 @@ export function usePatients() {
         throw new Error(response.error || "Patient not found")
       }
       setError(null)
-      const patientData = response.data as Patient & { _id?: string }
-      return {
-        ...patientData,
-        id: patientData._id || patientData.id
-      }
+      return normalizePatient(response.data as Patient & { _id?: string })
     } catch (err) {
       setError("Failed to fetch patient")
       throw err
@@ -133,11 +133,7 @@ export function usePatients() {
         setError(response.error || "Failed to create patient")
         return { error: response.error || "Failed to create patient" }
       }
-      const responsePatient = response.data as Patient & { _id?: string }
-      const newPatient = {
-        ...responsePatient,
-        id: responsePatient._id || responsePatient.id
-      }
+      const newPatient = normalizePatient(response.data as Patient & { _id?: string })
       setPatients((prev) => [newPatient, ...prev])
       clearSearchCache() // Clear cache to force refresh
       setError(null)
@@ -162,7 +158,7 @@ export function usePatients() {
       if (!response.ok) {
         throw new Error(response.error || "Failed to update patient")
       }
-      const updatedPatient = response.data as Patient
+      const updatedPatient = normalizePatient(response.data as Patient & { _id?: string })
       setPatients((prev) =>
         prev.map((patient) => (patient.id === id ? updatedPatient : patient))
       )
@@ -245,10 +241,7 @@ export function usePatients() {
       const response = await api.get('/patients/recent', { limit: '10' })
       if (response.ok) {
         const responseData = response.data as PatientResponse
-        const patientsList = (responseData?.patients || responseData || []).map((patient: Patient & { _id?: string }) => ({
-          ...patient,
-          id: patient._id || patient.id
-        }))
+        const patientsList = (responseData?.patients || responseData || []).map(normalizePatient)
         setRecentPatients(patientsList)
         return patientsList
       }

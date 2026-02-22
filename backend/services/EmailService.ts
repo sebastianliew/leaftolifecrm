@@ -217,7 +217,7 @@ class EmailService {
               <!-- Payment Required Notice -->
               <div style="border-left: 3px solid #333333; padding: 12px 16px; margin-bottom: 28px;">
                 <p style="margin: 0; color: #555555; font-size: 14px; line-height: 1.5;">
-                  <strong>Payment Required:</strong> Please complete your payment using PayNow or Bank Transfer. Details are included in the attached invoice.
+                  <strong>Payment Required:</strong> Please complete your payment. Details are included in the attached invoice.
                 </p>
               </div>
 

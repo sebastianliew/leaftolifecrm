@@ -465,7 +465,7 @@ export class InvoiceEmailTemplates {
       <div class="payment-instructions">
         <h4>🔔 Payment Method</h4>
         <p><strong>Outstanding Amount:</strong> ${formatCurrency(outstandingAmount, transaction.currency)}</p>
-        <p><strong>Please complete your payment using one of the following methods:</strong></p>
+        <p><strong>Please complete your payment:</strong></p>
         
         <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin: 15px 0;">
           <p style="margin: 0 0 10px 0;"><strong>Option 1: PayNow</strong></p>

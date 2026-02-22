@@ -364,6 +364,46 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
       }
     }
 
+    // ========================================================================
+    // Validate item discounts against patient's actual membership tier
+    // Prevents frontend manipulation of discount amounts beyond entitlement
+    // ========================================================================
+    if (transactionData.customerId && transactionData.status !== 'draft') {
+      const { isValidObjectId } = await import('../lib/validations/sanitize.js');
+      if (isValidObjectId(transactionData.customerId)) {
+        const { Patient: PatientModel } = await import('../models/Patient.js');
+        const patient = await PatientModel.findById(transactionData.customerId)
+          .select('status memberBenefits')
+          .lean() as { status?: string; memberBenefits?: { discountPercentage?: number } } | null;
+
+        if (patient) {
+          // Warn if patient is inactive (don't block — staff may have a reason)
+          if (patient.status === 'inactive') {
+            console.warn('[Transaction] Creating transaction for INACTIVE patient:', transactionData.customerId);
+          }
+
+          // Validate item discount amounts don't exceed patient's entitlement
+          const maxDiscountPct = patient.memberBenefits?.discountPercentage ?? 0;
+          for (const item of transactionData.items) {
+            if (item.discountAmount && item.discountAmount > 0) {
+              const itemTotal = (item.unitPrice ?? 0) * (item.quantity ?? 0);
+              if (itemTotal > 0) {
+                const appliedPct = (item.discountAmount / itemTotal) * 100;
+                // Allow 1% tolerance for rounding
+                if (appliedPct > maxDiscountPct + 1) {
+                  res.status(400).json({
+                    error: `Item "${item.name}" has ${appliedPct.toFixed(1)}% discount but patient's tier allows max ${maxDiscountPct}%`,
+                    item: item.name
+                  });
+                  return;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Always remove transaction numbers that are empty or start with DRAFT to ensure proper TXN generation
     if (!transactionData.transactionNumber ||
         transactionData.transactionNumber.trim() === '' ||

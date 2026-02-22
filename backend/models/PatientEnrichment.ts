@@ -57,13 +57,7 @@ const memberBenefitsSchema = new mongoose.Schema({
   discountPercentage: {
     type: Number,
     min: 0,
-    max: 100,
-    validate: {
-      validator: function(v: number) {
-        return [0, 10, 20, 40].includes(v);
-      },
-      message: 'Discount must be 0%, 10%, 20%, or 40%'
-    }
+    max: 100
   },
   discountReason: { type: String },
   discountStartDate: { type: Date },
@@ -88,7 +82,7 @@ const financialSummarySchema = new mongoose.Schema({
   lastTransactionDate: { type: Date },
   preferredPaymentMethod: { 
     type: String,
-    enum: ['CASH', 'PAYNOW', 'CARD', 'BANK_TRANSFER', 'MIXED']
+    enum: ['cash', 'card', 'bank_transfer', 'offset_from_credit', 'paynow', 'nets', 'web_store', 'misc', 'CASH', 'PAYNOW', 'CARD', 'BANK_TRANSFER', 'MIXED', 'DIGITAL_WALLET']
   },
   outstandingBalance: { type: Number, default: 0 }
 }, { _id: false });

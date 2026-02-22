@@ -3,7 +3,12 @@
     "allow": [
       "Bash(tasklist:*)",
       "Bash(findstr:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(pnpm type:check:*)",
+      "Bash(git submodule status:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rebase:*)",
+      "Bash(git push:*)"
     ]
   }
 }

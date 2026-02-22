@@ -19,29 +19,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { usePatients } from "@/hooks/usePatients"
-import type { Patient } from "@/types/patient"
+import type { Patient, PatientFormData } from "@/types/patient"
 import { HiSearch, HiFilter, HiRefresh, HiTrash } from "react-icons/hi"
 import { useToast } from "@/components/ui/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { Loader2 } from "lucide-react"
 
-type MembershipTier = 'standard' | 'silver' | 'gold' | 'vip' | 'platinum'
-
-const TIER_DISCOUNTS: Record<MembershipTier, number> = {
-  standard: 0,
-  silver: 10,
-  gold: 20,
-  vip: 20,
-  platinum: 40
-}
-
-const TIER_COLORS: Record<MembershipTier, string> = {
-  standard: 'bg-gray-100 text-gray-800',
-  silver: 'bg-slate-200 text-slate-800',
-  gold: 'bg-amber-100 text-amber-800',
-  vip: 'bg-purple-100 text-purple-800',
-  platinum: 'bg-indigo-100 text-indigo-800'
-}
+import { TIER_DISCOUNTS, TIER_COLORS, TIER_CONFIG, type MembershipTier } from "@/config/membership-tiers"
 
 export default function MembershipsPage() {
   const { toast } = useToast()
@@ -72,7 +56,13 @@ export default function MembershipsPage() {
   const loadPatients = useCallback(async (page: number = 1) => {
     try {
       setCurrentPage(page)
-      await getPatients(searchTerm.trim().length >= 2 ? searchTerm.trim() : undefined, page, itemsPerPage)
+      await getPatients(
+        searchTerm.trim().length >= 2 ? searchTerm.trim() : undefined,
+        page,
+        itemsPerPage,
+        undefined, // no status filter on memberships page
+        tierFilter !== 'all' ? tierFilter : undefined
+      )
     } catch (err) {
       console.error('Failed to load patients:', err)
       toast({
@@ -81,7 +71,7 @@ export default function MembershipsPage() {
         variant: "destructive"
       })
     }
-  }, [getPatients, searchTerm, itemsPerPage, toast])
+  }, [getPatients, searchTerm, itemsPerPage, tierFilter, toast])
 
   useEffect(() => {
     loadPatients(1)
@@ -90,7 +80,7 @@ export default function MembershipsPage() {
   useEffect(() => {
     loadPatients(1)
     setCurrentPage(1)
-  }, [itemsPerPage]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [itemsPerPage, tierFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = async () => {
     setCurrentPage(1)
@@ -125,9 +115,11 @@ export default function MembershipsPage() {
       await updatePatient(patientId, {
         memberBenefits: {
           membershipTier: newTier,
-          discountPercentage: TIER_DISCOUNTS[newTier]
+          discountPercentage: TIER_DISCOUNTS[newTier],
+          discountReason: `Tier changed to ${newTier}`,
+          discountStartDate: new Date(),
         }
-      })
+      } as Partial<PatientFormData>)
 
       toast({
         title: "Membership Updated",
@@ -195,12 +187,8 @@ export default function MembershipsPage() {
     return patient.memberBenefits?.discountPercentage ?? TIER_DISCOUNTS[getPatientTier(patient)]
   }
 
-  // Apply tier filter
-  const filteredPatients = patients.filter(patient => {
-    if (tierFilter === 'all') return true
-    const patientTier = getPatientTier(patient)
-    return patientTier === tierFilter
-  })
+  // Tier filter is now server-side
+  const filteredPatients = patients
 
   if (error) {
     return (
@@ -265,11 +253,9 @@ export default function MembershipsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Tiers</SelectItem>
-                  <SelectItem value="standard">Standard (0%)</SelectItem>
-                  <SelectItem value="silver">Silver (10%)</SelectItem>
-                  <SelectItem value="gold">Gold (20%)</SelectItem>
-                  <SelectItem value="vip">VIP (20%)</SelectItem>
-                  <SelectItem value="platinum">Platinum (40%)</SelectItem>
+                  {Object.entries(TIER_CONFIG).map(([tier, { label }]) => (
+                    <SelectItem key={tier} value={tier}>{label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -378,11 +364,9 @@ export default function MembershipsPage() {
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="standard">Standard (0%)</SelectItem>
-                                    <SelectItem value="silver">Silver (10%)</SelectItem>
-                                    <SelectItem value="gold">Gold (20%)</SelectItem>
-                                    <SelectItem value="vip">VIP (20%)</SelectItem>
-                                    <SelectItem value="platinum">Platinum (40%)</SelectItem>
+                                    {Object.entries(TIER_CONFIG).map(([tier, { label }]) => (
+                                      <SelectItem key={tier} value={tier}>{label}</SelectItem>
+                                    ))}
                                   </SelectContent>
                                 </Select>
                               )}
@@ -481,11 +465,11 @@ export default function MembershipsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Patient</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete{' '}
+              Are you sure you want to deactivate{' '}
               <span className="font-semibold">
                 {patientToDelete?.firstName} {patientToDelete?.lastName}
               </span>
-              ? This action cannot be undone.
+              ? The patient will be set to inactive and hidden from default views.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
