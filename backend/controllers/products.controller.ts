@@ -256,10 +256,10 @@ export const deleteProduct = asyncHandler(async (req: Request<{ id: string }>, r
   ]);
 
   if (blendRef) {
-    throw new ValidationError(`Cannot delete: product is an ingredient in active blend template "${(blendRef as { name: string }).name}"`);
+    throw new ValidationError(`Cannot delete: product is an ingredient in active blend template "${(blendRef as unknown as { name: string }).name}"`);
   }
   if (bundleRef) {
-    throw new ValidationError(`Cannot delete: product is part of active bundle "${(bundleRef as { name: string }).name}"`);
+    throw new ValidationError(`Cannot delete: product is part of active bundle "${(bundleRef as unknown as { name: string }).name}"`);
   }
 
   const authReq = req as AuthenticatedRequest;
