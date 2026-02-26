@@ -196,7 +196,7 @@ export default function InventoryPage() {
     try {
       const token = document.cookie.split(';').find(c => c.trim().startsWith('authToken='))?.split('=')[1]
         || localStorage.getItem('authToken')
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'}/inventory/products/export`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api'}/inventory/products/export`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       if (!res.ok) throw new Error('Export failed')

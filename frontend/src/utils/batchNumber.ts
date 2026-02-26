@@ -18,18 +18,9 @@ export function generateBatchNumber(productCode: string, sequence: number): stri
  * Note: This is a fallback function. The main generation logic is in Transaction model
  * using TransactionNumberTracking collection for proper sequential numbering.
  */
+/** @deprecated Transaction numbers must be generated server-side via TransactionNumberTracking. */
 export function generateTransactionNumber(): string {
-  const now = new Date()
-  const month = (now.getMonth() + 1).toString().padStart(2, '0')
-  const day = now.getDate().toString().padStart(2, '0')
-  const year = now.getFullYear()
-  const dateStr = `${month}_${day}_${year}`
-  
-  // Fallback with timestamp suffix for uniqueness
-  const fallbackNumber = Math.floor(Math.random() * 9999) + 1
-  const paddedNumber = fallbackNumber.toString().padStart(4, '0')
-  
-  return `TXN-${dateStr}-${paddedNumber}`
+  throw new Error('Transaction numbers must be generated server-side. Do not use this function.');
 }
 
 /**

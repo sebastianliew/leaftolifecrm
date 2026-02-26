@@ -5,7 +5,7 @@ export async function fetchAPI<T>(
   options?: RequestInit
 ): Promise<T> {
   // Use environment variable for backend API URL with dynamic port fallback
-  const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+  const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
   const fullURL = endpoint.startsWith('http')
     ? endpoint
     : `${baseURL}${endpoint}`;

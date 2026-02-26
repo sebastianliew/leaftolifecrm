@@ -277,7 +277,7 @@ export function TransactionList() {
     try {
       // Get token from authToken (used by api-client)
       const token = localStorage.getItem('authToken') || localStorage.getItem('token');
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
       const fullUrl = `${apiBase.replace(/\/api$/, '')}${downloadUrl}`;
 
       const response = await fetch(fullUrl, {

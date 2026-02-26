@@ -87,10 +87,6 @@ export function CustomBlendCreator({
       return;
     }
     
-    console.log('🔍 CustomBlendCreator - editingBlend:', editingBlend)
-    console.log('🔍 CustomBlendCreator - editingBlend.customBlendData:', editingBlend?.customBlendData)
-    console.log('🔍 CustomBlendCreator - condition met?', editingBlend && editingBlend.customBlendData)
-    
     if (editingBlend && editingBlend.customBlendData) {
       setIsLoadingEditData(true);
       
@@ -140,7 +136,6 @@ export function CustomBlendCreator({
         setIsLoadingEditData(false);
       }, 300); // Small delay to show loading state
     } else if (!editingBlend) {
-      console.log('🔍 CustomBlendCreator - No editingBlend, resetting form')
       // Reset for new blend only if not editing
       setBlendName('');
       setPreparationNotes('');
@@ -149,10 +144,6 @@ export function CustomBlendCreator({
       setFinalPrice('');
       setIsLoadingEditData(false);
     } else if (editingBlend) {
-      console.log('🔍 CustomBlendCreator - editingBlend exists but no customBlendData found')
-      console.log('🔍 This might be the issue - the blend item might not have customBlendData')
-      console.log('🔍 Falling back to basic item data - name:', editingBlend.name, 'price:', editingBlend.unitPrice)
-      
       // Fallback: populate with basic item data if customBlendData is missing
       setBlendName(editingBlend.name || 'Custom Blend')
       setFinalPrice(editingBlend.unitPrice ? editingBlend.unitPrice.toString() : '')
@@ -211,47 +202,6 @@ export function CustomBlendCreator({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Reset form when dialog opens/closes or load editing data
-  useEffect(() => {
-    if (open) {
-      if (editingBlend && editingBlend.customBlendData) {
-        // Load existing blend data for editing
-        const blendData = editingBlend.customBlendData;
-        setBlendName(blendData.name);
-        setPreparationNotes(blendData.preparationNotes || '');
-        
-        // Convert blend ingredients to the component's ingredient format
-        setIngredients(blendData.ingredients.map(ing => {
-          // Find the product from the products array to get current stock and price
-          const currentProduct = products.find(p => p._id === ing.productId);
-          
-          return {
-            productId: ing.productId,
-            name: ing.name,
-            quantity: ing.quantity,
-            unitOfMeasurementId: ing.unitOfMeasurementId,
-            unitName: ing.unitName,
-            costPerUnit: currentProduct?.sellingPrice || ing.costPerUnit || 0,
-            availableStock: currentProduct?.currentStock || 0,
-            notes: ing.notes || '',
-            sellingPricePerUnit: currentProduct?.sellingPrice || 0
-          };
-        }));
-        
-        // Set margin if available
-        if (blendData.marginPercent) {
-          setMarginPercent(blendData.marginPercent);
-        }
-        // Set manual price if editing
-        if (editingBlend.unitPrice) {
-          setManualPrice(editingBlend.unitPrice.toString());
-        }
-      } else {
-        // Reset for new blend
-        resetForm();
-      }
-    }
-  }, [open, editingBlend, products]);  // Added products dependency
 
   // Auto-validate ingredients when they change
   useEffect(() => {
@@ -307,7 +257,7 @@ export function CustomBlendCreator({
     runCostCalculation();
   }, [ingredients, marginPercent, pricingMode, isUpdatingPrice]);
 
-  const resetForm = () => {
+  const _resetForm = () => {
     setBlendName('');
     setPreparationNotes('');
     setIngredients([]);
@@ -529,7 +479,7 @@ export function CustomBlendCreator({
       })),
       totalIngredientCost: calculatedTotalPrice, // Note: field name is 'Cost' but contains sum of selling prices
       preparationNotes,
-      mixedBy: 'current_user', // TODO: Get from auth context
+      mixedBy: user?.name || user?.email || 'unknown',
       mixedAt: now,
       marginPercent: marginPercent, // Store margin for future edits
     };

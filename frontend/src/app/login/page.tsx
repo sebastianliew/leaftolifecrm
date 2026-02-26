@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { HiEye, HiEyeSlash } from "react-icons/hi2"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api'
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")

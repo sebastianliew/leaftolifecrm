@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api';
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api';
 
 async function proxyToBackend(request: NextRequest, userId: string) {
   const url = `${BACKEND_URL}/users/${userId}`;

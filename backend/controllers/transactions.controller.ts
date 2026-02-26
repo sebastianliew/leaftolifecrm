@@ -406,6 +406,127 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
     }
 
     // ========================================================================
+    // SERVER-SIDE PRICE VERIFICATION
+    // Recalculate all prices from product data — never trust frontend prices
+    // ========================================================================
+    {
+      const priceVerifyProductIds = transactionData.items
+        .filter((item: { productId?: string; itemType?: string }) =>
+          item.productId && /^[a-fA-F0-9]{24}$/.test(item.productId) && item.itemType !== 'custom_blend'
+        )
+        .map((item: { productId: string }) => item.productId);
+
+      if (priceVerifyProductIds.length > 0) {
+        const priceProducts = await Product.find({ _id: { $in: priceVerifyProductIds } }).lean();
+        const priceProductMap = new Map(priceProducts.map((p) => [String(p._id), p]));
+
+        for (const item of transactionData.items) {
+          if (item.itemType === 'custom_blend') continue;
+          const product = priceProductMap.get(item.productId);
+          if (!product) continue;
+
+          // Recalculate unit price from server-side product data
+          const serverSellingPrice = (product as { sellingPrice?: number }).sellingPrice ?? 0;
+          const serverContainerCapacity = (product as { containerCapacity?: number }).containerCapacity;
+          if (item.saleType === 'volume' && serverContainerCapacity) {
+            item.unitPrice = serverSellingPrice / serverContainerCapacity;
+          } else {
+            item.unitPrice = serverSellingPrice;
+          }
+
+          // Recalculate total
+          item.totalPrice = item.unitPrice * item.quantity - (item.discountAmount || 0);
+        }
+      }
+    }
+
+    // ========================================================================
+    // CUSTOM BLEND PRICE VERIFICATION
+    // Recalculate blend prices from ingredient costs + margin
+    // ========================================================================
+    {
+      for (const item of transactionData.items) {
+        if (item.itemType !== 'custom_blend' || !item.customBlendData) continue;
+
+        const ingredientProductIds = item.customBlendData.ingredients
+          .map((ing: { productId: string }) => ing.productId)
+          .filter((id: string) => /^[a-fA-F0-9]{24}$/.test(id));
+
+        if (ingredientProductIds.length > 0) {
+          const ingredientProducts = await Product.find({ _id: { $in: ingredientProductIds } }).lean();
+          const ingredientMap = new Map(ingredientProducts.map((p) => [String(p._id), p]));
+
+          let totalIngredientCost = 0;
+          for (const ing of item.customBlendData.ingredients) {
+            const product = ingredientMap.get(ing.productId);
+            if (product) {
+              const ingSellingPrice = (product as { sellingPrice?: number }).sellingPrice ?? 0;
+              ing.costPerUnit = ingSellingPrice;
+              totalIngredientCost += ing.quantity * ingSellingPrice;
+            }
+          }
+
+          item.customBlendData.totalIngredientCost = totalIngredientCost;
+
+          // Warn if selling price is below ingredient cost (don't block — staff may intentionally discount)
+          if (item.unitPrice < totalIngredientCost) {
+            console.warn(`[Transaction] Custom blend "${item.name}" priced below ingredient cost: $${item.unitPrice} < $${totalIngredientCost}`);
+          }
+        }
+      }
+    }
+
+    // ========================================================================
+    // SERVER-SIDE DISCOUNT RECALCULATION
+    // Look up customer tier and recalculate membership discounts
+    // ========================================================================
+    {
+      if (transactionData.customerId && /^[a-fA-F0-9]{24}$/.test(transactionData.customerId)) {
+        const Patient = mongoose.model('Patient');
+        const customer = await Patient.findById(transactionData.customerId).lean() as { memberBenefits?: { discountPercentage?: number } } | null;
+
+        if (customer?.memberBenefits?.discountPercentage) {
+          const serverDiscountRate = customer.memberBenefits.discountPercentage;
+
+          for (const item of transactionData.items) {
+            // Only apply to eligible item types
+            if (item.itemType !== 'product' && item.itemType !== 'fixed_blend') continue;
+
+            // Check product discount flags
+            if (item.productId && /^[a-fA-F0-9]{24}$/.test(item.productId)) {
+              const discountProduct = await Product.findById(item.productId).select('discountFlags').lean() as { discountFlags?: { discountableForMembers?: boolean } } | null;
+              if (discountProduct?.discountFlags?.discountableForMembers === false) continue;
+            }
+
+            const itemSubtotal = item.unitPrice * item.quantity;
+            const serverDiscount = itemSubtotal * (serverDiscountRate / 100);
+
+            // Use server-calculated discount (override frontend)
+            item.discountAmount = Math.round(serverDiscount * 100) / 100;
+            item.totalPrice = itemSubtotal - item.discountAmount;
+          }
+        }
+      }
+    }
+
+    // ========================================================================
+    // RECALCULATE TRANSACTION TOTALS FROM ITEMS
+    // Never trust frontend-supplied subtotal/totalAmount
+    // ========================================================================
+    {
+      const recalcSubtotal = transactionData.items.reduce(
+        (sum: number, item: { unitPrice?: number; quantity?: number }) => sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)), 0
+      );
+      const recalcItemDiscounts = transactionData.items.reduce(
+        (sum: number, item: { discountAmount?: number }) => sum + (item.discountAmount ?? 0), 0
+      );
+      const recalcTotal = recalcSubtotal - recalcItemDiscounts - (transactionData.discountAmount ?? 0);
+
+      transactionData.subtotal = Math.round(recalcSubtotal * 100) / 100;
+      transactionData.totalAmount = Math.round(recalcTotal * 100) / 100;
+    }
+
+    // ========================================================================
     // PHASE 1: Create and save transaction with inventory deduction (atomic)
     // Uses MongoDB session for atomicity - if inventory deduction fails,
     // transaction is rolled back to maintain data consistency.

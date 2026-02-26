@@ -28,7 +28,7 @@ import { PatientSelector } from "./PatientSelector"
 import { ConsultationSelector } from "./ConsultationSelector"
 import { MiscellaneousSelector } from "./MiscellaneousSelector"
 import { useUnits } from "@/hooks/useUnits"
-// TODO: Re-enable when /api/customers/:id/purchase-history is implemented
+// TODO: Purchase history — needs backend endpoint /api/customers/:id/purchase-history to enable ReorderSuggestions
 // import { ReorderSuggestions } from "./ReorderSuggestions"
 import { DiscountService } from "@/services/DiscountService"
 import { formatCurrency } from "@/utils/currency"
@@ -72,8 +72,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   const [editingCustomBlend, setEditingCustomBlend] = useState<TransactionItem | null>(null)
   const [editingFixedBlend, setEditingFixedBlend] = useState<TransactionItem | null>(null)
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
-  // TODO: Implement purchase history API endpoint to enable ReorderSuggestions
-  // const [hasPurchaseHistory, setHasPurchaseHistory] = useState(false)
+  // const [hasPurchaseHistory, setHasPurchaseHistory] = useState(false) // See purchase history TODO above
   const [discountMode, setDiscountMode] = useState<'amount' | 'percentage'>('amount')
   const [discountValue, setDiscountValue] = useState<string>('')
   const [isTyping, setIsTyping] = useState(false)
@@ -1188,8 +1187,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     return item.isService && item.productId === "consultation-fee"
   }
 
-  // TODO: Re-enable when /api/customers/:id/purchase-history is implemented
-  // const handleAddReorderItems = (items: Array<{ productId: string; name: string; quantity?: number; itemType: string }>) => { ... }
+  // const handleAddReorderItems = (items: Array<{ productId: string; name: string; quantity?: number; itemType: string }>) => { ... } // See purchase history TODO above
 
   // const handleQuickReorder = async (transactionId: string) => {
   //   try {

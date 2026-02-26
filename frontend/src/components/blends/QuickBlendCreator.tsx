@@ -11,6 +11,16 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import UnitConversionService from '@/lib/unit-conversion';
 
+/**
+ * Determines the content unit based on container type.
+ * Returns 'g' for jars, 'ml' for bottles, tubes, and everything else.
+ */
+function getContentUnit(containerType?: string | { name?: string } | null): string {
+  const ct = (typeof containerType === 'string' ? containerType : containerType?.name || '').toLowerCase();
+  if (ct.includes('jar')) return 'g';
+  return 'ml'; // default for bottles, tubes, and everything else
+}
+
 interface Product {
   _id: string;
   name: string;
@@ -149,9 +159,7 @@ export default function QuickBlendCreator({
         if (isContainerBased && ing.product.containerCapacity) {
           // For container-based products, we need to check available content
           const availableContent = ing.product.currentStock * ing.product.containerCapacity;
-          const contentUnit = ing.product.containerType?.toLowerCase().includes('bottle') ? 'ml' : 
-                             ing.product.containerType?.toLowerCase().includes('tube') ? 'ml' :
-                             ing.product.containerType?.toLowerCase().includes('jar') ? 'g' : 'ml';
+          const contentUnit = getContentUnit(ing.product.containerType);
           
           // Convert needed quantity to content unit if necessary
           let neededContent = ing.quantity;
@@ -209,9 +217,7 @@ export default function QuickBlendCreator({
     if (isContainerBased && product.containerCapacity) {
       // Product is tracked in containers but we want to use content units
       // Determine the content unit (usually ml for bottles, g for boxes)
-      const contentUnit = product.containerType?.toLowerCase().includes('bottle') ? 'ml' : 
-                         product.containerType?.toLowerCase().includes('tube') ? 'ml' :
-                         product.containerType?.toLowerCase().includes('jar') ? 'g' : 'ml';
+      const contentUnit = getContentUnit(product.containerType);
       
       defaultUnit = contentUnit;
       defaultQuantity = Math.min(50, product.containerCapacity / 4); // Suggest 1/4 of container or 50 units
@@ -242,9 +248,7 @@ export default function QuickBlendCreator({
       const isContainerBased = ingredient.product.unitName && containerUnits.includes(ingredient.product.unitName.toLowerCase());
       
       if (isContainerBased && ingredient.product.containerCapacity) {
-        const contentUnit = ingredient.product.containerType?.toLowerCase().includes('bottle') ? 'ml' : 
-                           ingredient.product.containerType?.toLowerCase().includes('tube') ? 'ml' :
-                           ingredient.product.containerType?.toLowerCase().includes('jar') ? 'g' : 'ml';
+        const contentUnit = getContentUnit(ingredient.product.containerType);
         
         // Calculate cost per unit for the new unit
         let newCostPerUnit = ingredient.product.costPrice / ingredient.product.containerCapacity;
@@ -348,9 +352,7 @@ export default function QuickBlendCreator({
         if (isContainerBased && ingredient.product.containerCapacity) {
           // For container-based products
           const availableContent = ingredient.product.currentStock * ingredient.product.containerCapacity;
-          const contentUnit = ingredient.product.containerType?.toLowerCase().includes('bottle') ? 'ml' : 
-                             ingredient.product.containerType?.toLowerCase().includes('tube') ? 'ml' :
-                             ingredient.product.containerType?.toLowerCase().includes('jar') ? 'g' : 'ml';
+          const contentUnit = getContentUnit(ingredient.product.containerType);
           
           let neededContent = ingredient.quantity;
           if (ingredient.unit !== contentUnit) {
@@ -540,10 +542,7 @@ export default function QuickBlendCreator({
                     
                     let displayText = product.name;
                     if (isContainerBased && product.containerCapacity) {
-                      const containerType = (typeof product.containerType === 'string' ? product.containerType.toLowerCase() : '') || '';
-                      const contentUnit = containerType.includes('bottle') ? 'ml' : 
-                                         containerType.includes('tube') ? 'ml' :
-                                         containerType.includes('jar') ? 'g' : 'ml';
+                      const contentUnit = getContentUnit(product.containerType);
                       const totalContent = product.currentStock * product.containerCapacity;
                       displayText += ` (${product.currentStock || 0} ${product.unitName || 'units'}, ${totalContent} ${contentUnit})`;
                     } else {

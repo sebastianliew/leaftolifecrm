@@ -131,7 +131,7 @@ export function useTransactions() {
   const updateTransaction = useCallback(async (id: string, data: Partial<TransactionFormData>) => {
     setLoading(true)
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api'
       const response = await fetch(`${apiUrl}/transactions/${id}`, {
         method: 'PUT',
         headers: {
@@ -162,7 +162,7 @@ export function useTransactions() {
   const deleteTransaction = useCallback(async (id: string) => {
     setLoading(true)
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api'
       const response = await fetch(`${apiUrl}/transactions/${id}`, {
         method: 'DELETE',
       })
@@ -271,7 +271,7 @@ export function useTransactions() {
       if (startDate) params.set('startDate', startDate)
       if (endDate) params.set('endDate', endDate)
       
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api'
       const response = await fetch(`${apiUrl}/transactions/summary${params.toString() ? `?${params.toString()}` : ''}`)
       
       if (!response.ok) {
@@ -296,7 +296,7 @@ export function useTransactions() {
   const getCustomers = useCallback(async () => {
     setLoading(true)
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api'
       const response = await fetch(`${apiUrl}/customers`)
       const data = await response.json()
       setCustomers(data)
@@ -313,7 +313,7 @@ export function useTransactions() {
   const createCustomer = useCallback(async (data: Omit<Customer, "id" | "createdAt" | "updatedAt" | "totalPurchases">) => {
     setLoading(true)
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api'
       const response = await fetch(`${apiUrl}/customers`, {
         method: 'POST',
         headers: {
@@ -336,7 +336,7 @@ export function useTransactions() {
   const getServices = useCallback(async () => {
     setLoading(true)
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001/api'
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api'
       const response = await fetch(`${apiUrl}/services`)
       const data = await response.json()
       setServices(data)

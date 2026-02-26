@@ -391,7 +391,8 @@ export class RestockService {
   }
 
   async getBatchHistory(_limit: number = 20) {
-    // TODO: Implement RestockBatch query
+    // TODO: Implement RestockBatch query — returns empty until RestockBatch model is created
+    console.warn('[RestockService] getBatchHistory not implemented — RestockBatch model missing');
     return [];
   }
 }
