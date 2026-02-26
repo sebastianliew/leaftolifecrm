@@ -31,13 +31,6 @@ export const navigationItems: NavigationItem[] = [
         description: 'Manage and organize your inventory categories'
       },
       {
-        id: 'container-types',
-        name: 'Container Types',
-        href: '/containers/types',
-        icon: 'container-types',
-        description: 'Manage different types of containers'
-      },
-      {
         id: 'units',
         name: 'Units',
         href: '/inventory/units',

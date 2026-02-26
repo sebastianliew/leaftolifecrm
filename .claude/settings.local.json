@@ -8,7 +8,8 @@
       "Bash(git submodule status:*)",
       "Bash(git fetch:*)",
       "Bash(git rebase:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(cd \"/Users/bemorchestrator/Coding Projects/L2L-CRM-NEW/frontend\" && pnpm build 2>&1)"
     ]
   }
 }

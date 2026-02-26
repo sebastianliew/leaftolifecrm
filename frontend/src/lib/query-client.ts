@@ -122,9 +122,6 @@ export const queryKeys = {
   // Audit Logs
   auditLogs: (filters?: unknown) => ['audit-logs', filters] as const,
   
-  // Container Types
-  containerTypes: ['container-types'] as const,
-  
   // Dosage Forms
   dosageForms: ['dosage-forms'] as const,
   

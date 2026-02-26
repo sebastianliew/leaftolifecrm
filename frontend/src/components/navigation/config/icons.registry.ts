@@ -41,7 +41,6 @@ const iconMap: IconMap = {
   // Inventory submenu icons
   'products': HiCube,
   'categories': HiFolderOpen,
-  'container-types': HiCube,
   'units': HiSquare2Stack,
   'suppliers': HiBuildingOffice,
   'brands': HiTag,

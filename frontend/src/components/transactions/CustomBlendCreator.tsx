@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -26,13 +25,10 @@ import type {
 
 import type { TransactionItem } from '@/types/transaction';
 import { useBlendTemplates } from '@/hooks/useBlendTemplates';
-// Container types removed — stub for backward compatibility
-const useContainerTypes = () => ({ containerTypes: [] as { id: string; name: string }[], getContainerTypes: () => {} });
 import { useToast } from '@/hooks/use-toast';
 
 import type { CustomBlendHistoryItem, BlendHistoryIngredient } from './BlendHistorySelector';
 import { usePermissions } from '@/hooks/usePermissions';
-type ContainerType = { id: string; name: string };
 
 
 interface CustomBlendCreatorProps {
@@ -62,21 +58,18 @@ export function CustomBlendCreator({
 }: CustomBlendCreatorProps) {
   const { validateIngredients } = useBlendTemplates();
   const { user } = usePermissions();
-  const { containerTypes, getContainerTypes } = useContainerTypes();
   const { toast } = useToast();
   const _isSuperAdmin = user?.role === 'super_admin';
 
   const [blendName, setBlendName] = useState('');
   const [preparationNotes, setPreparationNotes] = useState('');
   const [ingredients, setIngredients] = useState<(BlendIngredient & { sellingPricePerUnit?: number })[]>([]);
-  const [selectedContainerType, setSelectedContainerType] = useState<ContainerType | null>(null);
   const [marginPercent, setMarginPercent] = useState(0);
   const [finalPrice, setFinalPrice] = useState<string>('');
   const [pricingMode, setPricingMode] = useState<'margin' | 'manual'>('margin');
   const [manualPrice, setManualPrice] = useState<string>('');
   const [isUpdatingPrice, setIsUpdatingPrice] = useState(false);
   const [_isLoadingEditData, setIsLoadingEditData] = useState(false);
-  const [pendingContainerTypeId, setPendingContainerTypeId] = useState<string | null>(null);
 
   // Track if form has been initialized for current dialog session
   const hasInitializedRef = useRef(false);
@@ -144,34 +137,6 @@ export function CustomBlendCreator({
         // Don't set finalPrice from old unitPrice - let margin-based pricingSuggestion recalculate
         // with fresh ingredient prices. This ensures the final price reflects current inventory costs.
         
-        // Store container type ID to be set later when container types are loaded
-        
-        // Check for container type in different locations
-        const containerTypeData = (blendData as { containerType?: ContainerType | string | { id: string } }).containerType;
-        const containerTypeFromTransaction = editingBlend.containerType;
-
-        // containerTypeId doesn't exist on TransactionItem, using containerType instead
-        
-        // Check if container type is stored in selectedContainers array
-        const selectedContainers = editingBlend.selectedContainers || [];
-        const containerFromSelectedContainers = selectedContainers.length > 0 ? selectedContainers[0] : null;
-        
-        // Try to get container type from any available source
-        const finalContainerTypeData = containerTypeData || containerTypeFromTransaction || containerFromSelectedContainers;
-        
-        if (finalContainerTypeData) {
-          // Handle both object and string ID formats
-          if (typeof finalContainerTypeData === 'object' && finalContainerTypeData !== null) {
-            if ('id' in finalContainerTypeData) {
-              setPendingContainerTypeId(finalContainerTypeData.id);
-            } else if ('_id' in finalContainerTypeData) {
-              setPendingContainerTypeId((finalContainerTypeData as { _id: string })._id);
-            }
-          } else if (typeof finalContainerTypeData === 'string') {
-            setPendingContainerTypeId(finalContainerTypeData);
-          }
-        }
-        
         setIsLoadingEditData(false);
       }, 300); // Small delay to show loading state
     } else if (!editingBlend) {
@@ -182,9 +147,7 @@ export function CustomBlendCreator({
       setIngredients([]);
       setMarginPercent(0);
       setFinalPrice('');
-      setSelectedContainerType(null);
       setIsLoadingEditData(false);
-      setPendingContainerTypeId(null);
     } else if (editingBlend) {
       console.log('🔍 CustomBlendCreator - editingBlend exists but no customBlendData found')
       console.log('🔍 This might be the issue - the blend item might not have customBlendData')
@@ -200,18 +163,7 @@ export function CustomBlendCreator({
 
     // Mark as initialized after setting up the form
     hasInitializedRef.current = true;
-  }, [open, editingBlend, containerTypes, products]);  // Added products dependency
-
-  // Set container type when container types are loaded and we have a pending ID
-  useEffect(() => {
-    if (pendingContainerTypeId && containerTypes.length > 0) {
-      const found = containerTypes.find(ct => ct.id === pendingContainerTypeId);
-      if (found) {
-        setSelectedContainerType(found);
-        setPendingContainerTypeId(null); // Clear pending ID
-      }
-    }
-  }, [pendingContainerTypeId, containerTypes]);
+  }, [open, editingBlend, products]);
 
   // Pricing calculation function (base calculation uses selling prices of ingredients)
   const calculateCost = async (ingredients: BlendIngredient[], margin: number) => {
@@ -259,13 +211,6 @@ export function CustomBlendCreator({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Fetch container types once when component mounts or dialog opens
-  useEffect(() => {
-    if (open && containerTypes.length === 0) {
-      getContainerTypes();
-    }
-  }, [open, containerTypes.length, getContainerTypes]);
-
   // Reset form when dialog opens/closes or load editing data
   useEffect(() => {
     if (open) {
@@ -292,11 +237,6 @@ export function CustomBlendCreator({
             sellingPricePerUnit: currentProduct?.sellingPrice || 0
           };
         }));
-        
-        // Set container type if available
-        if (editingBlend.containerType && typeof editingBlend.containerType === 'object') {
-          setSelectedContainerType(editingBlend.containerType as ContainerType);
-        }
         
         // Set margin if available
         if (blendData.marginPercent) {
@@ -371,7 +311,6 @@ export function CustomBlendCreator({
     setBlendName('');
     setPreparationNotes('');
     setIngredients([]);
-    setSelectedContainerType(null);
     setMarginPercent(0);
     setPricingMode('margin');
     setManualPrice('');
@@ -406,11 +345,6 @@ export function CustomBlendCreator({
     if (ingredients.length === 0) {
       newErrors.ingredients = 'At least one ingredient is required';
       errorMessages.push('At least one ingredient is required');
-    }
-
-    if (!selectedContainerType) {
-      newErrors.containerType = 'Container type is required';
-      errorMessages.push('Container type is required');
     }
 
     // Validate each ingredient
@@ -598,7 +532,6 @@ export function CustomBlendCreator({
       mixedBy: 'current_user', // TODO: Get from auth context
       mixedAt: now,
       marginPercent: marginPercent, // Store margin for future edits
-      containerType: selectedContainerType // Store container type for future edits (null is preserved in JSON, undefined is not)
     };
 
     const blendItem: TransactionItem = {
@@ -610,7 +543,6 @@ export function CustomBlendCreator({
       unitPrice: calculatedSellingPrice,
       totalPrice: calculatedSellingPrice * (editingBlend?.quantity || 1),
       discountAmount: editingBlend?.discountAmount || 0,
-      containerType: selectedContainerType ?? undefined, // Keep undefined here since TransactionItem type allows it
       isService: false,
       saleType: 'quantity',
       unitOfMeasurementId: (() => {
@@ -630,7 +562,6 @@ export function CustomBlendCreator({
         mixedBy: customBlendData.mixedBy,
         mixedAt: customBlendData.mixedAt,
         marginPercent: customBlendData.marginPercent,
-        containerType: customBlendData.containerType,
         ingredients: customBlendData.ingredients.map(ingredient => ({
           productId: ingredient.productId,
           name: ingredient.name,
@@ -692,28 +623,6 @@ export function CustomBlendCreator({
                   {errors.blendName && <p className="text-sm text-red-500 mt-1">{errors.blendName}</p>}
                 </div>
 
-                <div>
-                  <Label htmlFor="containerType">Container Type *</Label>
-                  <Select
-                    value={selectedContainerType?.id || ''}
-                    onValueChange={(value) => {
-                      const container = containerTypes.find(ct => ct.id === value);
-                      setSelectedContainerType(container || null);
-                    }}
-                  >
-                    <SelectTrigger className={errors.containerType ? 'border-red-500' : ''}>
-                      <SelectValue placeholder="Select container type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {containerTypes.map((containerType) => (
-                        <SelectItem key={containerType.id} value={containerType.id}>
-                          {containerType.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {errors.containerType && <p className="text-sm text-red-500 mt-1">{errors.containerType}</p>}
-                </div>
               </div>
 
               <div className="mt-4">
@@ -982,13 +891,6 @@ export function CustomBlendCreator({
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-semibold">S${totalIngredientPrice.toFixed(2)}</p>
-                      {selectedContainerType && (
-                        <div className="mt-1">
-                          <p className="text-sm text-gray-600">
-                            Container: {selectedContainerType.name}
-                          </p>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -1172,11 +1074,6 @@ export function CustomBlendCreator({
                         }
                       </span>
                     </div>
-                    {selectedContainerType && (
-                      <div className="text-sm text-gray-600 mt-1">
-                        Container: {selectedContainerType.name}
-                      </div>
-                    )}
                   </div>
                 </div>
               </CardContent>

@@ -1,13 +1,13 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { 
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -17,87 +17,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
 import { HiCube } from "react-icons/hi2"
 import type { Product, UnitOfMeasurement } from '@/types/inventory'
-import type { ContainerType } from '@/types/container'
 
 interface QuantitySelectorModalProps {
   product: Product
   isOpen: boolean
   onClose: () => void
-  onConfirm: (totalQuantity: number, totalPrice: number, selectedUnit: string, saleType?: string, containerTypeInfo?: {
-    containerType: ContainerType;
-    containerCapacity: number;
-    containersNeeded?: number;
-  } | null, containerId?: string | null) => void
+  onConfirm: (totalQuantity: number, totalPrice: number, selectedUnit: string, saleType?: string) => void
   unitPrice: number
   unitOfMeasurements: UnitOfMeasurement[]
 }
 
-export function QuantitySelectorModal({ 
-  product, 
-  isOpen, 
-  onClose, 
-  onConfirm, 
+export function QuantitySelectorModal({
+  product,
+  isOpen,
+  onClose,
+  onConfirm,
   unitPrice,
   unitOfMeasurements: _unitOfMeasurements
 }: QuantitySelectorModalProps) {
   const [quantity, setQuantity] = useState<string>("")
   const [saleType, setSaleType] = useState<'quantity' | 'volume'>('quantity')
-  const [containerTypes, setContainerTypes] = useState<ContainerType[]>([])
-  const [selectedContainerType, setSelectedContainerType] = useState<ContainerType | null>(null)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
-
-  // Fetch container types when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      fetchContainerTypes()
-      // Set default container type if product has one
-      if (product.containerType) {
-        const containerTypeId = typeof product.containerType === 'object' 
-          ? product.containerType.id
-          : product.containerType
-        
-        // Find and set the container type
-        fetchContainerTypes().then(() => {
-          const matchingContainer = containerTypes.find(ct => 
-            ct.id === containerTypeId
-          )
-          if (matchingContainer) {
-            setSelectedContainerType(matchingContainer)
-          }
-        })
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, product.containerType])
-
-  const fetchContainerTypes = async () => {
-    try {
-      const response = await fetch('/api/container-types')
-      if (response.ok) {
-        const data = await response.json()
-        setContainerTypes(data.containerTypes || [])
-        
-        // Set default container type if product has one
-        if (product.containerType) {
-          const containerTypeId = typeof product.containerType === 'object' 
-            ? product.containerType.id
-            : product.containerType
-          
-          const matchingContainer = data.containerTypes?.find((ct: ContainerType) => 
-            ct.id === containerTypeId
-          )
-          if (matchingContainer) {
-            setSelectedContainerType(matchingContainer)
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch container types:', error)
-    }
-  }
 
   const handleQuantityChange = (value: string) => {
     setQuantity(value)
@@ -109,15 +51,14 @@ export function QuantitySelectorModal({
 
   const getTotalQuantity = () => {
     const qty = parseFloat(quantity) || 0;
-    
+
     switch (saleType) {
       case 'quantity':
-        // For individual units/containers, return the actual number of units/containers
-        // Don't convert to volume - keep it as container count
-        return qty; // 5 bottles = 5 (not 5 × 50ml = 250ml)
+        // For individual units, return the actual number of units
+        return qty;
       case 'volume':
-        // For volume sales, set both quantity and convertedQuantity to the volume amount
-        return qty; // Direct volume/weight amount (20mg = 20mg)
+        // For volume sales, return the volume amount directly
+        return qty;
       default:
         return qty;
     }
@@ -125,15 +66,15 @@ export function QuantitySelectorModal({
 
   const getTotalPrice = () => {
     const qty = parseFloat(quantity) || 0
-    
+
     switch (saleType) {
       case 'quantity':
-        return qty * unitPrice // Price per individual unit/container (bottle/bottle/etc.)
+        return qty * unitPrice
       case 'volume': {
-        // For volume sales, calculate proportion of container and price accordingly
+        // For volume sales, calculate proportion and price accordingly
         const containerCapacity = product.containerCapacity || product.quantity || 1
-        const proportion = qty / containerCapacity // How much of a container this volume represents
-        return proportion * unitPrice // Price based on container proportion
+        const proportion = qty / containerCapacity
+        return proportion * unitPrice
       }
       default:
         return qty * unitPrice
@@ -141,17 +82,7 @@ export function QuantitySelectorModal({
   }
 
   const getMaxAllowed = () => {
-    // currentStock is always in base units (ml, capsules, etc.)
-    const currentStock = product.currentStock || 0
-    
-    switch (saleType) {
-      case 'quantity':
-        return currentStock
-      case 'volume':
-        return currentStock
-      default:
-        return currentStock
-    }
+    return product.currentStock || 0
   }
 
   const getInputLabel = () => {
@@ -168,7 +99,7 @@ export function QuantitySelectorModal({
   const getStockLabel = () => {
     switch (saleType) {
       case 'quantity':
-        return `${product.containerType && typeof product.containerType === 'object' ? product.containerType.name.toLowerCase() + 's' : 'units'} available`
+        return 'units available'
       case 'volume':
         return `${product.unitOfMeasurement?.abbreviation || 'units'} available`
       default:
@@ -178,44 +109,21 @@ export function QuantitySelectorModal({
 
   const hasValidationErrors = () => {
     const qty = parseFloat(quantity) || 0
-    
+
     // Allow selling out-of-stock items for clinical workflow
     // Only check if quantity is positive
     return qty <= 0
   }
 
-  const getContainerInfo = () => {
-    if (selectedContainerType) {
-      return {
-        containerType: selectedContainerType,
-        containerCapacity: product.quantity || 0
-      }
-    }
-    return null
-  }
-
-  const getDisplayInfo = () => {
-    const containerInfo = getContainerInfo()
-    const qty = parseFloat(quantity) || 0
-    if (containerInfo && containerInfo.containerCapacity > 0) {
-      const numContainers = Math.ceil(qty / containerInfo.containerCapacity)
-      return {
-        numContainers,
-        remainingInLastContainer: containerInfo.containerCapacity - (qty % containerInfo.containerCapacity || containerInfo.containerCapacity)
-      }
-    }
-    return null
-  }
-
   const handleConfirm = () => {
     const qty = parseFloat(quantity) || 0
-    
+
     // Only validate that quantity is positive
     if (qty <= 0) {
       alert(`❌ Invalid Quantity!\n\nQuantity must be greater than 0.`)
       return
     }
-    
+
     // Show warning for out-of-stock sales but allow them to proceed
     const maxAllowed = getMaxAllowed()
     if (qty > maxAllowed) {
@@ -223,34 +131,15 @@ export function QuantitySelectorModal({
       return
     }
 
-    const productUnit = typeof product.unitOfMeasurement === 'object' 
+    const productUnit = typeof product.unitOfMeasurement === 'object'
       ? product.unitOfMeasurement._id || ''
       : product.unitOfMeasurement || ''
-    
-    // Only create containerInfo if we have a valid ContainerType object
-    const containerInfo = (product.containerType && typeof product.containerType === 'object') ? {
-      containerType: product.containerType,
-      containerCapacity: product.containerCapacity || 0,
-      containersNeeded: saleType === 'volume' 
-        ? Math.ceil(qty / (product.containerCapacity || 1)) 
-        : undefined
-    } : null
-
-    // Show smart tip for volume sales
-    if (saleType === 'volume' && containerInfo) {
-      const containersNeeded = Math.ceil(qty / containerInfo.containerCapacity)
-      const unitLabel = product.unitOfMeasurement?.abbreviation || 'units'
-      const _tip = `💡 Smart Tip: ${qty} ${unitLabel} will use ${containersNeeded} container(s)`
-      // Container tip displayed
-    }
 
     onConfirm(
       qty,
       getTotalPrice(),
       productUnit,
-      saleType,
-      containerInfo,
-      null
+      saleType
     )
 
     onClose()
@@ -264,28 +153,15 @@ export function QuantitySelectorModal({
       ? product.unitOfMeasurement._id || ''
       : product.unitOfMeasurement || ''
 
-    // Only create containerInfo if we have a valid ContainerType object
-    const containerInfo = (product.containerType && typeof product.containerType === 'object') ? {
-      containerType: product.containerType,
-      containerCapacity: product.containerCapacity || 0,
-      containersNeeded: saleType === 'volume'
-        ? Math.ceil(qty / (product.containerCapacity || 1))
-        : undefined
-    } : null
-
     onConfirm(
       qty,
       getTotalPrice(),
       productUnit,
-      saleType,
-      containerInfo,
-      null
+      saleType
     )
 
     onClose()
   }
-
-  const displayInfo = getDisplayInfo()
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -302,14 +178,9 @@ export function QuantitySelectorModal({
             <CardContent className="pt-6 text-center">
               <div className="text-2xl font-bold">{getTotalQuantity().toFixed(2).replace(/\.?0+$/, '')}</div>
               <div className="text-sm text-muted-foreground">Total Quantity</div>
-              {displayInfo && (
-                <div className="text-xs text-gray-500 mt-2">
-                  ≈ {displayInfo.numContainers} container(s)
-                </div>
-              )}
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardContent className="pt-6 text-center">
               <div className="text-2xl font-bold">${getTotalPrice().toFixed(2).replace(/\.?0+$/, '')}</div>
@@ -323,23 +194,11 @@ export function QuantitySelectorModal({
           <div className="flex items-center gap-2">
             <span className="text-blue-600">ℹ️</span>
             <span className="text-sm text-blue-800">
-              <strong>Available Stock:</strong> {getMaxAllowed()} {
-                product.containerType && typeof product.containerType === 'object' 
-                  ? product.containerType.name
-                  : product.containerType || 'units'
-              }. 
-              <strong>Unit Price:</strong> ${unitPrice.toFixed(2).replace(/\.?0+$/, '')} per {
-                product.containerType && typeof product.containerType === 'object' 
-                  ? product.containerType.name.toLowerCase()
-                  : product.containerType || 'unit'
-              }.
+              <strong>Available Stock:</strong> {getMaxAllowed()} units.
+              <strong>Unit Price:</strong> ${unitPrice.toFixed(2).replace(/\.?0+$/, '')} per unit.
               {product.quantity && (
                 <>
-                  <strong className="ml-2">Container Capacity:</strong> {product.quantity} {product.unitOfMeasurement?.abbreviation || 'units'} per {
-                    product.containerType && typeof product.containerType === 'object' 
-                      ? product.containerType.name.toLowerCase()
-                      : product.containerType || 'container'
-                  }.
+                  <strong className="ml-2">Capacity:</strong> {product.quantity} {product.unitOfMeasurement?.abbreviation || 'units'} per unit.
                 </>
               )}
             </span>
@@ -381,7 +240,7 @@ export function QuantitySelectorModal({
                   </div>
                 </button>
               </div>
-              
+
               {/* Sale Type Descriptions */}
               <div className="mt-3 p-3 bg-white rounded border">
                 {saleType === 'quantity' && (
@@ -397,32 +256,6 @@ export function QuantitySelectorModal({
               </div>
 
             </div>
-            {/* Container Type Display - Always show for products with containers */}
-            {product.containerType && selectedContainerType && (
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-                <Label className="text-blue-800 font-medium">Container Information</Label>
-                <div className="mt-2 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="bg-blue-100 text-blue-800">
-                      {selectedContainerType.name}
-                    </Badge>
-                    <span className="text-sm text-blue-700">
-                      Capacity: {product.quantity || 'Not specified'} per container
-                    </span>
-                  </div>
-                  {displayInfo && (
-                    <div className="text-sm text-blue-700">
-                      <strong>Containers needed:</strong> {displayInfo.numContainers}
-                      {displayInfo.remainingInLastContainer > 0 && (
-                        <span className="ml-2">
-                          (Last container: {product.quantity! - displayInfo.remainingInLastContainer} / {product.quantity})
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -447,7 +280,7 @@ export function QuantitySelectorModal({
                   </p>
                 )}
               </div>
-              
+
               <div>
                 <Label>Smart Conversion Tip</Label>
                 {/* Smart Tip replacing Total Amount */}
@@ -460,21 +293,18 @@ export function QuantitySelectorModal({
                           const qty = parseFloat(quantity)
                           const capacity = product.containerCapacity || product.quantity || 1
                           const unitAbbr = product.unitOfMeasurement?.abbreviation || 'units'
-                          const containerName = product.containerType && typeof product.containerType === 'object' 
-                            ? product.containerType.name.toLowerCase() + '(s)' 
-                            : 'container(s)'
-                          
+
                           if (saleType === 'quantity') {
-                            // Input: containers → Output: substance
+                            // Input: units → Output: substance
                             const totalSubstance = qty * capacity
-                            return `${qty} ${containerName} = ${totalSubstance} ${unitAbbr}`
+                            return `${qty} unit(s) = ${totalSubstance} ${unitAbbr}`
                           } else if (saleType === 'volume') {
-                            // Input: substance → Output: containers
-                            const containerEquivalent = (qty / capacity).toFixed(2).replace(/\.?0+$/, '')
+                            // Input: substance → Output: units
+                            const unitEquivalent = (qty / capacity).toFixed(2).replace(/\.?0+$/, '')
                             const isPartial = qty % capacity !== 0
-                            return `${qty} ${unitAbbr} = ${containerEquivalent} ${containerName}${isPartial ? ' (partial container)' : ''}`
+                            return `${qty} ${unitAbbr} = ${unitEquivalent} unit(s)${isPartial ? ' (partial)' : ''}`
                           }
-                        })()} 
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -486,12 +316,12 @@ export function QuantitySelectorModal({
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground mt-1">
-                  {saleType === 'quantity' && 'Shows total substance from containers'}
-                  {saleType === 'volume' && 'Shows container usage for custom amount'}
+                  {saleType === 'quantity' && 'Shows total substance from units'}
+                  {saleType === 'volume' && 'Shows unit usage for custom amount'}
                 </p>
               </div>
             </div>
-            
+
             <div className="mt-4 p-3 bg-muted rounded-md">
               <div className="flex justify-between items-center">
                 <span className="text-sm">Total Price:</span>
@@ -503,12 +333,6 @@ export function QuantitySelectorModal({
                 <span>Unit Price:</span>
                 <span>${unitPrice.toFixed(2).replace(/\.?0+$/, '')}</span>
               </div>
-              {displayInfo && selectedContainerType && (
-                <div className="flex justify-between items-center text-sm text-muted-foreground">
-                  <span>Containers:</span>
-                  <span>{displayInfo.numContainers} x {selectedContainerType?.name}</span>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -534,7 +358,7 @@ export function QuantitySelectorModal({
               This will create negative inventory that needs to be reconciled later. Do you want to proceed with this out-of-stock sale?
             </AlertDialogDescription>
           </AlertDialogHeader>
-          
+
           <div className="space-y-4">
             <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
               <div className="grid grid-cols-2 gap-3 text-sm">
@@ -542,10 +366,8 @@ export function QuantitySelectorModal({
                   <span className="font-medium">Requested:</span>
                   <div className="text-lg font-bold text-orange-700">
                     {parseFloat(quantity).toFixed(2)} {
-                      saleType === 'quantity' 
-                        ? (product.containerType && typeof product.containerType === 'object' 
-                            ? product.containerType.name
-                            : 'units')
+                      saleType === 'quantity'
+                        ? 'units'
                         : (product.unitOfMeasurement?.abbreviation || 'units')
                     }
                   </div>
@@ -554,10 +376,8 @@ export function QuantitySelectorModal({
                   <span className="font-medium">Available:</span>
                   <div className="text-lg font-bold text-green-700">
                     {getMaxAllowed().toFixed(2)} {
-                      saleType === 'quantity' 
-                        ? (product.containerType && typeof product.containerType === 'object' 
-                            ? product.containerType.name
-                            : 'units')
+                      saleType === 'quantity'
+                        ? 'units'
                         : (product.unitOfMeasurement?.abbreviation || 'units')
                     }
                   </div>
@@ -571,7 +391,7 @@ export function QuantitySelectorModal({
               </div>
             </div>
           </div>
-          
+
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction

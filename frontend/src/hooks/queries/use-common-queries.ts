@@ -59,23 +59,6 @@ export function useSuppliers() {
   });
 }
 
-// Container Types
-interface ContainerType {
-  _id: string;
-  name: string;
-  volume: number;
-  unit: string;
-  active: boolean;
-}
-
-export function useContainerTypes() {
-  return useQuery({
-    queryKey: queryKeys.containerTypes,
-    queryFn: () => fetchAPI<ContainerType[]>('/container-types'),
-    staleTime: 0, // 10 minutes
-  });
-}
-
 // Dosage Forms
 interface DosageForm {
   _id: string;

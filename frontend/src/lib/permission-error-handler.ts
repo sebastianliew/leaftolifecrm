@@ -79,12 +79,6 @@ const URL_RESOURCE_MAP: Record<string, { resource: string; action: string }> = {
   'PUT /brands': { resource: 'Brand', action: 'update' },
   'DELETE /brands': { resource: 'Brand', action: 'delete' },
 
-  // Container Types
-  'GET /container-types': { resource: 'Container Types', action: 'view' },
-  'POST /container-types': { resource: 'Container Type', action: 'create' },
-  'PUT /container-types': { resource: 'Container Type', action: 'update' },
-  'DELETE /container-types': { resource: 'Container Type', action: 'delete' },
-
   // Appointments
   'GET /appointments': { resource: 'Appointments', action: 'view' },
   'POST /appointments': { resource: 'Appointment', action: 'create' },
