@@ -15,9 +15,10 @@ const CategorySchema = new Schema<ICategory>({
   name: {
     type: String,
     required: true,
-    trim: true
+    trim: true,
+    maxlength: [200, 'Category name cannot exceed 200 characters']
   },
-  level: { type: Number, required: true, default: 1 },
+  level: { type: Number, required: true, default: 1, min: [1, 'Level must be at least 1'] },
   parent: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
   description: String,
   status: {

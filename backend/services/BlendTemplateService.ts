@@ -1,15 +1,13 @@
 import { BlendTemplate } from '../models/BlendTemplate.js';
-import { Product } from '../models/Product.js';
 import { UnitOfMeasurement } from '../models/UnitOfMeasurement.js';
 import { connectDB } from '../lib/mongoose.js';
+import { BlendIngredientValidator } from './blend/BlendIngredientValidator.js';
 import type {
   BlendTemplate as IBlendTemplate,
   CreateBlendTemplateData,
   UpdateBlendTemplateData,
   TemplateFilters,
   ValidationResult,
-  ValidationError,
-  ValidationWarning,
   BlendIngredient
 } from '../types/blend.js';
 
@@ -239,142 +237,18 @@ export class BlendTemplateService {
   }
   
   
-  // Validation helpers
+  // Validation — delegates to BlendIngredientValidator (single source of truth)
   async validateIngredientAvailability(ingredients: BlendIngredient[], batchQuantity: number = 1): Promise<ValidationResult> {
     await connectDB();
-    
-    const errors: ValidationError[] = [];
-    const warnings: ValidationWarning[] = [];
-    
-    try {
-      for (const ingredient of ingredients) {
-        const product = await Product.findById(ingredient.productId);
-        
-        if (!product) {
-          errors.push({
-            ingredientId: ingredient.productId,
-            ingredientName: ingredient.name,
-            error: 'Product not found',
-            requiredQuantity: ingredient.quantity * batchQuantity,
-            availableQuantity: 0
-          });
-          continue;
-        }
-        
-        if (!product.isActive) {
-          errors.push({
-            ingredientId: ingredient.productId,
-            ingredientName: ingredient.name,
-            error: 'Product is inactive',
-            requiredQuantity: ingredient.quantity * batchQuantity,
-            availableQuantity: product.currentStock || 0
-          });
-          continue;
-        }
-        
-        const requiredQuantity = ingredient.quantity * batchQuantity;
-        const availableQuantity = product.currentStock || 0;
-        
-        if (availableQuantity < requiredQuantity) {
-          errors.push({
-            ingredientId: ingredient.productId,
-            ingredientName: ingredient.name,
-            error: 'Insufficient stock',
-            requiredQuantity,
-            availableQuantity
-          });
-        } else if (availableQuantity < requiredQuantity * 2) {
-          warnings.push({
-            ingredientId: ingredient.productId,
-            ingredientName: ingredient.name,
-            warning: 'Low stock - consider reordering soon'
-          });
-        }
-      }
-      
-      return {
-        valid: errors.length === 0,
-        errors,
-        warnings
-      };
-    } catch (error: unknown) {
-      console.error('Error validating ingredient availability:', error);
-      throw new Error(`Failed to validate ingredients: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    return this.ingredientValidator.validateIngredientAvailability(ingredients, batchQuantity);
   }
   
   
-  // Helper method to validate and enrich ingredients with current pricing
-  private async validateAndEnrichIngredients(ingredients: Omit<BlendIngredient, 'availableStock' | 'selectedContainers'>[]): Promise<BlendIngredient[]> {
-    // Validating and enriching ingredients
-    
-    const enrichedIngredients = [];
-    
-    for (let i = 0; i < ingredients.length; i++) {
-      const ingredient = ingredients[i];
-      // Processing ingredient
-      
-      // Validate product exists
-      // Looking for product
-      const product = await Product.findById(ingredient.productId);
-      if (!product) {
-        console.error(`Product not found with ID: ${ingredient.productId}`);
-        throw new Error(`Product not found: ${ingredient.name}`);
-      }
-      // Product found
-      
-      // Validate unit of measurement with fallback logic
-      let uom = null;
-      let unitId = ingredient.unitOfMeasurementId;
-      
-      // Looking for unit
-      if (unitId) {
-        uom = await UnitOfMeasurement.findById(unitId);
-        if (!uom) {
-          console.warn(`Unit not found with ID: ${unitId}`);
-        }
-      }
-      
-      // If no unit found, try to find a suitable default unit
-      if (!uom) {
-        console.warn(`Unit of measurement not found for ingredient: ${ingredient.name}, trying to find suitable default...`);
-        
-        // Try to find a default unit - prefer grams or milliliters
-        const defaultUoms = await UnitOfMeasurement.find({
-          isActive: true,
-          $or: [
-            { name: { $regex: /gram/i } },
-            { name: { $regex: /milliliter/i } },
-            { name: { $regex: /^ml$/i } },
-            { name: { $regex: /^g$/i } },
-            { type: 'weight' },
-            { type: 'volume' }
-          ]
-        }).sort({ name: 1 }).limit(1);
-        
-        if (defaultUoms.length > 0) {
-          uom = defaultUoms[0];
-          unitId = uom._id.toString();
-          console.warn(`Using default unit ${uom.name} for ingredient: ${ingredient.name}`);
-        } else {
-          console.error(`No suitable unit of measurement found for ingredient: ${ingredient.name}`);
-          throw new Error(`No suitable unit of measurement found for ingredient: ${ingredient.name}. Please ensure the ingredient has a valid unit assigned.`);
-        }
-      }
-      
-      const enrichedIngredient = {
-        ...ingredient,
-        unitOfMeasurementId: unitId,
-        name: product.name, // Use current product name
-        unitName: uom.name, // Use current UOM name
-        costPerUnit: ingredient.costPerUnit || product.sellingPrice || 0
-      };
-      
-      enrichedIngredients.push(enrichedIngredient);
-    }
-    
-    // Ingredient validation complete
-    return enrichedIngredients;
+  // Delegates to BlendIngredientValidator — single source of truth for ingredient enrichment
+  private ingredientValidator = new BlendIngredientValidator();
+
+  private async validateAndEnrichIngredients(ingredients: Omit<BlendIngredient, 'availableStock'>[]): Promise<BlendIngredient[]> {
+    return this.ingredientValidator.validateAndEnrichIngredients(ingredients);
   }
   
   // Get template categories

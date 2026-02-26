@@ -15,7 +15,7 @@ export function useUnits() {
   return useQuery({
     queryKey: queryKeys.units,
     queryFn: () => fetchAPI<Unit[]>('/units'),
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 0, // 10 minutes
   });
 }
 
@@ -34,10 +34,8 @@ export function useBrands() {
       const response = await fetchAPI<{brands: Brand[], pagination: { total: number, page: number, pages: number }}>('/brands?limit=100');
       return response.brands;
     },
-    staleTime: 5 * 60 * 1000,   // 5 minutes
-    gcTime: 10 * 60 * 1000,     // 10 minutes cache
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    staleTime: 0,   // 5 minutes
+    gcTime: 0,     // 10 minutes cache
     retry: 3,
   });
 }
@@ -57,7 +55,7 @@ export function useSuppliers() {
   return useQuery({
     queryKey: queryKeys.suppliers,
     queryFn: () => fetchAPI<Supplier[]>('/suppliers'),
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 0, // 10 minutes
   });
 }
 
@@ -74,7 +72,7 @@ export function useContainerTypes() {
   return useQuery({
     queryKey: queryKeys.containerTypes,
     queryFn: () => fetchAPI<ContainerType[]>('/container-types'),
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 0, // 10 minutes
   });
 }
 
@@ -90,7 +88,7 @@ export function useDosageForms() {
   return useQuery({
     queryKey: queryKeys.dosageForms,
     queryFn: () => fetchAPI<DosageForm[]>('/dosage-forms'),
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 0, // 10 minutes
   });
 }
 
@@ -113,14 +111,6 @@ export function useUsers() {
   return useQuery({
     queryKey: queryKeys.users,
     queryFn: () => fetchAPI<User[]>('/users'),
-  });
-}
-
-export function useCurrentUser() {
-  return useQuery({
-    queryKey: queryKeys.currentUser,
-    queryFn: () => fetchAPI<User>('/users/current'),
-    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }
 

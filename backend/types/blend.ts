@@ -39,22 +39,13 @@ export interface BlendIngredient {
   costPerUnit?: number;
   notes?: string;
   availableStock?: number;
-  selectedContainers?: SelectedContainer[];
-}
-
-export interface SelectedContainer {
-  containerId: string;
-  containerCode: string;
-  quantityToConsume: number;
-  batchNumber?: string;
-  expiryDate?: Date;
 }
 
 export interface CreateBlendTemplateData {
   name: string;
   description?: string;
   category?: string;
-  ingredients: Omit<BlendIngredient, 'availableStock' | 'selectedContainers'>[];
+  ingredients: Omit<BlendIngredient, 'availableStock'>[];
   batchSize?: number;
   unitOfMeasurementId: string;
   sellingPrice?: number;

@@ -114,73 +114,34 @@ InventoryMovementSchema.pre('save', async function(next) {
 // Method to update product stock using ATOMIC operations to prevent race conditions
 InventoryMovementSchema.methods.updateProductStock = async function() {
   const Product = model('Product');
-  const product = await Product.findById(this.productId);
 
-  if (!product) {
-    throw new Error('Product not found');
+  // All stock changes use atomic $inc — no more container-specific branching
+  let stockChange = 0;
+  switch (this.movementType) {
+    case 'sale':
+    case 'fixed_blend':
+    case 'bundle_sale':
+    case 'bundle_blend_ingredient':
+    case 'blend_ingredient':
+    case 'custom_blend':
+      stockChange = -this.convertedQuantity;
+      break;
+    case 'return':
+      stockChange = this.convertedQuantity;
+      break;
+    case 'adjustment':
+      stockChange = this.convertedQuantity;
+      break;
+    case 'transfer':
+      break;
   }
 
-  if (this.containerStatus) {
-    // Handle container-based movement (these require complex logic, keep as-is)
-    if (this.movementType === 'sale') {
-      if (this.containerStatus === 'partial') {
-        await product.handlePartialContainerSale(this.quantity);
-      } else if (this.containerStatus === 'full') {
-        await product.handleFullContainerSale();
-      }
-    } else if (this.movementType === 'return') {
-      // Handle container returns
-      if (this.containerStatus === 'partial') {
-        product.containers.partial.push({
-          id: this.containerId || `CONTAINER_${Date.now()}`,
-          remaining: this.remainingQuantity || 0,
-          capacity: product.containerCapacity,
-          status: 'partial'
-        });
-      } else if (this.containerStatus === 'full') {
-        product.containers.full++;
-      }
-      product.currentStock = product.totalStock;
-      await product.save();
-    }
-  } else {
-    // Handle non-container movement using ATOMIC $inc operation
-    // This prevents race conditions from concurrent transactions
-    let stockChange = 0;
-    switch (this.movementType) {
-      case 'sale':
-      case 'fixed_blend':
-      case 'bundle_sale':
-      case 'bundle_blend_ingredient':
-      case 'blend_ingredient':
-      case 'custom_blend':
-        stockChange = -this.convertedQuantity;
-        break;
-      case 'return':
-        stockChange = this.convertedQuantity;
-        break;
-      case 'adjustment':
-        stockChange = this.convertedQuantity;
-        break;
-      case 'transfer':
-        // Handle transfer logic if needed
-        break;
-    }
-
-    // ATOMIC UPDATE: Use $inc instead of read-modify-write to prevent race conditions
-    // This ensures concurrent updates don't lose data
-    if (stockChange !== 0) {
-      await Product.updateOne(
-        { _id: this.productId },
-        {
-          $inc: {
-            currentStock: stockChange,
-            availableStock: stockChange
-          }
-        }
-      );
-      console.log(`[InventoryMovement] Atomic stock update: Product ${this.productId} ${stockChange > 0 ? '+' : ''}${stockChange}`);
-    }
+  if (stockChange !== 0) {
+    await Product.updateOne(
+      { _id: this.productId },
+      { $inc: { currentStock: stockChange, availableStock: stockChange } }
+    );
+    console.log(`[InventoryMovement] Atomic stock update: Product ${this.productId} ${stockChange > 0 ? '+' : ''}${stockChange}`);
   }
 };
 

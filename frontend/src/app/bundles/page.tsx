@@ -6,7 +6,7 @@ import { BundleList } from "@/components/bundles/BundleList"
 import { BundleForm } from "@/components/bundles/BundleForm"
 import { useToast } from "@/components/ui/use-toast"
 import type { Bundle, BundleFormData } from '@/types/bundle'
-import type { ProductCategory } from '@/types/inventory/product.types'
+import type { Product } from '@/types/inventory/product.types'
 import {
   useCreateBundleMutation,
   useUpdateBundleMutation,
@@ -25,16 +25,12 @@ export default function BundlesPage() {
 
   // Data queries
   const { data: categories = [] } = useBundleCategoriesQuery()
-  const { data: rawProducts = [] } = useInventory()
+  const { data: inventoryData } = useInventory({ limit: 1000 })
+  const rawProducts = inventoryData?.products || []
   const { templates: blendTemplates, getTemplates } = useBlendTemplates()
 
-  // Transform products to ensure category is always a ProductCategory object
-  const products = rawProducts.map(product => ({
-    ...product,
-    category: typeof product.category === 'string' 
-      ? { _id: '', name: product.category, level: 1, isActive: true } as ProductCategory
-      : product.category as ProductCategory
-  }))
+  // Products from backend already have populated category objects
+  const products = rawProducts as Product[]
 
   // Mutations
   const createBundleMutation = useCreateBundleMutation()

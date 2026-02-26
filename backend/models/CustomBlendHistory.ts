@@ -9,13 +9,6 @@ interface IBlendIngredient {
   unitOfMeasurementId: mongoose.Types.ObjectId;
   unitName: string;
   costPerUnit?: number;
-  selectedContainers?: Array<{
-    containerId: string;
-    containerCode: string;
-    quantityToConsume: number;
-    batchNumber?: string;
-    expiryDate?: Date;
-  }>;
 }
 
 // TypeScript interfaces
@@ -29,8 +22,6 @@ interface ICustomBlendHistory extends Document {
   totalIngredientCost: number;
   sellingPrice: number;
   marginPercent: number;
-  containerType?: mongoose.Types.ObjectId;
-  containerCapacity?: number;
   preparationNotes?: string;
   mixedBy: string;
   transactionId: mongoose.Types.ObjectId;
@@ -83,13 +74,6 @@ const BlendIngredientHistorySchema = new mongoose.Schema({
     type: Number,
     min: 0
   },
-  selectedContainers: [{
-    containerId: String,
-    containerCode: String,
-    quantityToConsume: Number,
-    batchNumber: String,
-    expiryDate: Date
-  }]
 }, { _id: false });
 
 // Custom Blend History Schema
@@ -138,16 +122,6 @@ const CustomBlendHistorySchema = new mongoose.Schema({
   marginPercent: {
     type: Number,
     default: 100
-  },
-  
-  // Container Information
-  containerType: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'ContainerType'
-  },
-  containerCapacity: {
-    type: Number,
-    min: 0
   },
   
   // Preparation Details

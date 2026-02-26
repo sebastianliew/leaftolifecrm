@@ -22,9 +22,10 @@ import {
   createProduct,
   updateProduct,
   deleteProduct,
-  addStock,
   getProductTemplates,
-  bulkDeleteProducts
+  bulkDeleteProducts,
+  getInventoryStats,
+  exportProducts
 } from '../controllers/products.controller.js';
 import {
   getRestockSuggestions,
@@ -33,14 +34,7 @@ import {
   getRestockHistory,
   getRestockBatches
 } from '../controllers/restock.controller.js';
-import {
-  getProductContainers,
-  getContainerDetails,
-  getContainerSaleHistory,
-  createContainer,
-  updateContainer,
-  deleteContainer
-} from '../controllers/containers.controller.js';
+// Container tracking removed — stock is now a single number in base units
 
 const router: IRouter = express.Router();
 
@@ -62,14 +56,15 @@ router.put('/categories/:id', requirePermission('inventory', 'canEditProducts'),
 router.delete('/categories/:id', requirePermission('inventory', 'canDeleteProducts'), deleteCategory);
 
 // Products routes
+router.get('/products/stats', requirePermission('inventory', 'canViewInventory'), getInventoryStats);
 router.get('/products', requirePermission('inventory', 'canViewInventory'), getProducts);
+router.get('/products/templates', requirePermission('inventory', 'canViewInventory'), getProductTemplates);
+router.get('/products/export', requirePermission('inventory', 'canViewInventory'), exportProducts);
+router.post('/products/bulk-delete', bulkOperationRateLimit, requirePermission('inventory', 'canDeleteProducts'), bulkDeleteProducts);
 router.get('/products/:id', requirePermission('inventory', 'canViewInventory'), getProductById);
 router.post('/products', requirePermission('inventory', 'canAddProducts'), createProduct);
 router.put('/products/:id', requirePermission('inventory', 'canEditProducts'), updateProduct);
 router.delete('/products/:id', requirePermission('inventory', 'canDeleteProducts'), deleteProduct);
-router.post('/products/bulk-delete', bulkOperationRateLimit, requirePermission('inventory', 'canDeleteProducts'), bulkDeleteProducts);
-router.post('/products/add-stock', requirePermission('inventory', 'canManageStock'), addStock);
-router.get('/products/templates', requirePermission('inventory', 'canViewInventory'), getProductTemplates);
 
 // Restock routes
 router.get('/restock/suggestions', requirePermission('inventory', 'canCreateRestockOrders'), getRestockSuggestions);
@@ -79,11 +74,6 @@ router.post('/restock/bulk', bulkOperationRateLimit, requirePermission('inventor
 router.get('/restock/batches', requirePermission('inventory', 'canViewInventory'), getRestockBatches);
 
 // Container (Bottle) routes - for partial unit sales tracking
-router.get('/products/:productId/containers', requirePermission('inventory', 'canViewInventory'), getProductContainers);
-router.get('/products/:productId/containers/:containerId', requirePermission('inventory', 'canViewInventory'), getContainerDetails);
-router.get('/products/:productId/containers/:containerId/history', requirePermission('inventory', 'canViewInventory'), getContainerSaleHistory);
-router.post('/products/:productId/containers', requirePermission('inventory', 'canManageStock'), createContainer);
-router.put('/products/:productId/containers/:containerId', requirePermission('inventory', 'canManageStock'), updateContainer);
-router.delete('/products/:productId/containers/:containerId', requirePermission('inventory', 'canManageStock'), deleteContainer);
+// Container routes removed — stock is now tracked as a single number in base units
 
 export default router;

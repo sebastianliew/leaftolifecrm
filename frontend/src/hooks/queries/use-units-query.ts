@@ -32,10 +32,8 @@ export function useUnitsQuery() {
   return useQuery({
     queryKey: ["inventory", "units"],
     queryFn: fetchUnits,
-    staleTime: 5 * 60 * 1000,   // 5 minutes
-    gcTime: 10 * 60 * 1000,     // 10 minutes cache
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    staleTime: 0,   // 5 minutes
+    gcTime: 0,     // 10 minutes cache
     retry: 3,
   })
 }

@@ -42,10 +42,10 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         }),
         defaultOptions: {
           queries: {
-            staleTime: 60 * 1000, // 1 minute
-            gcTime: 10 * 60 * 1000, // 10 minutes (was cacheTime)
+            staleTime: 0,  // No caching — internal clinic software
+            gcTime: 0,
             retry: 1,
-            refetchOnWindowFocus: false,
+            refetchOnWindowFocus: true, // Always fresh — internal clinic software
           },
           mutations: {
             retry: false,

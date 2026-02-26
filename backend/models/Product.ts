@@ -1,4 +1,8 @@
 import mongoose, { Document, Schema } from 'mongoose';
+import * as StockService from '../services/inventory/ProductStockService.js';
+import { populateReferences } from '../services/inventory/ProductReferenceService.js';
+
+// ── Interface ──
 
 export interface IProduct extends Document {
   name: string;
@@ -6,7 +10,6 @@ export interface IProduct extends Document {
   category: Schema.Types.ObjectId;
   sku: string;
   brand?: Schema.Types.ObjectId;
-  containerType?: Schema.Types.ObjectId;
   unitOfMeasurement: Schema.Types.ObjectId;
   quantity: number;
   reorderPoint: number;
@@ -24,59 +27,30 @@ export interface IProduct extends Document {
   restockFrequency: number;
   averageRestockQuantity: number;
   restockCount: number;
-  containerCapacity: number;
-  containers: {
-    full: number;
-    empty: number;
-    partial: Array<{
-      id: string;
-      remaining: number;
-      capacity: number;
-      status: 'full' | 'partial' | 'empty' | 'oversold';
-      lastMovement?: Schema.Types.ObjectId;
-      // Enhanced bottle tracking fields
-      openedAt?: Date;
-      batchNumber?: string;
-      expiryDate?: Date;
-      notes?: string;
-      saleHistory?: Array<{
-        transactionRef: string;
-        quantitySold: number;
-        soldAt: Date;
-        soldBy?: string;
-      }>;
-    }>;
-  };
   supplierId?: Schema.Types.ObjectId;
   supplierName?: string;
-  // Simplified entry fields for CSV-like interface
   categoryName?: string;
   brandName?: string;
   unitName?: string;
-  containerTypeName?: string;
   bundleInfo?: string;
   bundlePrice?: number;
   hasBundle?: boolean;
-  // Migration support fields
   legacyId?: string;
   migrationData?: {
     source?: string;
     importedAt?: Date;
     originalData?: Record<string, unknown>;
   };
-  // Fields from SQL that don't exist in current schema
   discountFlags?: {
     discountableForAll?: boolean;
     discountableForMembers?: boolean;
     discountableInBlends?: boolean;
   };
-  // Unit conversion support for blends
   unitConversions?: {
     targetUnit?: Schema.Types.ObjectId;
     conversionFactor?: number;
     notes?: string;
   };
-  // Common unit size for blends (e.g., 1ml, 20 drops, 1g)
   baseUnitSize?: number;
   isDeleted?: boolean;
   deletedAt?: Date;
@@ -84,14 +58,8 @@ export interface IProduct extends Document {
   deleteReason?: string;
   createdAt: Date;
   updatedAt: Date;
-  
-  // Method signatures
-  handlePartialContainerSale(quantity: number, options?: {
-    containerId?: string;
-    transactionRef?: string;
-    userId?: string;
-  }): Promise<void>;
-  handleFullContainerSale(): Promise<void>;
+
+  // Instance methods
   updateRestockAnalytics(quantity: number): Promise<void>;
   needsRestock(threshold?: number): boolean;
   getSuggestedRestockQuantity(): number;
@@ -106,35 +74,7 @@ export interface IProduct extends Document {
   generateSKU(): Promise<string>;
 }
 
-// Sale History Schema for bottle tracking
-const SaleHistorySchema = new mongoose.Schema({
-  transactionRef: { type: String, required: true },
-  quantitySold: { type: Number, required: true },
-  soldAt: { type: Date, default: Date.now },
-  soldBy: { type: String }
-}, { _id: false });
-
-// Container Schema with enhanced bottle tracking
-const ContainerSchema = new mongoose.Schema({
-  id: { type: String, required: true },
-  remaining: { type: Number, required: true },
-  capacity: { type: Number, required: true },
-  status: {
-    type: String,
-    enum: ['full', 'partial', 'empty', 'oversold'],
-    default: 'full'
-  },
-  lastMovement: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'InventoryMovement'
-  },
-  // Enhanced bottle tracking fields
-  openedAt: { type: Date },
-  batchNumber: { type: String },
-  expiryDate: { type: Date },
-  notes: { type: String },
-  saleHistory: [SaleHistorySchema]
-}, { _id: false });
+// ── Schema ──
 
 const productSchema = new mongoose.Schema<IProduct>({
   name: { type: String, required: true },
@@ -142,7 +82,6 @@ const productSchema = new mongoose.Schema<IProduct>({
   category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
   sku: { type: String, required: true },
   brand: { type: mongoose.Schema.Types.ObjectId, ref: 'Brand' },
-  containerType: { type: mongoose.Schema.Types.ObjectId, ref: 'ContainerType' },
   unitOfMeasurement: { type: mongoose.Schema.Types.ObjectId, ref: 'UnitOfMeasurement', required: true },
   quantity: { type: Number, required: true, default: 0 },
   reorderPoint: { type: Number, required: true, default: 10 },
@@ -152,466 +91,148 @@ const productSchema = new mongoose.Schema<IProduct>({
   reservedStock: { type: Number, default: 0 },
   costPrice: Number,
   sellingPrice: Number,
-  status: { 
-    type: String, 
-    enum: ['active', 'inactive', 'discontinued', 'pending_approval'],
-    default: 'active'
-  },
+  status: { type: String, enum: ['active', 'inactive', 'discontinued', 'pending_approval'], default: 'active' },
   isActive: { type: Boolean, default: true },
   expiryDate: { type: Date },
-  // Restock features
   autoReorderEnabled: { type: Boolean, default: false },
   lastRestockDate: { type: Date },
-  restockFrequency: { type: Number, default: 30 }, // days
+  restockFrequency: { type: Number, default: 30 },
   averageRestockQuantity: { type: Number, default: 0 },
   restockCount: { type: Number, default: 0 },
-  // Container tracking
-  containerCapacity: { type: Number, required: false, default: 0 },
-  containers: {
-    full: { type: Number, default: 0 },
-    partial: [ContainerSchema]
-  },
-  // Simplified entry fields for CSV-like interface
-  categoryName: { type: String }, // Direct text entry
-  brandName: { type: String }, // Direct text entry  
-  unitName: { type: String }, // Direct text entry
-  containerTypeName: { type: String }, // Direct text entry
-  bundleInfo: { type: String }, // From CSV "Bundle?" column
-  bundlePrice: { type: Number }, // From CSV "Bundle price" column
-  hasBundle: { type: Boolean, default: false }, // Computed from bundleInfo
-  
-  // Migration support fields
-  legacyId: { type: String, index: true }, // Original SQL ID
+  categoryName: String,
+  brandName: String,
+  unitName: String,
+  bundleInfo: String,
+  bundlePrice: Number,
+  hasBundle: { type: Boolean, default: false },
+  legacyId: { type: String, index: true },
   migrationData: {
-    source: { type: String }, // 'sql_inventory', 'sql_component', etc.
-    importedAt: { type: Date },
-    originalData: { type: mongoose.Schema.Types.Mixed } // Store original row for reference
+    source: String,
+    importedAt: Date,
+    originalData: mongoose.Schema.Types.Mixed
   },
-  
-  // Fields from SQL that don't exist in current schema
   discountFlags: {
     discountableForAll: { type: Boolean, default: true },
     discountableForMembers: { type: Boolean, default: true },
     discountableInBlends: { type: Boolean, default: false }
   },
-  
-  // Unit conversion support for blends
   unitConversions: {
     type: Map,
-    of: {
-      to: String,
-      factor: Number
-    },
+    of: { to: String, factor: Number },
     default: new Map()
   },
-  // Common unit size for blends (e.g., 1ml, 20 drops, 1g)
   baseUnitSize: { type: Number, default: 1 },
-  
-  supplierId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Supplier'
-  },
-  supplierName: { type: String }, // For direct entry during migration
-
-  // Soft delete fields
+  supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
+  supplierName: String,
   isDeleted: { type: Boolean, default: false },
-  deletedAt: { type: Date },
-  deletedBy: { type: String },
-  deleteReason: { type: String }
-}, {
-  timestamps: true
-});
+  deletedAt: Date,
+  deletedBy: String,
+  deleteReason: String
+}, { timestamps: true });
 
-// Add indexes for better query performance
+// ── Indexes ──
+
 productSchema.index({ status: 1 });
 productSchema.index({ category: 1 });
 productSchema.index({ currentStock: 1, reorderPoint: 1 });
 productSchema.index({ autoReorderEnabled: 1, lastRestockDate: 1 });
-// Migration indexes
 productSchema.index({ legacyId: 1, 'migrationData.source': 1 });
 productSchema.index({ 'migrationData.importedAt': 1 });
-
-// Soft delete indexes
 productSchema.index({ isDeleted: 1 });
 productSchema.index({ deletedAt: 1 });
 productSchema.index({ isDeleted: 1, status: 1 });
-
-// Unique SKU index that allows duplicates only when one is deleted
-// This ensures active products have unique SKUs
-productSchema.index(
-  { sku: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { isDeleted: { $ne: true } }
-  }
-);
-
-// Text index for search functionality
+productSchema.index({ sku: 1 }, { unique: true, partialFilterExpression: { isDeleted: { $ne: true } } });
 productSchema.index({ name: 'text', sku: 'text', description: 'text' });
 
-// Virtual for total stock calculation
-productSchema.virtual('totalStock').get(function() {
-  const fullContainers = this.containers?.full || 0;
-  const partialContainers = Array.isArray(this.containers?.partial) ? this.containers.partial : [];
-  return (fullContainers * (this.containerCapacity || 0)) + 
-         partialContainers.reduce((sum, p) => sum + (p?.remaining || 0), 0);
-});
+// ── Methods ──
 
-// Method to handle partial container sale with enhanced bottle tracking
-productSchema.methods.handlePartialContainerSale = async function(
-  quantity: number,
-  options?: {
-    containerId?: string;
-    transactionRef?: string;
-    userId?: string;
-  }
-) {
-  // If no container capacity is set, treat as regular stock deduction
-  if (!this.containerCapacity || this.containerCapacity <= 0) {
-    // Allow negative stock - validation removed for clinical workflow
-    // Staff can sell out-of-stock items and reconcile inventory later
-    this.currentStock -= quantity;
-    await this.save();
-    return;
-  }
-
-  // Helper to record sale history on a container
-  const recordSaleHistory = (container: typeof this.containers.partial[0]) => {
-    if (options?.transactionRef) {
-      if (!container.saleHistory) container.saleHistory = [];
-      container.saleHistory.push({
-        transactionRef: options.transactionRef,
-        quantitySold: quantity,
-        soldAt: new Date(),
-        soldBy: options.userId
-      });
-    }
-  };
-
-  // If a specific container is requested, target that one
-  if (options?.containerId) {
-    const targetIndex = this.containers?.partial?.findIndex(
-      (c: IProduct['containers']['partial'][0]) => c.id === options.containerId
-    );
-
-    if (targetIndex !== undefined && targetIndex >= 0) {
-      const container = this.containers.partial[targetIndex];
-      container.remaining -= quantity;
-      recordSaleHistory(container);
-
-      if (container.remaining <= 0) {
-        container.status = 'empty';
-        // Keep the container for history, but mark as empty
-      } else {
-        container.status = 'partial';
-      }
-
-      this.currentStock = this.totalStock;
-      await this.save();
-      return;
-    }
-    // If container not found, fall through to default FIFO logic
-  }
-
-  // Default FIFO logic - open new bottle or use existing partial
-  if (!Array.isArray(this.containers?.partial)) {
-    if (!this.containers) this.containers = { full: 0, partial: [] };
-    this.containers.partial = [];
-  }
-
-  // Check for existing partial containers first (FIFO)
-  if (this.containers.partial.length > 0) {
-    // Find first non-empty partial container
-    const activeContainer = this.containers.partial.find(
-      (c: IProduct['containers']['partial'][0]) => c.status !== 'empty' && c.remaining > 0
-    );
-
-    if (activeContainer) {
-      activeContainer.remaining -= quantity;
-      recordSaleHistory(activeContainer);
-
-      if (activeContainer.remaining <= 0) {
-        activeContainer.status = 'empty';
-      } else {
-        activeContainer.status = 'partial';
-      }
-
-      this.currentStock = this.totalStock;
-      await this.save();
-      return;
-    }
-  }
-
-  // No active partial containers - open a new bottle from full stock
-  if (this.containers?.full > 0) {
-    this.containers.full--;
-    const newContainer = {
-      id: `BOTTLE_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      remaining: this.containerCapacity - quantity,
-      capacity: this.containerCapacity,
-      status: 'partial' as const,
-      openedAt: new Date(),
-      saleHistory: options?.transactionRef ? [{
-        transactionRef: options.transactionRef,
-        quantitySold: quantity,
-        soldAt: new Date(),
-        soldBy: options.userId
-      }] : []
-    };
-    this.containers.partial.push(newContainer);
-  } else {
-    // No containers available - allow out-of-stock sales by tracking as oversold
-    const oversoldContainer = {
-      id: `OVERSOLD_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      remaining: -quantity,
-      capacity: this.containerCapacity,
-      status: 'oversold' as const,
-      openedAt: new Date(),
-      saleHistory: options?.transactionRef ? [{
-        transactionRef: options.transactionRef,
-        quantitySold: quantity,
-        soldAt: new Date(),
-        soldBy: options.userId
-      }] : []
-    };
-    this.containers.partial.push(oversoldContainer);
-  }
-
-  // Update current stock (recalculate from container data)
-  this.currentStock = this.totalStock;
+productSchema.methods.updateRestockAnalytics = async function (quantity: number) {
+  const self = this as unknown as IProduct;
+  const analytics = StockService.calculateRestockAnalytics(self, quantity);
+  Object.assign(this, analytics);
   await this.save();
 };
 
-// Method to handle full container sale
-productSchema.methods.handleFullContainerSale = async function() {
-  // If no container capacity is set, treat as regular stock deduction
-  if (!this.containerCapacity || this.containerCapacity <= 0) {
-    // Allow negative stock - validation removed for clinical workflow
-    // Staff can sell out-of-stock items and reconcile inventory later
-    this.currentStock--;
-    await this.save();
-    return;
-  }
-  
-  // Container-based logic - allow negative container counts for out-of-stock sales
-  if (this.containers?.full > 0) {
-    this.containers.full--;
-    this.currentStock = this.totalStock;
-  } else {
-    // Allow selling when no full containers available - track as negative container count
-    if (!this.containers) {
-      this.containers = { full: 0, partial: [], empty: [] };
-    }
-    this.containers.full--;  // This will go negative, indicating oversold containers
-    this.currentStock--;     // Track container deduction
-  }
-  await this.save();
+productSchema.methods.needsRestock = function (threshold?: number) {
+  return StockService.needsRestock(this as unknown as IProduct, threshold);
 };
 
-// Method to update restock analytics
-productSchema.methods.updateRestockAnalytics = async function(quantity: number) {
-  this.lastRestockDate = new Date();
-  this.restockCount = (this.restockCount || 0) + 1;
-  
-  // Update average restock quantity using rolling average
-  if (this.restockCount === 1) {
-    this.averageRestockQuantity = quantity;
-  } else {
-    this.averageRestockQuantity = ((this.averageRestockQuantity * (this.restockCount - 1)) + quantity) / this.restockCount;
-  }
-  
-  await this.save();
+productSchema.methods.getSuggestedRestockQuantity = function () {
+  return StockService.getSuggestedRestockQuantity(this as unknown as IProduct);
 };
 
-// Method to check if product needs restocking
-productSchema.methods.needsRestock = function(threshold: number = 1.0): boolean {
-  return this.currentStock <= (this.reorderPoint * threshold);
+productSchema.methods.isAutoReorderDue = function () {
+  return StockService.isAutoReorderDue(this as unknown as IProduct);
 };
 
-// Method to get suggested restock quantity
-productSchema.methods.getSuggestedRestockQuantity = function(): number {
-  if (this.averageRestockQuantity > 0) {
-    return Math.max(this.averageRestockQuantity, this.reorderPoint - this.currentStock);
-  }
-  return Math.max(this.reorderPoint, this.reorderPoint - this.currentStock);
+productSchema.methods.getBackorderQuantity = function () {
+  return StockService.getBackorderQuantity(this as unknown as IProduct);
 };
 
-// Method to check if auto-reorder is due
-productSchema.methods.isAutoReorderDue = function(): boolean {
-  if (!this.autoReorderEnabled || !this.lastRestockDate) return false;
-  
-  const daysSinceLastRestock = Math.floor(
-    (Date.now() - this.lastRestockDate.getTime()) / (1000 * 60 * 60 * 24)
-  );
-  
-  return daysSinceLastRestock >= this.restockFrequency;
+productSchema.methods.isOversold = function () {
+  return StockService.isOversold(this as unknown as IProduct);
 };
 
-// Method to get backorder quantity (negative stock amount)
-productSchema.methods.getBackorderQuantity = function(): number {
-  return Math.abs(Math.min(0, this.currentStock));
+productSchema.methods.getAvailableStock = function () {
+  return StockService.getAvailableStock(this as unknown as IProduct);
 };
 
-// Method to check if product is oversold (has negative stock)
-productSchema.methods.isOversold = function(): boolean {
-  return this.currentStock < 0;
+productSchema.methods.needsUrgentRestock = function () {
+  return StockService.needsUrgentRestock(this as unknown as IProduct);
 };
 
-// Method to get safe available stock (never negative for UI display)
-productSchema.methods.getAvailableStock = function(): number {
-  return Math.max(0, this.currentStock - (this.reservedStock || 0));
+productSchema.methods.populateReferences = async function () {
+  return populateReferences(this);
 };
 
-// Method to check if product needs urgent restocking (oversold or very low)
-productSchema.methods.needsUrgentRestock = function(): boolean {
-  return this.currentStock <= 0 || this.currentStock <= (this.reorderPoint * 0.5);
-};
-
-// Method to auto-create reference data and populate ObjectIds
-productSchema.methods.populateReferences = async function() {
-    const { Category } = await import('./Category.js');
-    const { Brand } = await import('./Brand.js');
-    const { UnitOfMeasurement } = await import('./UnitOfMeasurement.js');
-    const { ContainerType } = await import('./ContainerType.js');
-
-    // Auto-create Category if categoryName is provided
-    if (this.categoryName && !this.category) {
-      let category = await Category.findOne({ name: this.categoryName });
-      if (!category) {
-        category = new Category({ name: this.categoryName, isActive: true });
-        await category.save();
-      }
-      this.category = category._id;
-    }
-
-    // Auto-create Brand if brandName is provided
-    if (this.brandName && !this.brand) {
-      let brand = await Brand.findOne({ name: this.brandName });
-      if (!brand) {
-        brand = new Brand({ name: this.brandName, isActive: true });
-        await brand.save();
-      }
-      this.brand = brand._id;
-    }
-
-
-    // Auto-create UnitOfMeasurement if unitName is provided
-    if (this.unitName && !this.unitOfMeasurement) {
-      let unit = await UnitOfMeasurement.findOne({ 
-        $or: [{ name: this.unitName }, { abbreviation: this.unitName }]
-      });
-      if (!unit) {
-        // Determine unit type based on common patterns
-        let unitType = 'count';
-        if (['g', 'gram', 'grams', 'kg', 'kilogram'].includes(this.unitName.toLowerCase())) {
-          unitType = 'weight';
-        } else if (['ml', 'milliliter', 'l', 'liter', 'drops'].includes(this.unitName.toLowerCase())) {
-          unitType = 'volume';
-        }
-        
-        unit = new UnitOfMeasurement({ 
-          name: this.unitName,
-          abbreviation: this.unitName,
-          type: unitType,
-          isActive: true
-        });
-        await unit.save();
-      }
-      this.unitOfMeasurement = unit._id;
-    }
-
-    // Auto-create ContainerType if containerTypeName is provided
-    if (this.containerTypeName && !this.containerType) {
-      let containerType = await ContainerType.findOne({ name: this.containerTypeName });
-      if (!containerType) {
-        containerType = new ContainerType({ 
-          name: this.containerTypeName,
-          isActive: true
-        });
-        await containerType.save();
-      }
-      this.containerType = containerType._id;
-    }
-
-    return this;
-};
-
-// Method to convert between units
-productSchema.methods.convertUnit = function(fromValue: number, fromUnit: string, toUnit: string): number {
-  // If same unit, return as is
+productSchema.methods.convertUnit = function (fromValue: number, fromUnit: string, toUnit: string): number {
   if (fromUnit === toUnit) return fromValue;
-  
-  // Check if we have a direct conversion
+
   const conversion = this.unitConversions?.get(fromUnit);
-  if (conversion && conversion.to === toUnit) {
-    return fromValue * conversion.factor;
-  }
-  
-  // Check reverse conversion
-  const reverseConversion = this.unitConversions?.get(toUnit);
-  if (reverseConversion && reverseConversion.to === fromUnit) {
-    return fromValue / reverseConversion.factor;
-  }
-  
-  // Common conversions if not in product-specific conversions
-  const commonConversions: Record<string, Record<string, number>> = {
-    'drops': { 'ml': 0.05 },
-    'ml': { 'l': 0.001, 'drops': 20 },
-    'g': { 'kg': 0.001 },
-    'kg': { 'g': 1000 },
-    'l': { 'ml': 1000 }
+  if (conversion?.to === toUnit) return fromValue * conversion.factor;
+
+  const reverse = this.unitConversions?.get(toUnit);
+  if (reverse?.to === fromUnit) return fromValue / reverse.factor;
+
+  const common: Record<string, Record<string, number>> = {
+    drops: { ml: 0.05 }, ml: { l: 0.001, drops: 20 },
+    g: { kg: 0.001 }, kg: { g: 1000 }, l: { ml: 1000 }
   };
-  
-  if (commonConversions[fromUnit]?.[toUnit]) {
-    return fromValue * commonConversions[fromUnit][toUnit];
-  }
-  
+  if (common[fromUnit]?.[toUnit]) return fromValue * common[fromUnit][toUnit];
+
   throw new Error(`Cannot convert from ${fromUnit} to ${toUnit}`);
 };
 
-// Method to add unit conversion
-productSchema.methods.addUnitConversion = async function(fromUnit: string, toUnit: string, factor: number) {
-  if (!this.unitConversions) {
-    this.unitConversions = new Map();
-  }
+productSchema.methods.addUnitConversion = async function (fromUnit: string, toUnit: string, factor: number) {
+  if (!this.unitConversions) this.unitConversions = new Map();
   this.unitConversions.set(fromUnit, { to: toUnit, factor });
   await this.save();
 };
 
-// Method to generate SKU automatically
-productSchema.methods.generateSKU = async function() {
+productSchema.methods.generateSKU = async function () {
   if (this.sku) return this.sku;
+  const brandPrefix = this.brandName ? this.brandName.substring(0, 3).toUpperCase() : 'GEN';
+  const productAbbr = this.name.substring(0, 2).toUpperCase();
 
-  try {
-    // Get brand prefix (first 3 letters of brand name, default to 'GEN')
-    let brandPrefix = 'GEN';
-    if (this.brandName) {
-      brandPrefix = this.brandName.substring(0, 3).toUpperCase();
-    }
-
-    // Get product abbreviation (first 2 letters of product name)
-    const productAbbr = this.name.substring(0, 2).toUpperCase();
-
-    // Find the next sequential number for this brand
-    const existingProducts = await Product.find({
-      sku: { $regex: `^${brandPrefix}-${productAbbr}-` }
-    }).sort({ sku: 1 });
-
-    let nextNumber = 1;
-    if (existingProducts.length > 0) {
-      const lastSKU = existingProducts[existingProducts.length - 1].sku;
-      const match = lastSKU.match(/-(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1]) + 1;
-      }
-    }
-
-    this.sku = `${brandPrefix}-${productAbbr}-${nextNumber.toString().padStart(3, '0')}`;
-    return this.sku;
-  } catch (error) {
-    this.sku = `GEN-${Date.now()}`;
-    return this.sku;
+  const existing = await Product.find({ sku: { $regex: `^${brandPrefix}-${productAbbr}-` } }).sort({ sku: 1 });
+  let next = 1;
+  if (existing.length) {
+    const match = existing[existing.length - 1].sku.match(/-(\d+)$/);
+    if (match) next = parseInt(match[1]) + 1;
   }
+
+  this.sku = `${brandPrefix}-${productAbbr}-${next.toString().padStart(3, '0')}`;
+  return this.sku;
 };
 
-export const Product = mongoose.models.Product || mongoose.model('Product', productSchema); 
+productSchema.methods.softDelete = async function (userId?: string, reason?: string) {
+  this.isDeleted = true;
+  this.isActive = false;
+  this.status = 'inactive';
+  this.deletedAt = new Date();
+  if (userId) this.deletedBy = userId;
+  if (reason) this.deleteReason = reason;
+  return this.save();
+};
+
+export const Product = mongoose.models.Product || mongoose.model('Product', productSchema);

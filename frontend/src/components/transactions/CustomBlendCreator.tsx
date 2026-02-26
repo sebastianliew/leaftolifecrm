@@ -26,12 +26,13 @@ import type {
 
 import type { TransactionItem } from '@/types/transaction';
 import { useBlendTemplates } from '@/hooks/useBlendTemplates';
-import { useContainerTypes } from '@/hooks/useContainerTypes';
+// Container types removed — stub for backward compatibility
+const useContainerTypes = () => ({ containerTypes: [] as { id: string; name: string }[], getContainerTypes: () => {} });
 import { useToast } from '@/hooks/use-toast';
 
 import type { CustomBlendHistoryItem, BlendHistoryIngredient } from './BlendHistorySelector';
 import { usePermissions } from '@/hooks/usePermissions';
-import type { ContainerType } from '@/types/container';
+type ContainerType = { id: string; name: string };
 
 
 interface CustomBlendCreatorProps {

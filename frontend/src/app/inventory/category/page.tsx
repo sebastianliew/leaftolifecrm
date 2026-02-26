@@ -70,6 +70,12 @@ export default function CategoryPage() {
   }
 
   // Form submission handlers
+  const getErrorMessage = (error: unknown, fallback: string): string => {
+    if (error instanceof Error) return error.message
+    if (typeof error === 'object' && error !== null && 'message' in error) return String((error as { message: string }).message)
+    return fallback
+  }
+
   const handleFormSubmit = async (data: CreateCategoryRequest | UpdateCategoryRequest) => {
     try {
       if (dialogMode === 'create') {
@@ -88,10 +94,10 @@ export default function CategoryPage() {
         })
       }
       closeDialogs()
-    } catch {
+    } catch (error) {
       toast({
         title: "Error",
-        description: dialogMode === 'create' ? "Failed to create category" : "Failed to update category",
+        description: getErrorMessage(error, dialogMode === 'create' ? "Failed to create category" : "Failed to update category"),
         variant: "destructive",
       })
     }
@@ -108,10 +114,10 @@ export default function CategoryPage() {
         variant: "success",
       })
       closeDialogs()
-    } catch {
+    } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to delete category",
+        description: getErrorMessage(error, "Failed to delete category"),
         variant: "destructive",
       })
     }
@@ -193,7 +199,7 @@ export default function CategoryPage() {
                     if (loading) {
                       return (
                         <TableRow key="loading" className="border-b-0">
-                          <TableCell colSpan={4} className="text-center border-b-0 py-8">
+                          <TableCell colSpan={5} className="text-center border-b-0 py-8">
                             <div className="flex items-center justify-center space-x-2">
                               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
                               <span>Loading categories...</span>
@@ -206,7 +212,7 @@ export default function CategoryPage() {
                     if (paginatedCategories.length === 0) {
                       return (
                         <TableRow key="no-results" className="border-b-0">
-                          <TableCell colSpan={4} className="text-center border-b-0 py-8">
+                          <TableCell colSpan={5} className="text-center border-b-0 py-8">
                             <div className="text-gray-500">
                               {filters.search ? (
                                 <>

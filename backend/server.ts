@@ -26,7 +26,7 @@ import { AddressInfo } from 'net';
 // Import routes AFTER loading environment variables
 import authRoutes from './routes/auth.routes.js';
 import brandsRoutes from './routes/brands.routes.js';
-import containerTypesRoutes from './routes/container-types.routes.js';
+// Dead code removed: container-types routes (container tracking was removed)
 import refundsRoutes from './routes/refunds.routes.js';
 import transactionsRoutes from './routes/transactions.routes.js';
 import blendTemplatesRoutes from './routes/blend-templates.routes.js';
@@ -252,7 +252,6 @@ app.use('/api', checkDbConnection);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/brands', brandsRoutes);
-app.use('/api/container-types', containerTypesRoutes);
 app.use('/api/refunds', refundsRoutes);
 app.use('/api/transactions', transactionsRoutes);
 app.use('/api/invoices', invoicesRoutes);
@@ -277,39 +276,9 @@ interface CustomError extends Error {
   errors?: Record<string, unknown>;
 }
 
-// Global error handler
-const errorHandler: ErrorRequestHandler = (
-  err: CustomError, 
-  _req: Request, 
-  res: Response, 
-  _next: NextFunction
-): void => {
-  console.error(err.stack);
-  
-  // Handle specific errors
-  if (err.name === 'ValidationError') {
-    res.status(400).json({ 
-      error: 'Validation Error', 
-      details: err.errors 
-    });
-    return;
-  }
-  
-  if (err.name === 'UnauthorizedError') {
-    res.status(401).json({ 
-      error: 'Unauthorized' 
-    });
-    return;
-  }
-  
-  // Default error
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
-};
-
-app.use(errorHandler);
+// Global error handler — uses centralized middleware
+import { errorHandler as centralErrorHandler } from './middlewares/errorHandler.middleware.js';
+app.use(centralErrorHandler);
 
 // Start the server (waits for MongoDB connection first)
 startServer();

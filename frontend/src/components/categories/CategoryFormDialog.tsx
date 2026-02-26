@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import type { ProductCategory, CreateCategoryRequest, UpdateCategoryRequest } from "@/types/inventory/category.types"
 
 interface CategoryFormDialogProps {
@@ -25,6 +26,8 @@ export function CategoryFormDialog({
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    level: 1,
+    isActive: true,
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -35,11 +38,15 @@ export function CategoryFormDialog({
       setFormData({
         name: category.name,
         description: category.description || '',
+        level: category.level ?? 1,
+        isActive: category.isActive ?? true,
       })
     } else {
       setFormData({
         name: '',
         description: '',
+        level: 1,
+        isActive: true,
       })
     }
     setErrors({})
@@ -52,12 +59,16 @@ export function CategoryFormDialog({
       newErrors.name = 'Name is required'
     } else if (formData.name.length < 2) {
       newErrors.name = 'Name must be at least 2 characters'
-    } else if (formData.name.length > 100) {
-      newErrors.name = 'Name must be less than 100 characters'
+    } else if (formData.name.length > 200) {
+      newErrors.name = 'Name must be 200 characters or less'
     }
 
     if (formData.description && formData.description.length > 500) {
-      newErrors.description = 'Description must be less than 500 characters'
+      newErrors.description = 'Description must be 500 characters or less'
+    }
+
+    if (formData.level < 1) {
+      newErrors.level = 'Level must be at least 1'
     }
 
     setErrors(newErrors)
@@ -74,7 +85,7 @@ export function CategoryFormDialog({
     onSubmit(submitData)
   }
 
-  const handleInputChange = (field: string, value: string | number) => {
+  const handleInputChange = (field: string, value: string | number | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     
     // Clear error for this field when user starts typing
@@ -103,12 +114,16 @@ export function CategoryFormDialog({
               value={formData.name}
               onChange={(e) => handleInputChange('name', e.target.value)}
               placeholder="Enter category name"
+              maxLength={200}
               className={errors.name ? 'border-red-500' : ''}
               disabled={loading}
             />
-            {errors.name && (
-              <p className="text-sm text-red-500">{errors.name}</p>
-            )}
+            <div className="flex justify-between">
+              {errors.name ? (
+                <p className="text-sm text-red-500">{errors.name}</p>
+              ) : <span />}
+              <p className="text-xs text-gray-400">{formData.name.length}/200</p>
+            </div>
           </div>
           
           <div className="space-y-2">
@@ -118,12 +133,42 @@ export function CategoryFormDialog({
               value={formData.description}
               onChange={(e) => handleInputChange('description', e.target.value)}
               placeholder="Enter category description (optional)"
+              maxLength={500}
               className={errors.description ? 'border-red-500' : ''}
               disabled={loading}
             />
-            {errors.description && (
-              <p className="text-sm text-red-500">{errors.description}</p>
+            <div className="flex justify-between">
+              {errors.description ? (
+                <p className="text-sm text-red-500">{errors.description}</p>
+              ) : <span />}
+              <p className="text-xs text-gray-400">{formData.description.length}/500</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="level">Level</Label>
+            <Input
+              id="level"
+              type="number"
+              min={1}
+              value={formData.level}
+              onChange={(e) => handleInputChange('level', Math.max(1, parseInt(e.target.value) || 1))}
+              className={errors.level ? 'border-red-500' : ''}
+              disabled={loading}
+            />
+            {errors.level && (
+              <p className="text-sm text-red-500">{errors.level}</p>
             )}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <Label htmlFor="isActive" className="cursor-pointer">Active</Label>
+            <Switch
+              id="isActive"
+              checked={formData.isActive}
+              onCheckedChange={(checked) => handleInputChange('isActive', checked)}
+              disabled={loading}
+            />
           </div>
         </div>
         

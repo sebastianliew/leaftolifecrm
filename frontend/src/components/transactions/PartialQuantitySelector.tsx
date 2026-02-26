@@ -18,10 +18,7 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Progress } from "@/components/ui/progress"
 import { FaBox, FaTint } from "react-icons/fa"
-import { Package } from "lucide-react"
 import type { Product } from "@/types/inventory"
-import type { Bottle } from "@/types/container"
-import BottleSelector from "./BottleSelector"
 
 interface PartialQuantitySelectorProps {
   open: boolean
@@ -34,24 +31,13 @@ export function PartialQuantitySelector({ open, onClose, onConfirm, product }: P
   const [quantity, setQuantity] = useState(1)
   const [saleMode, setSaleMode] = useState<'pieces' | 'volume'>('pieces')
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
-  // Bottle selection state
-  const [showBottleSelector, setShowBottleSelector] = useState(false)
-  const [selectedBottle, setSelectedBottle] = useState<Bottle | null>(null)
-  const [selectedContainerId, setSelectedContainerId] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) {
       setQuantity(1)
       setSaleMode('pieces')
-      setSelectedBottle(null)
-      setSelectedContainerId(null)
     }
   }, [open])
-
-  const handleBottleSelect = (containerId: string | null, bottle: Bottle | null) => {
-    setSelectedContainerId(containerId)
-    setSelectedBottle(bottle)
-  }
 
   const handleConfirm = () => {
     const minValue = saleMode === 'volume' ? 0.1 : 1;
@@ -61,40 +47,37 @@ export function PartialQuantitySelector({ open, onClose, onConfirm, product }: P
       return
     }
 
-    // Show warning for out-of-stock sales but allow them to proceed
     if (quantity > maxQuantity) {
       setShowConfirmDialog(true)
       return
     }
 
-    onConfirm(quantity, selectedContainerId, unitDisplay)
+    onConfirm(quantity, null, unitDisplay)
     onClose()
   }
 
   const handleConfirmOutOfStock = () => {
     setShowConfirmDialog(false)
-    onConfirm(quantity, selectedContainerId, unitDisplay)
+    onConfirm(quantity, null, unitDisplay)
     onClose()
   }
 
   if (!product) return null
 
   const containerCapacity = product.containerCapacity || 1
-  const totalStock = product.currentStock || 0
-  
-  // Calculate total available based on mode
-  const totalAvailableVolume = totalStock * containerCapacity
-  
-  const maxQuantity = saleMode === 'pieces' 
-    ? totalAvailableVolume // Total pieces available across all containers
-    : totalAvailableVolume // Total volume available across all containers
+  // currentStock is now always in base units (ml, capsules, etc.)
+  const totalAvailable = product.currentStock || 0
+  const fullContainers = Math.floor(totalAvailable / containerCapacity)
 
-  const pricePerUnit = saleMode === 'pieces'
-    ? product.sellingPrice / containerCapacity
-    : product.sellingPrice / containerCapacity
+  const maxQuantity = totalAvailable
 
-  const totalPrice = pricePerUnit * quantity
-  const percentageUsed = (quantity / totalAvailableVolume) * 100
+  const pricePerUnit = product.sellingPrice / containerCapacity
+
+  const totalPrice = saleMode === 'pieces'
+    ? pricePerUnit * quantity
+    : pricePerUnit * quantity
+
+  const percentageUsed = totalAvailable > 0 ? (quantity / totalAvailable) * 100 : 0
 
   const unitDisplay = saleMode === 'pieces' ? 'pieces' : 
     (typeof product.unitOfMeasurement === 'object' && product.unitOfMeasurement !== null 
@@ -112,14 +95,13 @@ export function PartialQuantitySelector({ open, onClose, onConfirm, product }: P
           <div className="bg-gray-50 p-4 rounded-lg">
             <h4 className="font-medium">{product.name}</h4>
             <p className="text-sm text-gray-600">SKU: {product.sku}</p>
+            {containerCapacity > 1 && (
+              <p className="text-sm text-gray-600">
+                Container size: {containerCapacity} {unitDisplay} ({fullContainers} full container{fullContainers !== 1 ? 's' : ''})
+              </p>
+            )}
             <p className="text-sm text-gray-600">
-              Container capacity: {containerCapacity} {unitDisplay}
-            </p>
-            <p className="text-sm text-gray-600">
-              Available containers: {totalStock}
-            </p>
-            <p className="text-sm text-gray-600">
-              Total available: {maxQuantity} {unitDisplay}
+              Total available: {totalAvailable} {unitDisplay}
             </p>
           </div>
 
@@ -142,37 +124,6 @@ export function PartialQuantitySelector({ open, onClose, onConfirm, product }: P
               </div>
             </RadioGroup>
           </div>
-
-          {/* Bottle Selection */}
-          {containerCapacity > 0 && (
-            <div className="space-y-2 p-3 bg-green-50 rounded-lg border border-green-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label className="text-green-800">Select Bottle (Optional)</Label>
-                  <p className="text-xs text-green-700">
-                    {selectedBottle ? (
-                      <span className="flex items-center gap-1">
-                        <Package className="w-3 h-3" />
-                        {selectedBottle.remaining} {unitDisplay} remaining
-                      </span>
-                    ) : (
-                      'Auto-select (FIFO) or choose specific bottle'
-                    )}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowBottleSelector(true)}
-                  className="border-green-300 text-green-700 hover:bg-green-100"
-                >
-                  <Package className="w-4 h-4 mr-1" />
-                  {selectedBottle ? 'Change' : 'Select'}
-                </Button>
-              </div>
-            </div>
-          )}
 
           <div className="space-y-2">
             <Label htmlFor="quantity">Quantity ({unitDisplay})</Label>
@@ -222,7 +173,7 @@ export function PartialQuantitySelector({ open, onClose, onConfirm, product }: P
             </div>
             <div className="text-sm text-center">
               <p className="text-gray-500">
-                Available: {maxQuantity} {unitDisplay}
+                Available: {totalAvailable} {unitDisplay}
               </p>
               {quantity > maxQuantity && (
                 <p className="text-orange-500 mt-1">
@@ -234,15 +185,10 @@ export function PartialQuantitySelector({ open, onClose, onConfirm, product }: P
 
           <div className="space-y-2">
             <Label>Stock Usage</Label>
-            <Progress value={percentageUsed} className="h-2" />
+            <Progress value={Math.min(percentageUsed, 100)} className="h-2" />
             <p className="text-sm text-gray-500 text-center">
-              {percentageUsed.toFixed(1)}% of total available stock
+              {percentageUsed.toFixed(1)}% of available stock
             </p>
-            {saleMode === 'volume' && (
-              <p className="text-xs text-gray-400 text-center">
-                This will consume from {Math.ceil(quantity / containerCapacity)} container(s)
-              </p>
-            )}
           </div>
 
           <div className="border-t pt-4">
@@ -315,19 +261,6 @@ export function PartialQuantitySelector({ open, onClose, onConfirm, product }: P
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Bottle Selector Modal */}
-      {product && (
-        <BottleSelector
-          productId={product._id || ''}
-          productName={product.name}
-          requiredQuantity={quantity}
-          unitAbbreviation={unitDisplay}
-          open={showBottleSelector}
-          onClose={() => setShowBottleSelector(false)}
-          onSelect={handleBottleSelect}
-        />
-      )}
     </Dialog>
   )
 }

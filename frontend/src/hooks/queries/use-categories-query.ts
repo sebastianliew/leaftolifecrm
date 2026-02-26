@@ -9,17 +9,17 @@ import type {
   CategorySort 
 } from "@/types/inventory/category.types"
 
-// Constants for query configuration
+// Cache timing — categories rarely change, mutations invalidate automatically
+const STALE_TIME = 5 * 60 * 1000   // 5 minutes
+const GC_TIME = 10 * 60 * 1000     // 10 minutes
 
 // Query hooks
 export function useCategoriesQuery(filters?: CategoryFilters, sort?: CategorySort) {
   return useQuery({
     queryKey: ['inventory', 'categories', filters, sort],
     queryFn: () => categoriesService.getCategories(filters, sort),
-    staleTime: 5 * 60 * 1000,  // 5 minutes - categories rarely change
-    gcTime: 10 * 60 * 1000,    // 10 minutes cache
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
+    staleTime: STALE_TIME,
+    gcTime: GC_TIME,
     retry: 3,
   })
 }
@@ -29,9 +29,8 @@ export function useCategoryQuery(id: string) {
     queryKey: ['inventory', 'categories', id],
     queryFn: () => categoriesService.getCategoryById(id),
     enabled: !!id,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-    refetchOnWindowFocus: false,
+    staleTime: STALE_TIME,
+    gcTime: GC_TIME,
     retry: 3,
   })
 }
@@ -40,9 +39,8 @@ export function useRootCategoriesQuery() {
   return useQuery({
     queryKey: ['inventory', 'categories', 'root'],
     queryFn: () => categoriesService.getRootCategories(),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-    refetchOnWindowFocus: false,
+    staleTime: STALE_TIME,
+    gcTime: GC_TIME,
     retry: 3,
   })
 }

@@ -43,9 +43,8 @@ export function useInventoryReport() {
   return useQuery({
     queryKey: queryKeys.inventoryReport(),
     queryFn: () => fetchAPI('/reports/inventory-analysis'),
-    staleTime: 10 * 60 * 1000, // 10 minutes - reports are expensive
-    gcTime: 15 * 60 * 1000,    // 15 minutes cache
-    refetchOnWindowFocus: false,
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 
@@ -53,9 +52,8 @@ export function useItemSalesReport() {
   return useQuery({
     queryKey: queryKeys.itemSalesReport(),
     queryFn: () => fetchAPI('/reports/item-sales'),
-    staleTime: 10 * 60 * 1000, // 10 minutes - reports are expensive
-    gcTime: 15 * 60 * 1000,    // 15 minutes cache
-    refetchOnWindowFocus: false,
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 

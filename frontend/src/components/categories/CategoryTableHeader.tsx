@@ -38,6 +38,16 @@ export function CategoryTableHeader({ sort, onSort }: CategoryTableHeaderProps) 
             <SortIcon field="description" />
           </div>
         </TableHead>
+
+        <TableHead 
+          className="cursor-pointer hover:bg-gray-50 border-b-0 select-none text-center"
+          onClick={() => onSort('level')}
+        >
+          <div className="flex items-center justify-center gap-1">
+            Level
+            <SortIcon field="level" />
+          </div>
+        </TableHead>
         
         <TableHead 
           className="cursor-pointer hover:bg-gray-50 border-b-0 select-none"

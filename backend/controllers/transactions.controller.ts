@@ -14,6 +14,7 @@ import type { FeaturePermissions } from '../lib/permissions/types.js';
 import { createAuditLog } from '../models/AuditLog.js';
 import { transactionInventoryService } from '../services/TransactionInventoryService.js';
 import { normalizeTransactionForPayment, formatInvoiceFilename } from '../utils/transactionUtils.js';
+import { DiscountValidationService } from '../services/DiscountValidationService.js';
 
 const permissionService = PermissionService.getInstance();
 
@@ -338,6 +339,16 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
           res.status(403).json({ error: billDiscountCheck.reason || 'Bill discount not permitted' });
           return;
         }
+
+        // Also validate bill discount doesn't apply to non-eligible items
+        const billEligibility = await DiscountValidationService.validateBillDiscount(
+          transactionData.discountAmount,
+          transactionData.items
+        );
+        if (!billEligibility.valid) {
+          res.status(400).json({ error: billEligibility.error, code: 'BILL_DISCOUNT_INELIGIBLE_ITEMS' });
+          return;
+        }
       }
 
       // Check item-level discounts
@@ -365,42 +376,25 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
     }
 
     // ========================================================================
-    // Validate item discounts against patient's actual membership tier
-    // Prevents frontend manipulation of discount amounts beyond entitlement
+    // Validate item discounts — ALL business logic in DiscountValidationService
+    // Checks: item type eligibility, product discountFlags, tier % limits
+    // Applies to ALL transactions (including drafts) to prevent manipulation
     // ========================================================================
-    if (transactionData.customerId && transactionData.status !== 'draft') {
-      const { isValidObjectId } = await import('../lib/validations/sanitize.js');
-      if (isValidObjectId(transactionData.customerId)) {
-        const { Patient: PatientModel } = await import('../models/Patient.js');
-        const patient = await PatientModel.findById(transactionData.customerId)
-          .select('status memberBenefits')
-          .lean() as { status?: string; memberBenefits?: { discountPercentage?: number } } | null;
+    {
+      const discountValidation = await DiscountValidationService.validateTransaction(
+        transactionData.items,
+        transactionData.customerId
+      );
 
-        if (patient) {
-          // Warn if patient is inactive (don't block — staff may have a reason)
-          if (patient.status === 'inactive') {
-            console.warn('[Transaction] Creating transaction for INACTIVE patient:', transactionData.customerId);
-          }
-
-          // Validate item discount amounts don't exceed patient's entitlement
-          const maxDiscountPct = patient.memberBenefits?.discountPercentage ?? 0;
-          for (const item of transactionData.items) {
-            if (item.discountAmount && item.discountAmount > 0) {
-              const itemTotal = (item.unitPrice ?? 0) * (item.quantity ?? 0);
-              if (itemTotal > 0) {
-                const appliedPct = (item.discountAmount / itemTotal) * 100;
-                // Allow 1% tolerance for rounding
-                if (appliedPct > maxDiscountPct + 1) {
-                  res.status(400).json({
-                    error: `Item "${item.name}" has ${appliedPct.toFixed(1)}% discount but patient's tier allows max ${maxDiscountPct}%`,
-                    item: item.name
-                  });
-                  return;
-                }
-              }
-            }
-          }
-        }
+      if (!discountValidation.valid) {
+        const firstError = discountValidation.errors[0];
+        res.status(400).json({
+          error: firstError.error,
+          item: firstError.item,
+          code: firstError.code,
+          allErrors: discountValidation.errors
+        });
+        return;
       }
     }
 
@@ -628,6 +622,29 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
     if (!existingTransaction) {
       res.status(404).json({ error: 'Transaction not found' });
       return;
+    }
+
+    // ========================================================================
+    // Validate item discounts on update (same rules as create)
+    // Uses customerId from update payload, falling back to existing transaction
+    // ========================================================================
+    if (updateData.items && Array.isArray(updateData.items)) {
+      const customerId = updateData.customerId || existingTransaction.customerId;
+      const discountValidation = await DiscountValidationService.validateTransaction(
+        updateData.items,
+        customerId
+      );
+
+      if (!discountValidation.valid) {
+        const firstError = discountValidation.errors[0];
+        res.status(400).json({
+          error: firstError.error,
+          item: firstError.item,
+          code: firstError.code,
+          allErrors: discountValidation.errors
+        });
+        return;
+      }
     }
 
     // Detect cancelled transaction being edited - restore to draft

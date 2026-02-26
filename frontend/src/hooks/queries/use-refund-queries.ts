@@ -42,7 +42,6 @@ export function useRefunds(filters?: RefundFilters & { page?: number; limit?: nu
     },
     retry: 1,
     retryDelay: 1000,
-    refetchOnWindowFocus: false,
   });
 }
 

@@ -19,6 +19,8 @@ export interface ProductCategory extends CategoryBase {
 export interface CreateCategoryRequest {
   name: string;
   description?: string;
+  level?: number;
+  isActive?: boolean;
   parent?: string;
 }
 
@@ -26,6 +28,8 @@ export interface UpdateCategoryRequest {
   id: string;
   name?: string;
   description?: string;
+  level?: number;
+  isActive?: boolean;
   parent?: string;
 }
 

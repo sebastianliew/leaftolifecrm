@@ -41,7 +41,7 @@ export function useDashboardStats() {
   return useQuery({
     queryKey: queryKeys.dashboardStats,
     queryFn: () => fetchAPI<DashboardStats>('/api/dashboard/stats'),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 0, // 5 minutes
+    gcTime: 0, // 10 minutes
   });
 }

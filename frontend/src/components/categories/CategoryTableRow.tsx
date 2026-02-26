@@ -42,6 +42,10 @@ export function CategoryTableRow({ category, onEdit, onDelete }: CategoryTableRo
           {category.description || '-'}
         </span>
       </TableCell>
+
+      <TableCell className="border-b-0 text-center">
+        <Badge variant="outline">{category.level}</Badge>
+      </TableCell>
       
       <TableCell className="border-b-0 text-sm text-gray-500">
         {formatDate(category.createdAt)}

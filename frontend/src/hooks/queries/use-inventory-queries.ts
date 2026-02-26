@@ -2,115 +2,100 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchAPI, queryKeys } from '@/lib/query-client';
 import { Product } from '@/types/inventory/product.types';
 
-interface InventoryItem {
-  _id: string;
-  name: string;
-  brandId?: string;
-  brandName?: string;
+// ── Types ──
+
+export interface InventoryFilters {
+  search?: string;
   category?: string;
-  sku?: string;
-  stock: number;
-  currentStock?: number; // Backend field
-  price: number;
-  sellingPrice?: number; // Backend field
-  reorderLevel?: number;
-  reorderPoint?: number; // Backend field
-  maxStock?: number;
-  unitOfMeasure?: string;
-  supplierId?: string;
-  supplierName?: string;
-  location?: string;
-  batchNumber?: string;
-  expiryDate?: string;
-  description?: string;
-  active: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  brand?: string;
+  stockStatus?: 'in_stock' | 'low_stock' | 'out_of_stock';
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  limit?: number;
 }
 
-export function useInventory(includeInactive = false) {
-  return useQuery({
-    queryKey: [...queryKeys.inventory, { includeInactive }],
-    queryFn: async () => {
-      const params = new URLSearchParams({
-        limit: '1000',
-        ...(includeInactive && { includeInactive: 'true' })
-      });
-      
-      const data = await fetchAPI<{ products: Product[] }>(`/inventory/products?${params}`);
-      const rawProducts = data.products || data || [];
+export interface InventoryStats {
+  totalProducts: number;
+  activeProducts: number;
+  outOfStock: number;
+  lowStock: number;
+  expired: number;
+  expiringSoon: number;
+  totalValue: number;
+}
 
-      // Simple transformation - map backend field names to frontend
-      return rawProducts.map((product: Product) => ({
-        ...product,
-        stock: product.currentStock || 0,
-        price: product.sellingPrice || 0,
-        reorderLevel: product.reorderPoint || 0,
-        unitOfMeasure: product.unitOfMeasurement?.name || '',
-        brandName: product.brand?.name || '',
-        category: product.category?.name || (typeof product.category === 'string' ? product.category : ''),
-      }));
+interface PaginatedProducts {
+  products: Product[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+}
+
+// ── Queries ──
+
+export function useInventory(filters: InventoryFilters = {}) {
+  return useQuery({
+    queryKey: [...queryKeys.inventory, filters],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (filters.search) params.set('search', filters.search);
+      if (filters.category && filters.category !== 'all') params.set('category', filters.category);
+      if (filters.brand && filters.brand !== 'all') params.set('brand', filters.brand);
+      if (filters.stockStatus && filters.stockStatus !== ('all' as string)) params.set('stockStatus', filters.stockStatus);
+      if (filters.sortBy) params.set('sortBy', filters.sortBy);
+      if (filters.sortOrder) params.set('sortOrder', filters.sortOrder);
+      params.set('page', String(filters.page || 1));
+      params.set('limit', String(filters.limit || 20));
+
+      return fetchAPI<PaginatedProducts>(`/inventory/products?${params}`);
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000,   // 10 minutes (was cacheTime)
-    refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    retry: (failureCount, error: Error & { status?: number }) => {
-      // Don't retry on 429 (rate limit) errors
-      if (error?.status === 429 || error?.message?.includes('too many requests')) {
-        return false;
-      }
-      // Retry up to 3 times for other errors
-      return failureCount < 3;
-    },
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 
+export function useInventoryStats() {
+  return useQuery({
+    queryKey: [...queryKeys.inventory, 'stats'],
+    queryFn: () => fetchAPI<InventoryStats>('/inventory/products/stats'),
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
+// ── Mutations ──
+
 export function useCreateInventoryItem() {
   const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: (data: Partial<InventoryItem>) => {
-      // Transform frontend field names to backend API format
-      const backendData = {
-        ...data,
-        // Map frontend fields to backend fields
-        currentStock: data.stock || data.currentStock || 0,
-        sellingPrice: data.price || data.sellingPrice || 0,
-        reorderPoint: data.reorderLevel || data.reorderPoint || 10,
-      };
 
-      return fetchAPI('/inventory/products', {
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      fetchAPI('/inventory/products', {
         method: 'POST',
-        body: JSON.stringify(backendData),
-      });
-    },
+        body: JSON.stringify(data),
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory, refetchType: 'all' });
     },
   });
 }
 
 export function useUpdateInventoryItem() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<InventoryItem> }) => {
-      const backendData = {
-        ...data,
-        currentStock: data.stock ?? data.currentStock,
-        sellingPrice: data.price ?? data.sellingPrice,
-        reorderPoint: data.reorderLevel ?? data.reorderPoint,
-      };
-      return fetchAPI(`/inventory/products/${id}`, {
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      fetchAPI(`/inventory/products/${id}`, {
         method: 'PUT',
-        body: JSON.stringify(backendData),
-      });
-    },
+        body: JSON.stringify(data),
+      }),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryItem(variables.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventoryItem(variables.id), refetchType: 'all' });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory, refetchType: 'all' });
     },
   });
 }
@@ -119,17 +104,10 @@ export function useDeleteInventoryItem() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id: string) => {
-      return fetchAPI(`/inventory/products/${id}`, {
-        method: 'DELETE',
-      });
-    },
+    mutationFn: (id: string) =>
+      fetchAPI(`/inventory/products/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
-      // Invalidate triggers automatic refetch - simpler and more efficient
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
-    },
-    onError: (error) => {
-      console.error('Delete product error:', error);
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory, refetchType: 'all' });
     },
   });
 }
@@ -138,18 +116,13 @@ export function useBulkDeleteInventoryItems() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (productIds: string[]) => {
-      return fetchAPI('/inventory/products/bulk-delete', {
+    mutationFn: (productIds: string[]) =>
+      fetchAPI('/inventory/products/bulk-delete', {
         method: 'POST',
         body: JSON.stringify({ productIds }),
-      });
-    },
+      }),
     onSuccess: () => {
-      // Invalidate triggers automatic refetch - simpler and more efficient
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventory });
-    },
-    onError: (error) => {
-      console.error('Bulk delete error:', error);
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory, refetchType: 'all' });
     },
   });
 }

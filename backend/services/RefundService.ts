@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { Refund, IRefund } from '../models/Refund.js';
 import { Transaction } from '../models/Transaction.js';
 import { Product } from '../models/Product.js';
+import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 import { createAuditLog } from '../models/AuditLog.js';
 
 interface RefundFilters {
@@ -339,12 +340,24 @@ export class RefundService {
         throw new Error('Refund must be approved before processing');
       }
 
-      // Restore inventory for refunded items
+      // Restore inventory via InventoryMovement (same pattern as sales/restocks)
       for (const item of refund.items) {
         const product = await Product.findById(item.productId);
         if (product) {
-          product.quantity = (product.quantity || 0) + item.refundQuantity;
-          await product.save();
+          const movement = new InventoryMovement({
+            productId: product._id,
+            movementType: 'return',
+            quantity: item.refundQuantity,
+            convertedQuantity: item.refundQuantity,
+            unitOfMeasurementId: product.unitOfMeasurement,
+            baseUnit: 'unit',
+            reference: `REFUND-${refund.refundNumber || refundId}`,
+            notes: `Refund: ${item.productName || product.name} x ${item.refundQuantity}`,
+            createdBy: userId,
+            productName: item.productName || product.name,
+          });
+          await movement.save();
+          await movement.updateProductStock(); // Atomic $inc on currentStock
         }
       }
 

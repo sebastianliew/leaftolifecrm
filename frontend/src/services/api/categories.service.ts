@@ -73,44 +73,29 @@ class CategoriesService {
    * Create a new category
    */
   async createCategory(data: CreateCategoryRequest): Promise<ProductCategory> {
-    try {
-      return await fetchAPI<ProductCategory>(this.baseEndpoint, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-    } catch (error) {
-      console.error('Failed to create category:', error);
-      throw new Error(`Failed to create category: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    return await fetchAPI<ProductCategory>(this.baseEndpoint, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   }
 
   /**
    * Update an existing category
    */
   async updateCategory({ id, ...data }: UpdateCategoryRequest): Promise<ProductCategory> {
-    try {
-      return await fetchAPI<ProductCategory>(`${this.baseEndpoint}/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(data),
-      });
-    } catch (error) {
-      console.error(`Failed to update category ${id}:`, error);
-      throw new Error(`Failed to update category: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    return await fetchAPI<ProductCategory>(`${this.baseEndpoint}/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   }
 
   /**
    * Delete a category
    */
   async deleteCategory(id: string): Promise<void> {
-    try {
-      await fetchAPI<{ message: string }>(`${this.baseEndpoint}/${id}`, {
-        method: 'DELETE',
-      });
-    } catch (error) {
-      console.error(`Failed to delete category ${id}:`, error);
-      throw new Error(`Failed to delete category: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    await fetchAPI<{ message: string }>(`${this.baseEndpoint}/${id}`, {
+      method: 'DELETE',
+    });
   }
 
   /**

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import type { BlendTemplate, BlendIngredient } from '@/types/blend';
 import type { Product, UnitOfMeasurement } from '@/types/inventory';
 import { extractUnitId, getDefaultUnit } from '@/utils/unit-helpers';
-import { isContainerBased, convertContainerToContentUnit } from '@/utils/container-helpers';
+// Container helpers removed — container tracking no longer exists
 import { DEFAULT_INGREDIENT_QUANTITY } from '@/constants/blend-templates';
 
 interface FormData {
@@ -113,23 +113,11 @@ export function useTemplateForm(template?: BlendTemplate, units: UnitOfMeasureme
     const productUOM = product.unitOfMeasurement;
     let unitId = '';
     let unitName = '';
-    let costPerUnit = product.sellingPrice || 0;
-    let defaultQuantity = DEFAULT_INGREDIENT_QUANTITY;
-    let availableStock = product.currentStock || 0;
+    const costPerUnit = product.sellingPrice || 0;
+    const defaultQuantity = DEFAULT_INGREDIENT_QUANTITY;
+    const availableStock = product.currentStock || 0;
 
-    // Check if this is a container-based product
-    if (isContainerBased(product.unitOfMeasurement?.name) && product.containerCapacity) {
-      const conversion = convertContainerToContentUnit(product, units);
-      if (conversion) {
-        unitId = conversion.unitId;
-        unitName = conversion.unitName;
-        costPerUnit = conversion.costPerUnit;
-        defaultQuantity = conversion.defaultQuantity;
-        availableStock = conversion.availableStock;
-      }
-    }
-
-    // If no unit found from container conversion, use product's unit
+    // Use product's unit
     if (!unitId && productUOM) {
       if (typeof productUOM === 'object' && productUOM !== null) {
         // Handle populated unit object

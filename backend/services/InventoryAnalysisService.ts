@@ -94,23 +94,23 @@ export class InventoryAnalysisService {
           id: { $toString: '$_id' },
           name: 1,
           category: { $ifNull: ['$categoryName', 'Uncategorized'] },
-          current_stock: { $ifNull: ['$currentStock', '$quantity', 0] },
+          current_stock: { $ifNull: ['$currentStock', 0] },
           min_stock: { $ifNull: ['$reorderPoint', 10] },
           max_stock: { $multiply: [{ $ifNull: ['$reorderPoint', 10] }, 5] },
           unit: { $ifNull: ['$unitName', 'units'] },
           unit_cost: { $ifNull: ['$costPrice', 0] },
           total_value: { 
             $multiply: [
-              { $ifNull: ['$currentStock', '$quantity', 0] }, 
+              { $ifNull: ['$currentStock', 0] }, 
               { $ifNull: ['$costPrice', 0] }
             ] 
           },
           status: {
             $switch: {
               branches: [
-                { case: { $lte: [{ $ifNull: ['$currentStock', '$quantity', 0] }, 0] }, then: 'out' },
-                { case: { $lte: [{ $ifNull: ['$currentStock', '$quantity', 0] }, '$reorderPoint'] }, then: 'low' },
-                { case: { $gte: [{ $ifNull: ['$currentStock', '$quantity', 0] }, { $multiply: ['$reorderPoint', 5] }] }, then: 'overstock' }
+                { case: { $lte: [{ $ifNull: ['$currentStock', 0] }, 0] }, then: 'out' },
+                { case: { $lte: [{ $ifNull: ['$currentStock', 0] }, '$reorderPoint'] }, then: 'low' },
+                { case: { $gte: [{ $ifNull: ['$currentStock', 0] }, { $multiply: ['$reorderPoint', 5] }] }, then: 'overstock' }
               ],
               default: 'optimal'
             }
@@ -218,7 +218,7 @@ export class InventoryAnalysisService {
           value: { 
             $sum: { 
               $multiply: [
-                { $ifNull: ['$currentStock', '$quantity', 0] }, 
+                { $ifNull: ['$currentStock', 0] }, 
                 { $ifNull: ['$costPrice', 0] }
               ] 
             } 

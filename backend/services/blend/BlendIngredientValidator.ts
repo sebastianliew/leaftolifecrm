@@ -43,7 +43,7 @@ export class BlendIngredientValidator {
   }
   
   async validateAndEnrichIngredients(
-    ingredients: Omit<BlendIngredient, 'availableStock' | 'selectedContainers'>[]
+    ingredients: Omit<BlendIngredient, 'availableStock'>[]
   ): Promise<BlendIngredient[]> {
     await connectDB();
     
@@ -75,12 +75,12 @@ export class BlendIngredientValidator {
       };
     }
     
-    if (!product.isActive) {
+    if (product.isDeleted || !product.isActive) {
       return {
         error: {
           ingredientId: ingredient.productId,
           ingredientName: ingredient.name,
-          error: 'Product is inactive',
+          error: product.isDeleted ? 'Product has been deleted' : 'Product is inactive',
           requiredQuantity: ingredient.quantity * batchQuantity,
           availableQuantity: product.currentStock || 0
         }
@@ -111,17 +111,36 @@ export class BlendIngredientValidator {
         }
       };
     }
+
+    // Check expiry
+    if (product.expiryDate) {
+      const daysUntilExpiry = Math.ceil(
+        (new Date(product.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      );
+      if (daysUntilExpiry <= 7) {
+        return {
+          warning: {
+            ingredientId: ingredient.productId,
+            ingredientName: ingredient.name,
+            warning: `Product expires in ${daysUntilExpiry} days`
+          }
+        };
+      }
+    }
     
     return {};
   }
   
   private async enrichSingleIngredient(
-    ingredient: Omit<BlendIngredient, 'availableStock' | 'selectedContainers'>
+    ingredient: Omit<BlendIngredient, 'availableStock'>
   ): Promise<BlendIngredient> {
-    // Validate product exists
+    // Validate product exists and is not deleted
     const product = await Product.findById(ingredient.productId);
     if (!product) {
       throw new Error(`Product not found: ${ingredient.name}`);
+    }
+    if (product.isDeleted) {
+      throw new Error(`Product "${product.name}" has been deleted and cannot be used as an ingredient`);
     }
 
     // Check for data consistency issues and auto-correct
@@ -145,21 +164,13 @@ export class BlendIngredientValidator {
    * Validates data consistency and warns about common issues
    */
   private validateDataConsistency(
-    ingredient: Omit<BlendIngredient, 'availableStock' | 'selectedContainers'>,
+    ingredient: Omit<BlendIngredient, 'availableStock'>,
     product: {
       _id: string;
       name: string;
       costPrice?: number;
       sellingPrice?: number;
       currentStock?: number;
-      containerCapacity?: number;
-      containers?: {
-        full?: number;
-        partial?: Array<{
-          remaining: number;
-          capacity: number;
-        }>;
-      };
     }
   ): void {
     // Check if ingredient is using cost price instead of selling price (THE MAIN ISSUE!)
@@ -193,7 +204,7 @@ export class BlendIngredientValidator {
    * Gets the correct price - should ALWAYS be selling price for all transactions
    */
   private getCorrectCostPrice(
-    ingredient: Omit<BlendIngredient, 'availableStock' | 'selectedContainers'>,
+    ingredient: Omit<BlendIngredient, 'availableStock'>,
     product: {
       costPrice?: number;
       sellingPrice?: number;
@@ -220,7 +231,7 @@ export class BlendIngredientValidator {
    * Checks for ingredient data inconsistencies across a blend template
    */
   async checkIngredientConsistency(
-    ingredients: Omit<BlendIngredient, 'availableStock' | 'selectedContainers'>[]
+    ingredients: Omit<BlendIngredient, 'availableStock'>[]
   ): Promise<{
     hasInconsistencies: boolean;
     issues: string[];
@@ -316,7 +327,7 @@ export class BlendIngredientValidator {
   }
   
   private async findSuitableUOM(
-    ingredient: Omit<BlendIngredient, 'availableStock' | 'selectedContainers'>
+    ingredient: Omit<BlendIngredient, 'availableStock'>
   ): Promise<{ _id: string; name: string; isActive: boolean; type?: string }> {
     let uom = null;
     

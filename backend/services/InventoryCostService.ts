@@ -50,7 +50,7 @@ export class InventoryCostService {
           total_stock: { 
             $ifNull: [
               '$currentStock', 
-              { $ifNull: ['$quantity', 0] }
+              { $ifNull: ['$currentStock', 0] }
             ] 
           },
           category: { $ifNull: ['$categoryName', 'Uncategorized'] },
@@ -161,14 +161,14 @@ export class InventoryCostService {
     
     if (filters.minStock && !isNaN(Number(filters.minStock))) {
       exprConditions.$gte = [
-        { $ifNull: ['$currentStock', '$quantity', 0] },
+        { $ifNull: ['$currentStock', 0] },
         Number(filters.minStock)
       ]
     }
 
     if (filters.maxStock && !isNaN(Number(filters.maxStock))) {
       exprConditions.$lte = [
-        { $ifNull: ['$currentStock', '$quantity', 0] },
+        { $ifNull: ['$currentStock', 0] },
         Number(filters.maxStock)
       ]
     }
