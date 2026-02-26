@@ -20,6 +20,9 @@ class CategoriesService {
   ): Promise<ProductCategory[]> {
     const params = new URLSearchParams();
     
+    // Fetch all categories — frontend handles filtering/sorting/pagination client-side
+    params.append('limit', '5000');
+    
     if (filters?.search) {
       params.append('search', filters.search);
     }
