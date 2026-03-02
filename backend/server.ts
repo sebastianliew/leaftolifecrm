@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Load environment variables from backend directory FIRST
-dotenv.config({ path: join(__dirname, '.env.local') });
+dotenv.config({ path: join(__dirname, '.env') });
 
 import express, { Express, Request, Response, NextFunction, ErrorRequestHandler } from 'express';
 import cors from 'cors';

@@ -14,6 +14,9 @@ import type { FeaturePermissions } from '../lib/permissions/types.js';
 import { createAuditLog } from '../models/AuditLog.js';
 import { transactionInventoryService } from '../services/TransactionInventoryService.js';
 import { normalizeTransactionForPayment, formatInvoiceFilename } from '../utils/transactionUtils.js';
+
+// Fix #4: In-memory lock to prevent concurrent invoice sends for the same transaction
+const invoiceSendLocks = new Set<string>();
 import { DiscountValidationService } from '../services/DiscountValidationService.js';
 
 const permissionService = PermissionService.getInstance();
@@ -1081,7 +1084,11 @@ export const generateTransactionInvoice = async (req: AuthenticatedRequest, res:
     }
 
     // Generate invoice number using transaction number format
-    const invoiceNumber = transaction.transactionNumber;
+    // Fix #9: Clean up draft transaction numbers for display
+    const rawTxnNumber = transaction.transactionNumber || '';
+    const invoiceNumber = rawTxnNumber.startsWith('DRAFT-') 
+      ? `DRAFT-${new Date(transaction.transactionDate || Date.now()).toLocaleDateString('en-SG', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '')}`
+      : rawTxnNumber;
 
     // Ensure invoices directory exists
     // Use process.cwd() for consistent path in both dev and production
@@ -1089,6 +1096,12 @@ export const generateTransactionInvoice = async (req: AuthenticatedRequest, res:
     if (!fs.existsSync(invoicesDir)) {
       console.log('[Invoice] Creating invoices directory:', invoicesDir);
       fs.mkdirSync(invoicesDir, { recursive: true });
+    }
+
+    // Fix #2: Guard against zero-item transactions
+    if (!transaction.items || transaction.items.length === 0) {
+      res.status(400).json({ error: 'Cannot send invoice for a transaction with no items' });
+      return;
     }
 
     // Prepare invoice data
@@ -1174,7 +1187,22 @@ export const generateTransactionInvoice = async (req: AuthenticatedRequest, res:
 export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    const { overrideEmail } = req.body; // For testing only - overrides recipient email
 
+    // Fix #1: Restrict overrideEmail to super_admin only
+    if (overrideEmail && req.user?.role !== 'super_admin') {
+      res.status(403).json({ error: 'overrideEmail is restricted to super_admin only' });
+      return;
+    }
+
+    // Fix #4: Prevent concurrent sends for the same transaction
+    if (invoiceSendLocks.has(id)) {
+      res.status(409).json({ error: 'Invoice email is already being sent for this transaction. Please wait.' });
+      return;
+    }
+    invoiceSendLocks.add(id);
+
+    try {
     console.log('[Email] Sending invoice email for transaction:', id);
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -1190,8 +1218,8 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
       return;
     }
 
-    // Check if customer email exists
-    if (!transaction.customerEmail) {
+    // Check if customer email exists (allow overrideEmail to bypass for testing)
+    if (!transaction.customerEmail && !overrideEmail) {
       res.status(400).json({ error: 'Customer email not found in transaction' });
       return;
     }
@@ -1202,6 +1230,12 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
         error: 'Email service not configured',
         message: 'Please configure email settings in environment variables'
       });
+      return;
+    }
+
+    // Fix #2: Guard against zero-item transactions
+    if (!transaction.items || transaction.items.length === 0) {
+      res.status(400).json({ error: 'Cannot send invoice for a transaction with no items' });
       return;
     }
 
@@ -1276,10 +1310,11 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
     await blobStorageService.uploadFile(invoiceFilePath, invoiceFileName);
 
     // Send email with invoice attachment
-    console.log('[Email] Sending email to:', transaction.customerEmail);
+    const recipientEmail = overrideEmail || transaction.customerEmail;
+    console.log('[Email] Sending email to:', recipientEmail, overrideEmail ? '(overrideEmail for testing)' : '');
 
     const emailSent = await emailService.sendInvoiceEmail(
-      transaction.customerEmail,
+      recipientEmail,
       transaction.customerName,
       invoiceNumber,
       invoiceFilePath,
@@ -1291,6 +1326,13 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
     if (emailSent) {
       // Update transaction with email sent info (use findByIdAndUpdate to avoid full document validation)
       const emailSentAt = new Date();
+      // Fix #7: Append to email history array for full audit trail
+      const emailHistoryEntry = {
+        sentAt: emailSentAt,
+        recipient: recipientEmail,
+        sentBy: req.user?.id || 'system',
+        isOverride: !!overrideEmail
+      };
       const emailUpdateData: Record<string, unknown> = {
         invoiceGenerated: true,
         invoiceStatus: 'completed',
@@ -1298,15 +1340,19 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
         invoicePath: relativeInvoicePath,
         invoiceEmailSent: true,
         invoiceEmailSentAt: emailSentAt,
-        invoiceEmailRecipient: transaction.customerEmail,
-        lastModifiedBy: req.user?.id || 'system'
+        invoiceEmailRecipient: recipientEmail,
+        lastModifiedBy: req.user?.id || 'system',
+        $push: { invoiceEmailHistory: emailHistoryEntry }
       };
       // Also correct totalAmount if it differs from calculated (fixes old transactions with incorrect totals)
       if (transaction.totalAmount !== calculatedTotal) {
         console.log('[Email] Correcting stored totalAmount from', transaction.totalAmount, 'to', calculatedTotal);
         emailUpdateData.totalAmount = calculatedTotal;
       }
-      await Transaction.findByIdAndUpdate(id, emailUpdateData);
+      const { $push: pushData, ...regularUpdate } = emailUpdateData as any;
+      const updateOp: Record<string, any> = { $set: regularUpdate };
+      if (pushData) updateOp['$push'] = pushData;
+      await Transaction.findByIdAndUpdate(id, updateOp);
 
       console.log('[Email] Invoice email sent successfully to:', transaction.customerEmail);
 
@@ -1314,7 +1360,7 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
         success: true,
         message: 'Invoice email sent successfully',
         emailSent: true,
-        recipient: transaction.customerEmail,
+        recipient: recipientEmail,
         sentAt: emailSentAt
       });
     } else {
@@ -1324,12 +1370,25 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
         message: 'Email sending is disabled. Please configure email settings.'
       });
     }
+    } catch (innerError) {
+      console.error('[Email] Error sending invoice email:', innerError);
+      res.status(500).json({
+        error: 'Failed to send invoice email',
+        message: innerError instanceof Error ? innerError.message : 'Unknown error'
+      });
+    } finally {
+      // Fix #4: Always release the lock
+      invoiceSendLocks.delete(id);
+    }
   } catch (error) {
-    console.error('[Email] Error sending invoice email:', error);
-    res.status(500).json({
-      error: 'Failed to send invoice email',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    });
+    // Outer catch: invalid ID or other pre-lock errors
+    console.error('[Email] Error in sendInvoiceEmail:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Failed to send invoice email',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
   }
 };
 

@@ -39,7 +39,9 @@ export function formatInvoiceFilename(
   // Sanitize name: replace spaces with underscores, remove non-alphanumeric characters
   // Also remove leading/trailing underscores and collapse multiple underscores
   // Fallback to 'Customer' if sanitized name is empty (e.g., all special characters or only spaces)
+  // Truncate name to 50 chars before sanitizing to prevent filesystem issues
   const sanitizedName = customerName
+    .substring(0, 50)
     .replace(/\s+/g, '_')
     .replace(/[^a-zA-Z0-9_]/g, '')
     .replace(/^_+|_+$/g, '')  // Remove leading/trailing underscores

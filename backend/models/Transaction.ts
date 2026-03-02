@@ -93,6 +93,7 @@ export interface ITransaction extends Document {
   invoiceEmailSent?: boolean;
   invoiceEmailSentAt?: Date;
   invoiceEmailRecipient?: string;
+  invoiceEmailHistory?: Array<{ sentAt: Date; recipient: string; sentBy: string; isOverride: boolean }>;
 
   // System fields
   createdBy: string;
@@ -234,6 +235,12 @@ const TransactionSchema = new Schema<ITransaction>({
   invoiceEmailSent: { type: Boolean, default: false },
   invoiceEmailSentAt: { type: Date },
   invoiceEmailRecipient: { type: String },
+  invoiceEmailHistory: [{
+    sentAt: { type: Date, required: true },
+    recipient: { type: String, required: true },
+    sentBy: { type: String },
+    isOverride: { type: Boolean, default: false }
+  }],
 
   // System fields
   createdBy: { type: String, required: true },

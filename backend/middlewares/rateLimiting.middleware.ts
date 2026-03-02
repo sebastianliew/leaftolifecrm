@@ -117,7 +117,9 @@ export const emailRateLimit = rateLimit({
   message: createRateLimitMessage('Email rate limit exceeded'),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  skipSuccessfulRequests: false
+  skipSuccessfulRequests: false,
+  // Fix #10: Exempt super_admin from email rate limiting
+  skip: (req) => (req as any).user?.role === 'super_admin'
 });
 
 /**

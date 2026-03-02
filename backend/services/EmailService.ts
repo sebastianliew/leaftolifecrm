@@ -7,10 +7,16 @@ interface EmailOptions {
   to: string;
   subject: string;
   html: string;
+  cc?: string;
   attachments?: Array<{
     filename: string;
     path: string;
   }>;
+}
+
+// Basic email format validation
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
 class EmailService {
@@ -89,6 +95,7 @@ class EmailService {
       const info = await this.transporter.sendMail({
         from: this.emailFrom,
         to: options.to,
+        cc: options.cc,
         subject: options.subject,
         html: options.html,
         attachments: options.attachments,
@@ -124,8 +131,10 @@ class EmailService {
     }
 
     const formatCurrency = (amount: number) => {
-      return `$${amount.toFixed(2)}`;
+      return `${amount.toFixed(2)}`;
     };
+    // Fix #5: Display zero-price items clearly as complimentary
+    const displayPrice = (amount: number) => amount === 0 ? 'Complimentary' : formatCurrency(amount);
 
     const formatDate = (date: Date) => {
       return new Date(date).toLocaleDateString('en-US', {
@@ -302,8 +311,15 @@ class EmailService {
 </html>
     `;
 
+    // Fix #3: Validate email format before sending
+    if (!isValidEmail(customerEmail)) {
+      throw new Error(`Invalid email address: ${customerEmail}`);
+    }
+
+    const clinicCC = process.env.EMAIL_CC || '';
     const emailOptions: EmailOptions = {
       to: customerEmail,
+      cc: clinicCC || undefined,
       subject: `Invoice ${invoiceNumber} - Leaf to Life`,
       html,
       attachments: [
