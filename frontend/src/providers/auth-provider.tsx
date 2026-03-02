@@ -86,47 +86,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Since we have route-level auth, just decode the JWT to get user info
-      // The middleware ensures only valid tokens reach this point
+      // Quick expiry check before hitting the network
       try {
-        const parts = token.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(atob(parts[1]));
-          
-          // Check if token is expired (redundant with middleware, but good for UI state)
-          if (payload.exp && payload.exp * 1000 < Date.now()) {
-            removeToken();
-            setUser(null);
-            setError(null);
-            setLoading(false);
-            return;
-          }
-
-          // Create user object from JWT payload
-          const userFromToken = {
-            id: payload.userId || payload.sub,
-            email: payload.email,
-            username: payload.username,
-            name: payload.username || payload.email,
-            image: null,
-            role: payload.role,
-            isActive: true
-          };
-
-
-          setUser(userFromToken);
-          setError(null);
-        } else {
-          throw new Error('Invalid token format');
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.exp && payload.exp * 1000 < Date.now()) {
+          removeToken();
+          setUser(null);
+          setLoading(false);
+          return;
         }
-      } catch {
-        console.log('AuthProvider: Token validation failed');
+      } catch { /* malformed token — let /me handle it */ }
+
+      // Always fetch fresh user + effectivePermissions from backend
+      // This ensures permissions are never stale and can't be tampered with client-side
+      const response = await fetch(`${API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
         removeToken();
         setUser(null);
-        setError(null);
+        setLoading(false);
+        return;
       }
+
+      const data = await response.json();
+      const user = data.user;
+
+      // Merge effectivePermissions into featurePermissions so usePermissions hook works seamlessly
+      if (user.effectivePermissions) {
+        user.featurePermissions = user.effectivePermissions;
+      }
+
+      setUser(user);
+      setError(null);
     } catch {
-      console.error('AuthProvider: Auth check error:');
+      console.error('AuthProvider: Auth check error');
       setUser(null);
       setError('Failed to verify authentication');
     } finally {
@@ -172,7 +167,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (data.refreshToken) {
           setRefreshToken(data.refreshToken);
         }
-        setUser(data.user);
+        // Merge effectivePermissions so usePermissions hook works seamlessly
+        const user = data.user;
+        if (user?.effectivePermissions) {
+          user.featurePermissions = user.effectivePermissions;
+        }
+        setUser(user);
         setError(null);
         
         // Get redirect URL from query params or default to dashboard

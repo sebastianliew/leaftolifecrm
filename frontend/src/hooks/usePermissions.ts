@@ -107,39 +107,21 @@ export interface FeaturePermissions {
 export const usePermissions = () => {
   const { user, loading: authLoading } = useAuth();
 
-  // Get effective permissions by merging role defaults with user-specific overrides
+  // Get effective permissions — backend is source of truth
+  // auth-provider fetches /auth/me and sets featurePermissions = effectivePermissions (merged by backend)
+  // We fall back to local role defaults only if the backend hasn't provided them yet
   const permissions = useMemo(() => {
     if (!user) return null;
 
-    // Get role defaults from PermissionService
+    // If backend provided effectivePermissions via /auth/me, use them directly
+    if (user.featurePermissions && Object.keys(user.featurePermissions).length > 0) {
+      return user.featurePermissions as unknown as FeaturePermissions;
+    }
+
+    // Fallback: compute locally from role defaults (used only before /auth/me responds)
     const permissionService = PermissionService.getInstance();
     const roleDefaults = permissionService.getRoleDefaults(user.role);
-
-    // Merge role defaults with user-specific featurePermissions
-    // User-specific permissions override role defaults
-    const userPermissions = user.featurePermissions || {};
-
-    const merged: Record<string, Record<string, boolean | number>> = {};
-
-    // Start with role defaults
-    for (const [category, perms] of Object.entries(roleDefaults)) {
-      merged[category] = { ...(perms as Record<string, boolean | number>) };
-    }
-
-    // Override with user-specific permissions
-    for (const [category, perms] of Object.entries(userPermissions)) {
-      if (!merged[category]) {
-        merged[category] = {};
-      }
-      for (const [perm, value] of Object.entries(perms as Record<string, boolean | number>)) {
-        // Only override if the user has an explicit value set
-        if (value !== undefined) {
-          merged[category][perm] = value;
-        }
-      }
-    }
-
-    return merged as unknown as FeaturePermissions;
+    return roleDefaults as unknown as FeaturePermissions;
   }, [user]);
 
   // Check if user has a specific permission

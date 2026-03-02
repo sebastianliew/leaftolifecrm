@@ -20,20 +20,6 @@ const router: IRouter = express.Router();
 // Apply authentication to all routes
 router.use(authenticateToken);
 
-// Test route to verify Bundle model
-router.get('/test', async (req, res) => {
-  try {
-    const { Bundle } = await import('../models/Bundle.js');
-    const count = await Bundle.countDocuments();
-    res.json({ success: true, bundleCount: count, message: 'Bundle model working' });
-  } catch (error: unknown) {
-    res.status(500).json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      name: error instanceof Error ? error.name : 'UnknownError'
-    });
-  }
-});
 
 // View routes - require canViewBundles permission
 router.get('/', requirePermission('bundles', 'canViewBundles'), getBundles);

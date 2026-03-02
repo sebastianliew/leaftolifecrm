@@ -1,4 +1,5 @@
 import express, { Request, type IRouter } from 'express';
+import { PermissionService } from '../lib/permissions/PermissionService.js';
 import {
   login,
   logout,
@@ -35,8 +36,19 @@ router.post('/password-reset/confirm', passwordResetRateLimit, confirmPasswordRe
 
 // Protected routes
 router.get('/me', authenticateToken, (req: AuthenticatedRequest, res) => {
-  // Return the authenticated user
-  res.json({ user: req.user });
+  const user = req.user;
+  if (!user) { res.status(401).json({ error: 'Not authenticated' }); return; }
+
+  // Return user with backend-computed effective permissions (role defaults + user overrides)
+  const permissionService = PermissionService.getInstance();
+  const effectivePermissions = permissionService.getEffectivePermissions(user);
+
+  res.json({
+    user: {
+      ...user,
+      effectivePermissions
+    }
+  });
 });
 // Admin creation endpoint - disabled by default for security
 // Set ALLOW_ADMIN_CREATION=true in environment to enable (for initial setup only)
