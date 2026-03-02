@@ -26,6 +26,7 @@ interface TopProductData {
 // Lean transaction type for optimized queries (subset of ITransaction)
 interface LeanTransaction {
   createdAt: Date;
+  transactionDate?: Date;
   totalAmount?: number;
   items?: Array<{
     productId?: string;
@@ -70,7 +71,7 @@ export class SalesTrendsController {
       // Get transactions for the period with .lean() for better memory efficiency
       // Uses compound index: { createdAt: -1, status: 1, type: 1 }
       const transactions = await Transaction.find({
-        createdAt: { $gte: startDate, $lte: endDate },
+        transactionDate: { $gte: startDate, $lte: endDate },
         status: 'completed',
         type: 'COMPLETED'
       })
@@ -180,7 +181,7 @@ async function generateDailyData(transactions: LeanTransaction[], startDate: Dat
   
   // Aggregate transaction data with real cost calculations
   transactions.forEach(transaction => {
-    const dateKey = transaction.createdAt.toISOString().split('T')[0];
+    const dateKey = (transaction.transactionDate || transaction.createdAt).toISOString().split('T')[0];
     const existing = dailyMap.get(dateKey);
     
     if (existing) {

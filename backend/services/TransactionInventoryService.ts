@@ -111,7 +111,13 @@ const processBundle: ItemProcessor = async (item, ref, userId, session) => {
       ));
     } else {
       const product = await Product.findById(bp.productId).session(session || null);
-      if (!product) { console.warn(`[TIS] Bundle product not found: ${bp.productId}, skipping`); continue; }
+      if (!product) {
+        const warnMsg = `[TIS] Bundle product not found: ${bp.productId} (bundle: ${bundle.name}) — inventory NOT deducted for this component`;
+        console.error(warnMsg);
+        // Push a sentinel movement to signal the error upstream (outer caller checks result.errors)
+        movements.push({ __error: warnMsg } as unknown as typeof movements[0]);
+        continue; // Still process other components
+      }
 
       movements.push(await createMovement({
         productId: bp.productId,
@@ -173,7 +179,15 @@ export class TransactionInventoryService {
         }
 
         const processor = ITEM_PROCESSORS[itemType] || processProduct;
-        result.movements.push(...await processor(txItem, transaction.transactionNumber, userId, session));
+        const movements = await processor(txItem, transaction.transactionNumber, userId, session);
+        for (const m of movements) {
+          // Check for error sentinels from bundle processor
+          if ((m as unknown as Record<string, unknown>).__error) {
+            result.errors.push((m as unknown as Record<string, unknown>).__error as string);
+          } else {
+            result.movements.push(m);
+          }
+        }
       } catch (error) {
         result.errors.push(`Failed to process ${item.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }

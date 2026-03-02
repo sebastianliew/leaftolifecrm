@@ -13,6 +13,7 @@ import { PermissionService } from '../lib/permissions/PermissionService.js';
 import type { FeaturePermissions } from '../lib/permissions/types.js';
 import { createAuditLog } from '../models/AuditLog.js';
 import { transactionInventoryService } from '../services/TransactionInventoryService.js';
+import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 import { normalizeTransactionForPayment, formatInvoiceFilename } from '../utils/transactionUtils.js';
 
 // Fix #4: In-memory lock to prevent concurrent invoice sends for the same transaction
@@ -641,6 +642,19 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
           console.warn('[Transaction] Inventory processing had errors:', inventoryResult.errors);
         }
 
+        // Alert on negative stock after deduction
+        for (const movement of inventoryResult.movements) {
+          if (movement.productId) {
+            const prod = await Product.findById(movement.productId).lean() as Record<string, unknown> | null;
+            if (prod && ((prod.currentStock as number) ?? 0) < 0) {
+              console.error(
+                `[STOCK ALERT] Product "${prod.name}" (${prod._id}) is OVERSOLD — currentStock: ${prod.currentStock}. ` +
+                `Transaction: ${savedTransaction.transactionNumber}`
+              );
+            }
+          }
+        }
+
         console.log(`[Transaction] Inventory processed: ${inventoryResult.movements.length} movements created`);
       } else {
         console.log('[Transaction] Skipping inventory deduction for draft transaction');
@@ -810,12 +824,63 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
       // See: transactionUtils.ts for business rule documentation
       // -----------------------------------------------------------------------
       normalizeTransactionForPayment(updateData);
+      // Stamp paymentCompletedAt for findByIdAndUpdate path (pre-save hook doesn't fire here)
+      if (updateData.status === 'completed' && !existingTransaction.paymentCompletedAt) {
+        updateData.paymentCompletedAt = new Date();
+      }
     }
 
     // Check if this is a completed transaction being cancelled (needs inventory reversal)
     const wasCompleted = existingTransaction.status === 'completed';
     const isBeingCancelled = updateData.status === 'cancelled';
     const needsInventoryReversal = wasCompleted && isBeingCancelled;
+
+    // Prevent cancelling an already-cancelled transaction
+    if (existingTransaction.status === 'cancelled' && isBeingCancelled) {
+      res.status(409).json({
+        error: 'Transaction is already cancelled',
+        message: 'This transaction has already been cancelled.'
+      });
+      return;
+    }
+
+    // Detect item quantity changes on a completed transaction — need inventory delta adjustment
+    const isCompletedItemUpdate =
+      wasCompleted &&
+      !isBeingCancelled &&
+      updateData.items &&
+      Array.isArray(updateData.items) &&
+      updateData.items.length > 0;
+
+    // Build per-product delta map: positive = more sold (deduct more), negative = less sold (restore)
+    type InventoryDelta = { productId: string; productName: string; delta: number; unitOfMeasurementId?: string };
+    const inventoryDeltas: InventoryDelta[] = [];
+    if (isCompletedItemUpdate) {
+      const oldItemMap = new Map<string, number>();
+      for (const item of existingTransaction.items) {
+        const pid = item.productId || '';
+        if (pid && !item.isService) {
+          oldItemMap.set(pid, (oldItemMap.get(pid) || 0) + (item.convertedQuantity || item.quantity || 0));
+        }
+      }
+      for (const item of updateData.items) {
+        const pid = item.productId || '';
+        if (pid && !item.isService) {
+          const oldQty = oldItemMap.get(pid) || 0;
+          const newQty = item.convertedQuantity || item.quantity || 0;
+          const delta = newQty - oldQty; // positive = need to deduct more; negative = need to restore
+          if (delta !== 0) {
+            inventoryDeltas.push({ productId: pid, productName: item.name || pid, delta, unitOfMeasurementId: item.unitOfMeasurementId });
+          }
+          oldItemMap.delete(pid); // processed
+        }
+      }
+      // Items that were removed entirely → restore their full qty
+      for (const [pid, qty] of oldItemMap.entries()) {
+        const removedItem = existingTransaction.items.find(i => i.productId === pid);
+        inventoryDeltas.push({ productId: pid, productName: removedItem?.name || pid, delta: -qty, unitOfMeasurementId: removedItem?.unitOfMeasurementId });
+      }
+    }
 
     // Update the transaction first
     const updatedTransaction = await Transaction.findByIdAndUpdate(
@@ -895,6 +960,50 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
         }
       } catch (sessionError) {
         console.error('[Transaction] Failed to create reversal session:', sessionError);
+      }
+    }
+
+    // Apply inventory deltas for item changes on completed transactions
+    if (isCompletedItemUpdate && inventoryDeltas.length > 0) {
+      console.log(`[Transaction] Applying inventory deltas for completed txn edit: ${inventoryDeltas.length} product(s) changed`);
+      try {
+        const deltaSession = await mongoose.startSession();
+        try {
+          deltaSession.startTransaction();
+          for (const delta of inventoryDeltas) {
+            const product = await Product.findById(delta.productId).session(deltaSession);
+            if (!product) {
+              console.warn(`[Transaction] Delta adjustment: product ${delta.productId} not found — skipping`);
+              continue;
+            }
+            const movementType = delta.delta > 0 ? 'sale' : 'return';
+            const qty = Math.abs(delta.delta);
+            const movement = new InventoryMovement({
+              productId: product._id,
+              movementType,
+              quantity: qty,
+              convertedQuantity: qty,
+              unitOfMeasurementId: delta.unitOfMeasurementId || product.unitOfMeasurement,
+              baseUnit: 'unit',
+              reference: `EDIT-${updatedTransaction!.transactionNumber}`,
+              notes: `Qty edit: ${delta.productName} ${delta.delta > 0 ? '+' : ''}${delta.delta}`,
+              createdBy: req.user?.id || 'system',
+              productName: delta.productName,
+            });
+            await movement.save({ session: deltaSession });
+            await movement.updateProductStock();
+            console.log(`[Transaction] Delta applied: ${delta.productName} ${movementType} ${qty}`);
+          }
+          await deltaSession.commitTransaction();
+        } catch (deltaErr) {
+          await deltaSession.abortTransaction();
+          console.error('[Transaction] Inventory delta adjustment failed:', deltaErr);
+          // Non-fatal — transaction update already saved, log for manual reconciliation
+        } finally {
+          deltaSession.endSession();
+        }
+      } catch (sessionErr) {
+        console.error('[Transaction] Failed to create delta session:', sessionErr);
       }
     }
 
@@ -1036,13 +1145,53 @@ export const deleteTransaction = async (req: AuthenticatedRequest, res: Response
       return;
     }
 
-    const deletedTransaction = await Transaction.findByIdAndDelete(id);
-
-    if (!deletedTransaction) {
+    const transaction = await Transaction.findById(id);
+    if (!transaction) {
       res.status(404).json({ error: 'Transaction not found' });
       return;
     }
 
+    // Block hard-delete of completed/refunded transactions — must cancel first to preserve audit trail + inventory
+    if (
+      transaction.status === 'completed' ||
+      transaction.status === 'refunded' ||
+      transaction.status === 'partially_refunded'
+    ) {
+      res.status(409).json({
+        error: 'Cannot delete a completed or refunded transaction',
+        message: 'Cancel the transaction first to reverse inventory, then delete if needed.'
+      });
+      return;
+    }
+
+    // Pending (non-draft) transactions may have had inventory deducted — reverse before delete
+    if (transaction.status === 'pending') {
+      const existingMovements = await InventoryMovement.find({ reference: transaction.transactionNumber });
+      if (existingMovements.length > 0) {
+        console.warn(`[Transaction] Deleting pending txn ${transaction.transactionNumber} with ${existingMovements.length} inventory movements — reversing first`);
+        try {
+          const sess = await mongoose.startSession();
+          try {
+            sess.startTransaction();
+            await transactionInventoryService.reverseTransactionInventory(
+              transaction.transactionNumber,
+              req.user?.id || 'system',
+              sess
+            );
+            await sess.commitTransaction();
+          } catch (e) {
+            await sess.abortTransaction();
+            console.error('[Transaction] Pre-delete inventory reversal failed:', e);
+          } finally {
+            sess.endSession();
+          }
+        } catch (sessionErr) {
+          console.error('[Transaction] Session creation failed for pre-delete reversal:', sessionErr);
+        }
+      }
+    }
+
+    await Transaction.findByIdAndDelete(id);
     res.status(200).json({ message: 'Transaction deleted successfully' });
   } catch (error) {
     console.error('Error deleting transaction:', error);
@@ -1620,6 +1769,7 @@ export const duplicateTransaction = async (req: AuthenticatedRequest, res: Respo
       invoiceEmailSent: false,
       invoiceEmailSentAt: undefined,
       invoiceEmailRecipient: undefined,
+      invoiceEmailHistory: [], // Reset email history — duplicated draft has no send history
 
       // Reset refund fields
       refundStatus: 'none' as const,

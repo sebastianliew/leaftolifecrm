@@ -148,8 +148,26 @@ export class RefundService {
           throw new Error(`Product ${item.productId} not found in transaction`);
         }
 
-        if (item.refundQuantity > originalItem.quantity) {
-          throw new Error(`Refund quantity exceeds original quantity for ${originalItem.name}`);
+        // Count how much of this item has already been refunded in prior approved/completed refunds
+        const priorRefunds = await Refund.find({
+          transactionId,
+          status: { $in: ['approved', 'processing', 'completed'] },
+          'items.productId': item.productId
+        }).session(session);
+        const alreadyRefunded = priorRefunds.reduce((sum: number, r) => {
+          const ri = r.items.find((i: { productId: string }) => i.productId === item.productId);
+          return sum + (ri ? ri.refundQuantity : 0);
+        }, 0);
+        const remainingRefundable = originalItem.quantity - alreadyRefunded;
+
+        if (item.refundQuantity <= 0) {
+          throw new Error(`Refund quantity must be greater than 0 for ${originalItem.name}`);
+        }
+        if (item.refundQuantity > remainingRefundable) {
+          throw new Error(
+            `Refund quantity (${item.refundQuantity}) exceeds refundable quantity (${remainingRefundable}) for ${originalItem.name}. ` +
+            `Already refunded: ${alreadyRefunded} of ${originalItem.quantity}.`
+          );
         }
 
         const refundAmount = originalItem.unitPrice * item.refundQuantity;

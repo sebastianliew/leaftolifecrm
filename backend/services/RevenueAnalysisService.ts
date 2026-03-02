@@ -26,7 +26,7 @@ export class RevenueAnalysisService {
       {
         $match: {
           type: 'COMPLETED',
-          status: 'completed',
+          status: { $in: ['completed', 'refunded', 'partially_refunded'] },
           transactionDate: { $gte: startDate }
         }
       },
@@ -36,9 +36,9 @@ export class RevenueAnalysisService {
             year: { $year: '$transactionDate' },
             month: { $month: '$transactionDate' }
           },
-          revenue: { $sum: '$totalAmount' },
+          revenue: { $sum: { $subtract: ['$totalAmount', { $ifNull: ['$totalRefunded', 0] }] } },
           transactions: { $sum: 1 },
-          avgTransactionValue: { $avg: '$totalAmount' }
+          avgTransactionValue: { $avg: { $subtract: ['$totalAmount', { $ifNull: ['$totalRefunded', 0] }] } }
         }
       },
       {
@@ -72,7 +72,7 @@ export class RevenueAnalysisService {
       {
         $match: {
           type: 'COMPLETED',
-          status: 'completed',
+          status: { $in: ['completed', 'refunded', 'partially_refunded'] },
           transactionDate: { $gte: startDate }
         }
       },
@@ -125,14 +125,14 @@ export class RevenueAnalysisService {
       {
         $match: {
           type: 'COMPLETED',
-          status: 'completed',
+          status: { $in: ['completed', 'refunded', 'partially_refunded'] },
           transactionDate: { $gte: startDate }
         }
       },
       {
         $group: {
           _id: '$paymentMethod',
-          amount: { $sum: '$totalAmount' },
+          amount: { $sum: { $subtract: ['$totalAmount', { $ifNull: ['$totalRefunded', 0] }] } },
           transactions: { $sum: 1 }
         }
       },

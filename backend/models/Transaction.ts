@@ -75,6 +75,7 @@ export interface ITransaction extends Document {
 
   // Dates
   transactionDate: Date;
+  paymentCompletedAt?: Date | null;
   dueDate?: Date;
   paidDate?: Date;
 
@@ -214,6 +215,9 @@ const TransactionSchema = new Schema<ITransaction>({
 
   // Dates
   transactionDate: { type: Date, required: true, default: Date.now },
+  // paymentCompletedAt: stamped when status transitions to 'completed' via pre-save hook.
+  // Distinct from transactionDate (creation date). Use paymentCompletedAt for cash-flow reports.
+  paymentCompletedAt: { type: Date, default: null },
   dueDate: { type: Date },
   paidDate: { type: Date },
 
@@ -350,6 +354,10 @@ TransactionSchema.pre('save', async function(next) {
  */
 TransactionSchema.pre('save', function(next) {
   normalizeTransactionForPayment(this);
+  // Stamp paymentCompletedAt the first time status becomes 'completed'
+  if (this.isModified('status') && this.status === 'completed' && !this.paymentCompletedAt) {
+    (this as unknown as Record<string, unknown>).paymentCompletedAt = new Date();
+  }
   next();
 });
 

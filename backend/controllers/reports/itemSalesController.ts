@@ -17,22 +17,24 @@ export class ItemSalesController {
       // Build match conditions with proper typing
       const matchConditions: Record<string, unknown> = {
         type: 'COMPLETED',
-        status: 'completed'
+        // Include partially_refunded so those transactions still appear (with adjusted qty)
+        // Fully refunded transactions are excluded — all qty was returned
+        status: { $in: ['completed', 'partially_refunded'] }
       };
 
 
       // Add date filters if provided
       if (startDate || endDate) {
-        matchConditions.createdAt = {} as Record<string, Date>;
+        matchConditions.transactionDate = {} as Record<string, Date>;
         
         if (startDate) {
           const startDateObj = new Date(startDate);
-          (matchConditions.createdAt as Record<string, Date>).$gte = startDateObj;
+          (matchConditions.transactionDate as Record<string, Date>).$gte = startDateObj;
         }
         
         if (endDate) {
           const endDateObj = new Date(endDate);
-          (matchConditions.createdAt as Record<string, Date>).$lte = endDateObj;
+          (matchConditions.transactionDate as Record<string, Date>).$lte = endDateObj;
         }
       }
 

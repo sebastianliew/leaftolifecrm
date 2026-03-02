@@ -110,11 +110,27 @@ export function formatInvoiceFilename(
  */
 export function normalizeTransactionForPayment(data: TransactionNormalizationData): void {
   if (data.paymentStatus === 'paid') {
-    if (data.type === 'DRAFT') {
+    // Any paid transaction should always be COMPLETED regardless of prior status
+    if (data.type !== 'COMPLETED') {
       data.type = 'COMPLETED';
     }
-    if (data.status === 'draft') {
+    if (data.status !== 'completed') {
       data.status = 'completed';
+    }
+  } else if (
+    data.paymentStatus === 'partial' ||
+    data.paymentStatus === 'overdue' ||
+    data.paymentStatus === 'pending' ||
+    data.paymentStatus === 'failed'
+  ) {
+    // Downgrading payment status on a previously-completed transaction
+    // reverts it to pending so it no longer counts as completed revenue
+    if (data.status === 'completed') {
+      data.status = 'pending';
+    }
+    // Also revert type to non-COMPLETED so it drops out of reports
+    if (data.type === 'COMPLETED') {
+      data.type = 'DRAFT'; // Use DRAFT as the non-completed type; controller can override
     }
   }
 }
