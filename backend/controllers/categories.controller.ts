@@ -53,7 +53,7 @@ export const getCategories = asyncHandler(async (req: Request, res: Response) =>
   res.json({
     categories: categories.map(c => ({
       ...c,
-      productCount: countMap.get((c._id as string).toString()) || 0
+      productCount: countMap.get(c._id?.toString()) || 0
     })),
     pagination: QueryBuilder.paginationResponse(total, pagination.page, pagination.limit)
   });
@@ -61,7 +61,7 @@ export const getCategories = asyncHandler(async (req: Request, res: Response) =>
 
 export const getCategoryById = asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
   const category = await findCategoryOrFail(req.params.id);
-  const productCount = await Product.countDocuments({ category: category._id as string, isActive: true });
+  const productCount = await Product.countDocuments({ category: category._id, isActive: true });
   res.json({ ...category, productCount });
 });
 

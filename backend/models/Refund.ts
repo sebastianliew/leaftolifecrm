@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema, Model } from 'mongoose';
 
-export interface IRefund extends Document {
+export interface IRefund extends Document<unknown> {
   _id: string;
   refundNumber: string;
   transactionId: string;

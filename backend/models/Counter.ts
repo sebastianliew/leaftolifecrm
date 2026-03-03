@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
-export interface ICounter extends Document {
+export interface ICounter extends Document<unknown> {
   _id: string;
   seq: number;
 }

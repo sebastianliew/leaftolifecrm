@@ -190,8 +190,8 @@ export class BlendIngredientValidator {
     }
 
     // Check unit consistency
-    if ((product as IProduct).unitName && ingredient.unitName !== (product as IProduct).unitName) {
-      console.warn(`📏 UNIT MISMATCH: Ingredient unit "${ingredient.unitName}" differs from product unit "${(product as IProduct).unitName}"`);
+    if ((product as unknown as IProduct).unitName && ingredient.unitName !== (product as unknown as IProduct).unitName) {
+      console.warn(`📏 UNIT MISMATCH: Ingredient unit "${ingredient.unitName}" differs from product unit "${(product as unknown as IProduct).unitName}"`);
     }
 
     // Check for missing price
@@ -290,13 +290,13 @@ export class BlendIngredientValidator {
         }
 
         // Check for unit inconsistency
-        if ((product as IProduct).unitName && ingredient.unitName !== (product as IProduct).unitName) {
-          issues.push(`Ingredient unit "${ingredient.unitName}" differs from product unit "${(product as IProduct).unitName}"`);
+        if ((product as unknown as IProduct).unitName && ingredient.unitName !== (product as unknown as IProduct).unitName) {
+          issues.push(`Ingredient unit "${ingredient.unitName}" differs from product unit "${(product as unknown as IProduct).unitName}"`);
           autoFixSuggestions.push({
             ingredientIndex: i,
             field: 'unitName',
             currentValue: ingredient.unitName,
-            suggestedValue: (product as IProduct).unitName,
+            suggestedValue: (product as unknown as IProduct).unitName,
             reason: 'Product unit has been updated in the database'
           });
         }
