@@ -218,8 +218,9 @@ export const updateProduct = asyncHandler(async (req: Request<{ id: string }>, r
   const authReq = req as AuthenticatedRequest;
   if (updates.costPrice !== undefined && updates.costPrice !== originalProduct.costPrice) {
     if (!authReq.user || authReq.user.role !== 'super_admin') {
-      res.status(403).json({ error: 'Only super admin can modify cost price' });
-      return;
+      // Non-super-admins cannot change cost price — silently strip it so other
+      // fields (stock, selling price, etc.) can still be saved without a 403.
+      delete updates.costPrice;
     }
   }
 
