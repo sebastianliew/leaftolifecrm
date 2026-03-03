@@ -1563,8 +1563,10 @@ export const saveDraft = async (req: AuthenticatedRequest, res: Response): Promi
       discountAmount: formData.discount || 0,
       totalAmount: formData.total || formData.subtotal || 0,
       paymentMethod: formData.paymentMethod || 'cash',
-      paymentStatus: formData.paymentStatus || 'pending',
-      status: formData.status || 'draft',
+      // Drafts are always pending — payment confirmed on completion only.
+      // Prevent 'paid' paymentStatus on a draft (e.g. auto-set when paidAmount >= total in form).
+      paymentStatus: 'pending',
+      status: 'draft',
       notes: `Draft: ${draftName || 'Auto-saved draft'}`,
       transactionDate: new Date(),
       currency: 'SGD',
