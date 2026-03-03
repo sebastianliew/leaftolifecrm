@@ -53,7 +53,7 @@ export const getCategories = asyncHandler(async (req: Request, res: Response) =>
   res.json({
     categories: categories.map(c => ({
       ...c,
-      productCount: countMap.get(c._id?.toString()) || 0
+      productCount: countMap.get(c._id?.toString() ?? "") || 0
     })),
     pagination: QueryBuilder.paginationResponse(total, pagination.page, pagination.limit)
   });
