@@ -1,5 +1,8 @@
 export interface ItemSalesData {
   item_name: string
+  display_sku?: string
+  sale_type_label?: string
+  unit_label?: string
   total_sales: number
   total_cost: number
   total_discount: number

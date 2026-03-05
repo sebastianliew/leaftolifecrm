@@ -69,12 +69,16 @@ export class ItemSalesController {
         });
       }
 
-      // Group by product to calculate metrics
+      // Group by product AND sale type to calculate metrics
       // Include costPrice from transaction items (stamped at point of sale)
       pipeline.push({
         $group: {
-          _id: '$items.productId',
+          _id: {
+            productId: '$items.productId',
+            saleType: { $ifNull: ['$items.saleType', 'loose'] }
+          },
           item_name: { $first: '$items.name' },
+          display_sku: { $first: { $ifNull: ['$items.displaySku', ''] } },
           total_sales: { $sum: '$items.totalPrice' },
           total_discount: { $sum: { $ifNull: ['$items.discountAmount', 0] } },
           total_tax: {
@@ -120,12 +124,13 @@ export class ItemSalesController {
       const productNames: string[] = [];
 
       for (const result of salesResults) {
-        // Normalize ObjectId objects to strings
+        // Normalize ObjectId objects to strings (now from _id.productId)
         let idStr: string;
-        if (result._id && typeof result._id === 'object' && result._id.toString) {
-          idStr = result._id.toString();
+        const productId = result._id?.productId;
+        if (productId && typeof productId === 'object' && productId.toString) {
+          idStr = productId.toString();
         } else {
-          idStr = String(result._id || '');
+          idStr = String(productId || '');
         }
         normalizedIds.push(idStr);
 
@@ -267,6 +272,7 @@ export class ItemSalesController {
       const results: ItemSalesData[] = salesResults.map((item, index) => {
         const productId = normalizedIds[index];
         const itemType = item.item_type || 'product';
+        const saleType = item._id?.saleType || 'loose';
 
         // Check if we have cost data from the transaction items themselves
         const hasItemLevelCost = item.items_with_cost > 0 && item.total_cost_from_items > 0;
@@ -306,8 +312,22 @@ export class ItemSalesController {
           margin = 0;
         }
 
+        // Determine sale type label
+        const saleTypeLabel = saleType === 'container' ? 'Container' : 'Loose';
+        
+        // Determine unit label based on sale type and base unit
+        let unitLabel = item.base_unit || 'unit';
+        if (saleType === 'container') {
+          unitLabel = 'container';
+        } else if (item.base_unit) {
+          unitLabel = item.base_unit;
+        }
+
         return {
           item_name: item.item_name,
+          display_sku: item.display_sku || '',
+          sale_type_label: saleTypeLabel,
+          unit_label: unitLabel,
           total_sales: item.total_sales,
           total_cost: total_cost,
           total_discount: item.total_discount,

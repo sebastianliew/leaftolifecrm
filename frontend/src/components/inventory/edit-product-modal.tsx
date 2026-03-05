@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { Package } from "lucide-react"
 import { useToast } from "@/components/ui/toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import type { Product, ProductCategory, UnitOfMeasurement, Brand } from "@/types/inventory"
@@ -17,6 +19,7 @@ const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
   unitOfMeasurement: z.string().min(1, "Unit is required"),
   containerCapacity: z.number().min(0, "Capacity must be positive").optional(),
+  canSellLoose: z.boolean().optional(),
   brand: z.string().optional(),
   costPrice: z.number().min(0, "Cost price must be positive").optional(),
   sellingPrice: z.number().min(0, "Selling price must be positive").optional(),
@@ -36,6 +39,7 @@ export interface EditProductSubmitData {
   brand?: { id: string }
   containerType?: { id: string }
   containerCapacity?: number
+  canSellLoose?: boolean
   costPrice?: number
   sellingPrice?: number
   reorderPoint: number
@@ -94,6 +98,7 @@ export function EditProductModal({
         name: product.name,
         unitOfMeasurement: product.unitOfMeasurement._id || product.unitOfMeasurement.id || "",
         containerCapacity: product.containerCapacity || 1,
+        canSellLoose: product.canSellLoose || false,
         brand: product.brand?._id || product.brand?.id || "_none",
         costPrice: product.costPrice || 0,
         sellingPrice: product.sellingPrice || 0,
@@ -133,6 +138,7 @@ export function EditProductModal({
         category: { id: data.category },
         brand: data.brand && data.brand !== '_none' ? { id: data.brand } : undefined,
         containerCapacity: data.containerCapacity,
+        canSellLoose: data.canSellLoose || false,
         // Only include cost price if user has permission
         costPrice: canEditCostPrices ? data.costPrice : product.costPrice,
         sellingPrice: data.sellingPrice,
@@ -262,6 +268,26 @@ export function EditProductModal({
                 <p className="text-sm text-red-500">{errors.containerCapacity.message}</p>
               )}
             </div>
+          </div>
+
+          {/* Can Sell Loose Toggle */}
+          <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+            <div className="flex items-center gap-3">
+              <Package className="h-5 w-5 text-muted-foreground" />
+              <div className="space-y-0.5">
+                <Label htmlFor="canSellLoose" className="text-base font-medium cursor-pointer">
+                  Can Sell Loose
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Enable selling individual units. When off, only whole containers can be sold.
+                </p>
+              </div>
+            </div>
+            <Switch
+              id="canSellLoose"
+              checked={watch('canSellLoose') || false}
+              onCheckedChange={(checked) => setValue('canSellLoose', checked)}
+            />
           </div>
 
           {/* Brand */}

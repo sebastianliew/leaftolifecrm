@@ -52,6 +52,8 @@ export interface IProduct extends Document {
     notes?: string;
   };
   baseUnitSize?: number;
+  canSellLoose?: boolean;
+  containerCapacity?: number;
   isDeleted?: boolean;
   deletedAt?: Date;
   deletedBy?: string;
@@ -122,6 +124,8 @@ const productSchema = new mongoose.Schema<IProduct>({
     default: new Map()
   },
   baseUnitSize: { type: Number, default: 1 },
+  canSellLoose: { type: Boolean, default: false },
+  containerCapacity: { type: Number, default: 1 },
   supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
   supplierName: String,
   isDeleted: { type: Boolean, default: false },

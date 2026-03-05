@@ -14,6 +14,9 @@ export interface InventoryItem {
   turnover_rate: number
   days_supply: number
   status: 'optimal' | 'low' | 'overstock' | 'out'
+  full_containers?: number
+  loose_remainder?: number
+  container_display?: string
 }
 
 export interface CategorySummary {
@@ -82,6 +85,7 @@ export class InventoryAnalysisService {
     cost_price: number;
     selling_price: number;
     stock_status: string;
+    container_capacity: number;
   }>> {
     const pipeline = [
       {
@@ -99,6 +103,7 @@ export class InventoryAnalysisService {
           max_stock: { $multiply: [{ $ifNull: ['$reorderPoint', 10] }, 5] },
           unit: { $ifNull: ['$unitName', 'units'] },
           unit_cost: { $ifNull: ['$costPrice', 0] },
+          container_capacity: { $ifNull: ['$containerCapacity', 1] },
           total_value: { 
             $multiply: [
               { $ifNull: ['$currentStock', 0] }, 
@@ -128,6 +133,7 @@ export class InventoryAnalysisService {
       cost_price: number;
       selling_price: number;
       stock_status: string;
+      container_capacity: number;
     }>
   }
 
@@ -173,6 +179,7 @@ export class InventoryAnalysisService {
       cost_price: number;
       selling_price: number;
       stock_status: string;
+      container_capacity: number;
     }>,
     turnoverMap: Map<string, number>
   ): InventoryItem[] {
@@ -191,6 +198,21 @@ export class InventoryAnalysisService {
         status = 'overstock'
       }
 
+      // Calculate container-related fields
+      const containerCapacity = item.container_capacity || 1
+      const fullContainers = Math.floor(item.current_stock / containerCapacity)
+      const looseRemainder = item.current_stock % containerCapacity
+      
+      // Only show container display when containerCapacity > 1
+      let containerDisplay: string | undefined
+      if (containerCapacity > 1) {
+        if (looseRemainder > 0) {
+          containerDisplay = `${fullContainers} containers + ${looseRemainder} loose`
+        } else {
+          containerDisplay = `${fullContainers} containers`
+        }
+      }
+
       return {
         ...item,
         max_stock: item.current_stock * 2, // Default to 2x current stock
@@ -199,7 +221,10 @@ export class InventoryAnalysisService {
         total_value: item.current_stock * item.cost_price,
         turnover_rate: turnoverRate,
         days_supply: daysSupply,
-        status
+        status,
+        full_containers: fullContainers,
+        loose_remainder: looseRemainder,
+        container_display: containerDisplay
       }
     })
   }

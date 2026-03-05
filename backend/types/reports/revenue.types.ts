@@ -37,6 +37,7 @@ export interface MonthlyRevenueAggregation {
     month: number
   }
   revenue: number
+  cost: number
   transactions: number
   avgTransactionValue: number
 }
@@ -44,6 +45,7 @@ export interface MonthlyRevenueAggregation {
 export interface CategoryRevenueAggregation {
   _id: string
   revenue: number
+  cost: number
   transactions: number
   quantity: number
 }

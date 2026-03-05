@@ -22,7 +22,7 @@ async function createMovement(
 ): Promise<IInventoryMovement> {
   const movement = new InventoryMovement(fields);
   await saveDoc(movement, session);
-  if (!skipStockUpdate) await movement.updateProductStock();
+  if (!skipStockUpdate) await movement.updateProductStock(session);
   return movement;
 }
 
@@ -68,10 +68,14 @@ async function deductBlendIngredients(
 }
 
 const processProduct: ItemProcessor = async (item, ref, userId, session) => {
+  // Stock is always tracked in loose units — use convertedQuantity from controller.
+  // The controller now sets the correct value based on saleType and containerCapacity.
+  const safeConvertedQty = item.convertedQuantity;
+
   const movement = await createMovement({
     productId: new mongoose.Types.ObjectId(item.productId),
     movementType: 'sale',
-    quantity: item.quantity, convertedQuantity: item.convertedQuantity || item.quantity,
+    quantity: item.quantity, convertedQuantity: safeConvertedQty,
     unitOfMeasurementId: new mongoose.Types.ObjectId(item.unitOfMeasurementId),
     baseUnit: item.baseUnit || 'unit',
     reference: ref,
@@ -161,9 +165,20 @@ export class TransactionInventoryService {
     }).session(session || null);
 
     if (existing.length > 0) {
-      result.warnings.push(`Inventory movements already exist (${existing.length}). Skipping to prevent duplicate deduction.`);
-      result.movements = existing;
-      return result;
+      // Check if movements have been reversed (cancelled transaction being re-opened)
+      const reversals = await InventoryMovement.find({
+        reference: `CANCEL-${transaction.transactionNumber}`
+      }).session(session || null);
+
+      // If fully reversed (same count of reversals as originals), allow fresh deduction
+      if (reversals.length > 0 && reversals.length === existing.length) {
+        console.log(`[TIS] Transaction ${transaction.transactionNumber} was previously reversed — allowing fresh deduction`);
+        // Continue to process inventory normally
+      } else {
+        result.warnings.push(`Inventory movements already exist (${existing.length}). Skipping to prevent duplicate deduction.`);
+        result.movements = existing;
+        return result;
+      }
     }
 
     for (const item of transaction.items) {

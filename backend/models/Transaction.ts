@@ -41,6 +41,8 @@ export interface ITransaction extends Document {
     baseUnit: string;
     convertedQuantity: number;
     sku?: string;
+    displaySku?: string;
+    containerCapacityAtSale?: number;
     itemType?: 'product' | 'fixed_blend' | 'custom_blend' | 'bundle' | 'miscellaneous' | 'consultation' | 'service';
     // Custom blend data for storing ingredients when itemType is 'custom_blend'
     customBlendData?: {
@@ -152,6 +154,8 @@ const TransactionItemSchema = new Schema({
   baseUnit: { type: String, required: true },
   convertedQuantity: { type: Number, required: true },
   sku: { type: String },
+  displaySku: { type: String },
+  containerCapacityAtSale: { type: Number },
   itemType: {
     type: String,
     enum: ['product', 'fixed_blend', 'custom_blend', 'bundle', 'miscellaneous', 'consultation', 'service'],

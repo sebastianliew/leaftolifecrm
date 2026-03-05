@@ -495,7 +495,18 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     setSelectedProduct(product)
     setShowProductSelector(false)
     if (isPartialMode) {
-      setShowPartialQuantitySelector(true)
+      // Check if product can be sold loose
+      if (!product.canSellLoose) {
+        toast({
+          title: "Cannot Sell Loose",
+          description: "This product cannot be sold loose. Please select whole container sale.",
+          variant: "destructive",
+        })
+        setIsPartialMode(false)
+        setShowQuantityInput(true)
+      } else {
+        setShowPartialQuantitySelector(true)
+      }
     } else {
       setShowQuantityInput(true)
     }
@@ -558,7 +569,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     }
 
     const containerCapacity = selectedProduct.containerCapacity || 1
-    const pricePerUnit = selectedProduct.sellingPrice / containerCapacity
+    const pricePerUnit = Math.round((selectedProduct.sellingPrice / containerCapacity) * 100) / 100
     const basePrice = pricePerUnit * quantity
 
     const newItem: TransactionItem = {
@@ -1556,11 +1567,10 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                               </p>
                             )}
                             {/* Message for definitely ineligible items */}
-                            {(item.isService || item.saleType === 'volume' ||
+                            {(item.isService ||
                               (item.itemType !== 'product' && item.itemType !== 'fixed_blend')) && (
                               <p className="text-xs text-amber-600 mt-1">
-                                {item.saleType === 'volume' ? 'Parts not eligible for discount' :
-                                 item.itemType === 'bundle' ? 'Bundles have separate pricing' :
+                                {item.itemType === 'bundle' ? 'Bundles have separate pricing' :
                                  item.itemType === 'custom_blend' ? 'Custom blends not eligible' :
                                  item.isService ? 'Services not eligible' :
                                  'Not eligible for member discount'}
@@ -1840,7 +1850,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         open={showProductSelector}
         onClose={() => setShowProductSelector(false)}
         onSelectProduct={handleProductSelect}
-        products={products}
+        products={isPartialMode ? products.filter(p => p.canSellLoose === true) : products}
       />
 
       <SimpleQuantityInput

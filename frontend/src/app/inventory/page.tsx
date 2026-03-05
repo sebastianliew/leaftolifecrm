@@ -594,7 +594,17 @@ export default function InventoryPage() {
                       <Badge className={`text-xs ${stockStatus.color}`}>
                         <span className="flex items-center gap-1">
                           {stockStatus.icon}
-                          {product.currentStock ?? 0}
+                          {(() => {
+                            const stock = product.currentStock ?? 0;
+                            const capacity = product.containerCapacity || 1;
+                            const unit = product.unitOfMeasurement?.abbreviation || 'units';
+                            
+                            if (capacity > 1) {
+                              const containers = Math.floor(stock / capacity);
+                              return `${stock} ${unit} (${containers} ${containers === 1 ? 'container' : 'containers'})`;
+                            }
+                            return stock;
+                          })()}
                         </span>
                       </Badge>
                     </TableCell>
@@ -691,6 +701,7 @@ export default function InventoryPage() {
           status: productToEdit.isActive ? 'active' as const : 'inactive' as const,
           isActive: productToEdit.isActive,
           containerCapacity: productToEdit.containerCapacity || 1,
+          canSellLoose: productToEdit.canSellLoose,
           category: productToEdit.category || { id: '', name: '', description: '', level: 1, isActive: true, createdAt: new Date(), updatedAt: new Date() },
           createdAt: productToEdit.createdAt || new Date(),
           updatedAt: productToEdit.updatedAt || new Date()
@@ -728,6 +739,7 @@ export default function InventoryPage() {
           status: productToDelete.isActive ? 'active' as const : 'inactive' as const,
           isActive: productToDelete.isActive,
           containerCapacity: productToDelete.containerCapacity || 1,
+          canSellLoose: productToDelete.canSellLoose,
           category: productToDelete.category || { id: '', name: '', description: '', level: 1, isActive: true, createdAt: new Date(), updatedAt: new Date() },
           createdAt: productToDelete.createdAt || new Date(),
           updatedAt: productToDelete.updatedAt || new Date()

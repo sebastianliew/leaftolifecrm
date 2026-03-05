@@ -112,7 +112,7 @@ InventoryMovementSchema.pre('save', async function(next) {
 });
 
 // Method to update product stock using ATOMIC operations to prevent race conditions
-InventoryMovementSchema.methods.updateProductStock = async function() {
+InventoryMovementSchema.methods.updateProductStock = async function(session?: any) {
   const Product = model('Product');
 
   // All stock changes use atomic $inc — no more container-specific branching
@@ -139,7 +139,8 @@ InventoryMovementSchema.methods.updateProductStock = async function() {
   if (stockChange !== 0) {
     await Product.updateOne(
       { _id: this.productId },
-      { $inc: { currentStock: stockChange, availableStock: stockChange } }
+      { $inc: { currentStock: stockChange, availableStock: stockChange } },
+      session ? { session } : {}
     );
     console.log(`[InventoryMovement] Atomic stock update: Product ${this.productId} ${stockChange > 0 ? '+' : ''}${stockChange}`);
   }

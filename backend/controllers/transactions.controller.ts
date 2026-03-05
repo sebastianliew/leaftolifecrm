@@ -431,15 +431,69 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
 
           // Recalculate unit price from server-side product data
           const serverSellingPrice = (product as { sellingPrice?: number }).sellingPrice ?? 0;
-          const serverContainerCapacity = (product as { containerCapacity?: number }).containerCapacity;
-          if (item.saleType === 'volume' && serverContainerCapacity) {
-            item.unitPrice = serverSellingPrice / serverContainerCapacity;
+          
+          // ── SERVER-SIDE convertedQuantity & Can Sell Loose ──
+          // Guard containerCapacity
+          const serverContainerCapacity = ((product as { containerCapacity?: number }).containerCapacity && (product as { containerCapacity?: number }).containerCapacity! >= 1) ? (product as { containerCapacity?: number }).containerCapacity! : 1;
+
+          if (item.saleType === 'volume') {
+            // Loose sale - check canSellLoose
+            if (!(product as { canSellLoose?: boolean }).canSellLoose) {
+              res.status(400).json({ 
+                success: false, 
+                message: `${(product as { name?: string }).name} cannot be sold loose. Only whole container sales allowed.` 
+              });
+              return;
+            }
+            item.convertedQuantity = item.quantity; // already in loose units
+            item.unitPrice = Math.round((serverSellingPrice / serverContainerCapacity) * 100) / 100;
+            item.costPrice = Math.round((((product as { costPrice?: number }).costPrice || 0) / serverContainerCapacity) * 100) / 100;
           } else {
+            // Whole container sale
+            item.convertedQuantity = item.quantity * serverContainerCapacity; // convert to loose units
             item.unitPrice = serverSellingPrice;
+            item.costPrice = (product as { costPrice?: number }).costPrice || 0;
           }
 
-          // Recalculate total
-          item.totalPrice = item.unitPrice * item.quantity - (item.discountAmount || 0);
+          // Store snapshot for historical accuracy
+          item.containerCapacityAtSale = serverContainerCapacity;
+
+          // displaySku
+          const baseSku = (product as { sku?: string }).sku || item.sku || '';
+          item.displaySku = item.saleType === 'volume' ? baseSku + '-T' : baseSku;
+        }
+      }
+    }
+
+    // ========================================================================
+    // SERVER-SIDE STOCK VALIDATION
+    // Warn on insufficient stock (don't block — clinic workflow allows negative)
+    // ========================================================================
+    if (transactionData.status !== 'draft') {
+      const stockCheckProductIds = transactionData.items
+        .filter((item: { productId?: string; itemType?: string }) =>
+          item.productId && /^[a-fA-F0-9]{24}$/.test(item.productId) &&
+          item.itemType !== 'custom_blend' && item.itemType !== 'bundle' &&
+          item.itemType !== 'miscellaneous' && item.itemType !== 'service' && item.itemType !== 'consultation'
+        )
+        .map((item: { productId: string }) => item.productId);
+
+      if (stockCheckProductIds.length > 0) {
+        const stockProducts = await Product.find({ _id: { $in: stockCheckProductIds } }).select('_id name currentStock').lean() as unknown as Array<{ _id: unknown; name: string; currentStock: number }>;
+        const stockMap = new Map(stockProducts.map((p) => [String(p._id), p]));
+
+        const stockWarnings: string[] = [];
+        for (const item of transactionData.items) {
+          if (!item.productId) continue;
+          const prod = stockMap.get(item.productId) as { name: string; currentStock: number } | undefined;
+          if (prod && item.convertedQuantity > prod.currentStock) {
+            stockWarnings.push(`${prod.name}: selling ${item.convertedQuantity} but only ${prod.currentStock} in stock`);
+          }
+        }
+
+        if (stockWarnings.length > 0) {
+          console.warn('[Transaction] Low stock warnings:', stockWarnings);
+          // Attach warnings to response later (don't block transaction)
         }
       }
     }
@@ -856,19 +910,43 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
     type InventoryDelta = { productId: string; productName: string; delta: number; unitOfMeasurementId?: string };
     const inventoryDeltas: InventoryDelta[] = [];
     if (isCompletedItemUpdate) {
+      // Fetch products to get containerCapacity for old items
+      const allProductIds = [
+        ...existingTransaction.items.map((i: typeof existingTransaction.items[0]) => i.productId),
+        ...updateData.items.map((i: typeof updateData.items[0]) => i.productId)
+      ].filter((id): id is string => !!id && /^[a-fA-F0-9]{24}$/.test(id));
+      
+      const products = await Product.find({ _id: { $in: allProductIds } }).select('_id containerCapacity').lean();
+      const productMap = new Map(products.map((p: { _id: unknown; containerCapacity?: number }) => [String(p._id), p]));
+
       const oldItemMap = new Map<string, number>();
       for (const item of existingTransaction.items) {
         const pid = item.productId || '';
         if (pid && !item.isService) {
-          oldItemMap.set(pid, (oldItemMap.get(pid) || 0) + (item.convertedQuantity || item.quantity || 0));
+          // Calculate converted quantity for old items
+          let convertedQty = item.quantity || 0;
+          if (item.saleType === 'quantity') {
+            // Use containerCapacityAtSale if available, otherwise look up current value
+            const capacity = item.containerCapacityAtSale || productMap.get(pid)?.containerCapacity || 1;
+            convertedQty = (item.quantity || 0) * capacity;
+          }
+          // For volume sales, quantity is already in loose units
+          oldItemMap.set(pid, (oldItemMap.get(pid) || 0) + convertedQty);
         }
       }
       for (const item of updateData.items) {
         const pid = item.productId || '';
         if (pid && !item.isService) {
+          // Calculate converted quantity for new items
+          let convertedQty = item.quantity || 0;
+          if (item.saleType === 'quantity') {
+            const capacity = productMap.get(pid)?.containerCapacity || 1;
+            convertedQty = (item.quantity || 0) * capacity;
+          }
+          // For volume sales, quantity is already in loose units
+          
           const oldQty = oldItemMap.get(pid) || 0;
-          const newQty = item.convertedQuantity || item.quantity || 0;
-          const delta = newQty - oldQty; // positive = need to deduct more; negative = need to restore
+          const delta = convertedQty - oldQty; // positive = need to deduct more; negative = need to restore
           if (delta !== 0) {
             inventoryDeltas.push({ productId: pid, productName: item.name || pid, delta, unitOfMeasurementId: item.unitOfMeasurementId });
           }
@@ -877,7 +955,7 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
       }
       // Items that were removed entirely → restore their full qty
       for (const [pid, qty] of oldItemMap.entries()) {
-        const removedItem = existingTransaction.items.find(i => i.productId === pid);
+        const removedItem = existingTransaction.items.find((i: typeof existingTransaction.items[0]) => i.productId === pid);
         inventoryDeltas.push({ productId: pid, productName: removedItem?.name || pid, delta: -qty, unitOfMeasurementId: removedItem?.unitOfMeasurementId });
       }
     }
@@ -977,12 +1055,12 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
               continue;
             }
             const movementType = delta.delta > 0 ? 'sale' : 'return';
-            const qty = Math.abs(delta.delta);
+            const convertedQty = Math.abs(delta.delta);
             const movement = new InventoryMovement({
               productId: product._id,
               movementType,
-              quantity: qty,
-              convertedQuantity: qty,
+              quantity: convertedQty,
+              convertedQuantity: convertedQty,
               unitOfMeasurementId: delta.unitOfMeasurementId || product.unitOfMeasurement,
               baseUnit: 'unit',
               reference: `EDIT-${updatedTransaction!.transactionNumber}`,
@@ -991,8 +1069,8 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
               productName: delta.productName,
             });
             await movement.save({ session: deltaSession });
-            await movement.updateProductStock();
-            console.log(`[Transaction] Delta applied: ${delta.productName} ${movementType} ${qty}`);
+            await movement.updateProductStock(deltaSession);
+            console.log(`[Transaction] Delta applied: ${delta.productName} ${movementType} ${convertedQty}`);
           }
           await deltaSession.commitTransaction();
         } catch (deltaErr) {

@@ -56,6 +56,7 @@ export interface Product {
   brand?: Brand;
   unitOfMeasurement: UnitOfMeasurement;
   containerType?: ContainerType;
+  canSellLoose?: boolean;
   quantity: number;
   reorderPoint: number;
   currentStock: number;

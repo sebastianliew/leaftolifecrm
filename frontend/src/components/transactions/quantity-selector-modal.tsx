@@ -228,15 +228,22 @@ export function QuantitySelectorModal({
                 </button>
 
                 <button
-                  className={`p-3 rounded-lg border-2 transition-all ${saleType === 'volume'
-                    ? 'border-green-500 bg-green-100 text-green-800'
-                    : 'border-gray-200 bg-white hover:border-green-300'}`}
-                  onClick={() => handleSaleTypeChange('volume')}
+                  className={`p-3 rounded-lg border-2 transition-all ${
+                    product.canSellLoose !== true 
+                      ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed' 
+                      : saleType === 'volume'
+                        ? 'border-green-500 bg-green-100 text-green-800'
+                        : 'border-gray-200 bg-white hover:border-green-300'
+                  }`}
+                  onClick={() => product.canSellLoose === true && handleSaleTypeChange('volume')}
+                  disabled={product.canSellLoose !== true}
                 >
                   <div className="text-center">
                     <div className="text-lg font-bold">⚗️</div>
                     <div className="text-sm font-medium">Volume/Weight</div>
-                    <div className="text-xs text-muted-foreground">Custom quantity (ml, g, etc.)</div>
+                    <div className="text-xs text-muted-foreground">
+                      {product.canSellLoose !== true ? 'Not available for this product' : 'Custom quantity (ml, g, etc.)'}
+                    </div>
                   </div>
                 </button>
               </div>

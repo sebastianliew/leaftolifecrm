@@ -21,7 +21,7 @@ export class RevenueAnalysisService {
     startDate.setMonth(startDate.getMonth() - months)
     startDate.setDate(1) // Start from beginning of month
 
-    // Monthly revenue trend
+    // Monthly revenue trend with actual cost calculation
     const monthlyRevenuePipeline = [
       {
         $match: {
@@ -31,14 +31,32 @@ export class RevenueAnalysisService {
         }
       },
       {
+        $unwind: '$items'
+      },
+      {
         $group: {
           _id: {
             year: { $year: '$transactionDate' },
             month: { $month: '$transactionDate' }
           },
-          revenue: { $sum: { $subtract: ['$totalAmount', { $ifNull: ['$totalRefunded', 0] }] } },
-          transactions: { $sum: 1 },
-          avgTransactionValue: { $avg: { $subtract: ['$totalAmount', { $ifNull: ['$totalRefunded', 0] }] } }
+          revenue: { $sum: '$items.totalPrice' },
+          cost: { 
+            $sum: { 
+              $multiply: [
+                { $ifNull: ['$items.costPrice', 0] }, 
+                '$items.quantity'
+              ] 
+            } 
+          },
+          transactions: { $addToSet: '$_id' }
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          revenue: 1,
+          cost: 1,
+          transactions: { $size: '$transactions' }
         }
       },
       {
@@ -51,23 +69,25 @@ export class RevenueAnalysisService {
       .aggregate<MonthlyRevenueAggregation>(monthlyRevenuePipeline)
       .toArray()
     
-    // Transform and calculate cost/profit
+    // Transform and calculate profit from actual cost
     const monthlyData: MonthlyRevenue[] = monthlyDataRaw.map((month, index) => {
       const monthDate = new Date(month._id.year, month._id.month - 1)
       const monthStr = monthDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+      const actualCost = month.cost || 0
+      const profit = month.revenue - actualCost
       
       return {
         month: monthStr,
         revenue: month.revenue,
-        cost: month.revenue * 0.65,
-        profit: month.revenue * 0.35,
+        cost: actualCost,
+        profit: profit,
         growth: index === 0 ? 0 : ((month.revenue - monthlyDataRaw[index - 1].revenue) / monthlyDataRaw[index - 1].revenue) * 100,
         transactions: month.transactions,
-        avgTransactionValue: month.avgTransactionValue
+        avgTransactionValue: month.transactions > 0 ? month.revenue / month.transactions : 0
       }
     })
 
-    // Revenue by category
+    // Revenue by category with actual cost calculation
     const categoryRevenuePipeline = [
       {
         $match: {
@@ -96,6 +116,14 @@ export class RevenueAnalysisService {
             }
           },
           revenue: { $sum: '$items.totalPrice' },
+          cost: { 
+            $sum: { 
+              $multiply: [
+                { $ifNull: ['$items.costPrice', 0] }, 
+                '$items.quantity'
+              ] 
+            } 
+          },
           transactions: { $sum: 1 },
           quantity: { $sum: '$items.quantity' }
         }
@@ -110,15 +138,21 @@ export class RevenueAnalysisService {
       .aggregate<CategoryRevenueAggregation>(categoryRevenuePipeline)
       .toArray()
 
-    const categoryData: CategoryRevenue[] = categoryDataRaw.map(cat => ({
-      category: cat._id,
-      revenue: cat.revenue,
-      cost: cat.revenue * 0.65,
-      profit: cat.revenue * 0.35,
-      margin: 0.35,
-      transactions: cat.transactions,
-      quantity: cat.quantity
-    }))
+    const categoryData: CategoryRevenue[] = categoryDataRaw.map(cat => {
+      const actualCost = cat.cost || 0
+      const profit = cat.revenue - actualCost
+      const margin = cat.revenue > 0 ? profit / cat.revenue : 0
+      
+      return {
+        category: cat._id,
+        revenue: cat.revenue,
+        cost: actualCost,
+        profit: profit,
+        margin: margin,
+        transactions: cat.transactions,
+        quantity: cat.quantity
+      }
+    })
 
     // Revenue by payment method
     const paymentMethodPipeline = [
