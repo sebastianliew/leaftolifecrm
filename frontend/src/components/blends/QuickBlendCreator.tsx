@@ -157,8 +157,8 @@ export default function QuickBlendCreator({
         const isContainerBased = ing.product.unitName && containerUnits.includes(ing.product.unitName.toLowerCase());
         
         if (isContainerBased && ing.product.containerCapacity) {
-          // For container-based products, we need to check available content
-          const availableContent = ing.product.currentStock * ing.product.containerCapacity;
+          // currentStock is already tracked in loose units (tablets, grams, ml, etc.)
+          const availableContent = ing.product.currentStock;
           const contentUnit = getContentUnit(ing.product.containerType);
           
           // Convert needed quantity to content unit if necessary
@@ -350,8 +350,8 @@ export default function QuickBlendCreator({
         const isContainerBased = ingredient.product.unitName && containerUnits.includes(ingredient.product.unitName.toLowerCase());
         
         if (isContainerBased && ingredient.product.containerCapacity) {
-          // For container-based products
-          const availableContent = ingredient.product.currentStock * ingredient.product.containerCapacity;
+          // currentStock is already tracked in loose units (tablets, grams, ml, etc.)
+          const availableContent = ingredient.product.currentStock;
           const contentUnit = getContentUnit(ingredient.product.containerType);
           
           let neededContent = ingredient.quantity;
@@ -543,8 +543,8 @@ export default function QuickBlendCreator({
                     let displayText = product.name;
                     if (isContainerBased && product.containerCapacity) {
                       const contentUnit = getContentUnit(product.containerType);
-                      const totalContent = product.currentStock * product.containerCapacity;
-                      displayText += ` (${product.currentStock || 0} ${product.unitName || 'units'}, ${totalContent} ${contentUnit})`;
+                      // currentStock is already in loose units — no need to multiply
+                      displayText += ` (${product.currentStock || 0} ${contentUnit})`;
                     } else {
                       displayText += ` (${product.totalQuantity || 0} ${product.unitName || 'units'})`;
                     }

@@ -1,5 +1,4 @@
 import mongoose, { Document, Schema, Model } from 'mongoose';
-import { getNextSequence } from './Counter.js';
 
 export interface IRefund extends Document<unknown> {
   _id: string;
@@ -102,7 +101,7 @@ const PaymentDetailsSchema = new Schema({
 }, { _id: false });
 
 const RefundSchema = new Schema<IRefund>({
-  refundNumber: { type: String, unique: true },
+  refundNumber: { type: String, required: true, unique: true },
   transactionId: { type: String, required: true },
   transactionNumber: { type: String, required: true },
   
@@ -186,15 +185,18 @@ RefundSchema.index({ requestDate: -1 });
 RefundSchema.index({ customerName: 1 });
 RefundSchema.index({ createdBy: 1 });
 
-// Pre-save middleware to generate refund number using atomic counter
-// This eliminates the race condition that could cause duplicate refund numbers
+// Pre-save middleware to generate refund number
 RefundSchema.pre('save', async function(next) {
   if (this.isNew && !this.refundNumber) {
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-    const counterId = `ref-${dateStr}`;
-    const seq = await getNextSequence(counterId);
-    this.refundNumber = `REF-${dateStr}-${String(seq).padStart(4, '0')}`;
+    const count = await mongoose.model('Refund').countDocuments({
+      requestDate: {
+        $gte: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
+        $lt: new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1)
+      }
+    });
+    this.refundNumber = `REF-${dateStr}-${String(count + 1).padStart(4, '0')}`;
   }
   next();
 });

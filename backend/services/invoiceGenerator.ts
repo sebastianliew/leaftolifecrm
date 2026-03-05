@@ -9,7 +9,6 @@ interface InvoiceItem {
   totalPrice: number;
   discountAmount?: number;
   itemType?: 'product' | 'fixed_blend' | 'custom_blend' | 'bundle' | 'miscellaneous' | 'consultation' | 'service';
-  baseUnit?: string; // e.g., "ml", "pieces", "tablets"
 }
 
 interface InvoiceData {
@@ -306,11 +305,8 @@ export class InvoiceGenerator {
       const maxWidth = col2X - col1X - 10;
       this.doc.text(itemDescription, col1X, this.yPosition, { width: maxWidth });
 
-      // Quantity with unit (e.g., "100 ml", "5 pcs")
-      const qtyWithUnit = item.baseUnit 
-        ? `${item.quantity} ${item.baseUnit}`
-        : item.quantity.toString();
-      this.doc.text(qtyWithUnit, col2X, this.yPosition);
+      // Quantity
+      this.doc.text(item.quantity.toString(), col2X, this.yPosition);
 
       // Unit Price
       const currency = data.currency || 'SGD';

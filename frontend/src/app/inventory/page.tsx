@@ -52,12 +52,12 @@ interface Brand {
   active: boolean;
 }
 
-// ─────────────────────────────────────────────
-// Isolated search input — typing here does NOT
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// Isolated search input ΓÇö typing here does NOT
 // re-render the parent InventoryPage component.
 // Only calls onSearch (debounced) when the user
 // stops typing for 400ms.
-// ─────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const DebouncedSearchInput = memo(function DebouncedSearchInput({
   onSearch,
   placeholder = "Search products or SKU...",
@@ -101,7 +101,7 @@ export default function InventoryPage() {
   const canEditProducts = hasPermission('inventory', 'canEditProducts')
   const canDeleteProducts = hasPermission('inventory', 'canDeleteProducts')
 
-  // ── Server-side filter/sort/pagination state ──
+  // ΓöÇΓöÇ Server-side filter/sort/pagination state ΓöÇΓöÇ
   const [searchTerm, setSearchTerm] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [brandFilter, setBrandFilter] = useState("all")
@@ -121,7 +121,7 @@ export default function InventoryPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
-  // Stable callback — passed to the isolated search component
+  // Stable callback ΓÇö passed to the isolated search component
   const handleSearch = useCallback((term: string) => {
     setSearchTerm(term)
     setCurrentPage(1)
@@ -139,7 +139,7 @@ export default function InventoryPage() {
     limit: itemsPerPage,
   }
 
-  // ── Queries ──
+  // ΓöÇΓöÇ Queries ΓöÇΓöÇ
   const { data: inventoryData, isLoading, isFetching, error: inventoryError } = useInventory(filters)
   // Only show full-page skeleton on the very first load (no data at all yet).
   // For subsequent searches/filters, data stays visible via placeholderData.
@@ -152,13 +152,13 @@ export default function InventoryPage() {
   const products = inventoryData?.products || []
   const pagination = inventoryData?.pagination || { total: 0, page: 1, limit: 20, pages: 0 }
 
-  // ── Mutations ──
+  // ΓöÇΓöÇ Mutations ΓöÇΓöÇ
   const createMutation = useCreateInventoryItem()
   const updateMutation = useUpdateInventoryItem()
   const deleteMutation = useDeleteInventoryItem()
   const bulkDeleteMutation = useBulkDeleteInventoryItems()
 
-  // ── Stock status helper ──
+  // ΓöÇΓöÇ Stock status helper ΓöÇΓöÇ
   const getStockStatus = (product: Product) => {
     const stock = product.currentStock ?? 0
     const reorder = product.reorderPoint ?? 0
@@ -174,7 +174,7 @@ export default function InventoryPage() {
       return {
         status: "low",
         color: "bg-yellow-100 text-yellow-800",
-        icon: <span className="text-lg">↓</span>,
+        icon: <span className="text-lg">Γåô</span>,
         text: "Low Stock"
       }
     }
@@ -186,7 +186,7 @@ export default function InventoryPage() {
     }
   }
 
-  // ── Sort handling ──
+  // ΓöÇΓöÇ Sort handling ΓöÇΓöÇ
   const handleSort = (column: string) => {
     if (sortBy === column) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
@@ -204,7 +204,7 @@ export default function InventoryPage() {
       <HiChevronDown className="w-3 h-3 ml-1" />
   }
 
-  // ── Selection handling ──
+  // ΓöÇΓöÇ Selection handling ΓöÇΓöÇ
   const handleSelectProduct = (productId: string, checked: boolean) => {
     const newSelected = new Set(selectedProducts)
     if (checked) newSelected.add(productId)
@@ -219,13 +219,13 @@ export default function InventoryPage() {
 
   const isAllSelected = products.length > 0 && products.every(p => selectedProducts.has(p._id))
 
-  // ── Filter card click (maps to stockStatus server param) ──
+  // ΓöÇΓöÇ Filter card click (maps to stockStatus server param) ΓöÇΓöÇ
   const handleCardFilter = (filterType: string) => {
     setStockStatusFilter(filterType)
     setCurrentPage(1)
   }
 
-  // ── Excel export (server-side, all products) ──
+  // ΓöÇΓöÇ Excel export (server-side, all products) ΓöÇΓöÇ
   const handleExportExcel = async () => {
     setIsExporting(true)
     try {
@@ -251,7 +251,7 @@ export default function InventoryPage() {
     }
   }
 
-  // ── Add product ──
+  // ΓöÇΓöÇ Add product ΓöÇΓöÇ
   const handleAddProduct = async (data: AddProductSubmitData) => {
     try {
       await createMutation.mutateAsync({
@@ -275,7 +275,7 @@ export default function InventoryPage() {
     }
   }
 
-  // ── Edit product ──
+  // ΓöÇΓöÇ Edit product ΓöÇΓöÇ
   const handleEditProduct = (product: Product) => {
     setProductToEdit(product)
     setShowEditModal(true)
@@ -309,7 +309,7 @@ export default function InventoryPage() {
     }
   }
 
-  // ── Delete product ──
+  // ΓöÇΓöÇ Delete product ΓöÇΓöÇ
   const handleDeleteProduct = (product: Product) => {
     setProductToDelete(product)
     setShowDeleteDialog(true)
@@ -333,7 +333,7 @@ export default function InventoryPage() {
     }
   }
 
-  // ── Bulk delete ──
+  // ΓöÇΓöÇ Bulk delete ΓöÇΓöÇ
   const handleBulkDelete = async () => {
     const selectedArray = Array.from(selectedProducts)
     if (selectedArray.length === 0) return
@@ -351,7 +351,7 @@ export default function InventoryPage() {
     }
   }
 
-  // ── Error state ──
+  // ΓöÇΓöÇ Error state ΓöÇΓöÇ
   if (inventoryError) {
     return (
       <div className="p-6">
@@ -369,7 +369,7 @@ export default function InventoryPage() {
     )
   }
 
-  // ── Loading state (only first load — never unmounts the page after data exists) ──
+  // ΓöÇΓöÇ Loading state (only first load ΓÇö never unmounts the page after data exists) ΓöÇΓöÇ
   if (isInitialLoad) {
     return (
       <div className="p-6">
@@ -410,7 +410,7 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* Stats Cards — from backend /stats endpoint */}
+      {/* Stats Cards ΓÇö from backend /stats endpoint */}
       <div className={`grid ${canViewCostPrices ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
         <Card
           className={`cursor-pointer transition-all hover:shadow-md ${stockStatusFilter === "all" ? "ring-2 ring-blue-500" : ""}`}
@@ -621,7 +621,7 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* Pagination — server-side */}
+      {/* Pagination ΓÇö server-side */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <p className="text-sm text-gray-600">

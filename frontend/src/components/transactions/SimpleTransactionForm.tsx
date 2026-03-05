@@ -531,7 +531,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       saleType: 'quantity',
       unitOfMeasurementId: unitId,
       baseUnit: baseUnit,
-      convertedQuantity: quantity * (selectedProduct.containerCapacity || 1),
+      convertedQuantity: quantity,
       sku: selectedProduct.sku
     }
 
@@ -1110,9 +1110,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               quantity: newQuantity,
               totalPrice,
               discountAmount,
-              convertedQuantity: item.saleType === 'quantity' 
-                ? newQuantity * (item.product?.containerCapacity || 1)
-                : newQuantity
+              convertedQuantity: newQuantity
             }
             }
           } else {
@@ -1121,9 +1119,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               ...item,
               quantity: newQuantity,
               totalPrice: item.unitPrice * newQuantity,
-              convertedQuantity: item.saleType === 'quantity' 
-                ? newQuantity * (item.product?.containerCapacity || 1)
-                : newQuantity
+              convertedQuantity: newQuantity
             }
           }
         }

@@ -38,7 +38,6 @@ async function generateInvoiceAsync(
       unitPrice: number;
       discountAmount?: number;
       itemType?: string;
-      baseUnit?: string; // e.g., "ml", "pieces", "tablets"
     }>;
     discountAmount: number;
     totalAmount: number;
@@ -84,8 +83,7 @@ async function generateInvoiceAsync(
         unitPrice: item.unitPrice ?? 0,
         totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
         discountAmount: item.discountAmount,
-        itemType: item.itemType as 'product' | 'fixed_blend' | 'custom_blend' | 'bundle' | 'miscellaneous' | 'consultation' | 'service' | undefined,
-        baseUnit: item.baseUnit // e.g., "ml", "pieces", "tablets"
+        itemType: item.itemType as 'product' | 'fixed_blend' | 'custom_blend' | 'bundle' | 'miscellaneous' | 'consultation' | 'service' | undefined
       })),
       subtotal,
       discountAmount: totalDiscounts,
@@ -1063,8 +1061,7 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
             unitPrice: item.unitPrice ?? 0,
             totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
             discountAmount: item.discountAmount,
-            itemType: item.itemType,
-            baseUnit: item.baseUnit // e.g., "ml", "pieces", "tablets"
+            itemType: item.itemType
           })),
           subtotal,
           discountAmount: totalDiscounts,
@@ -1277,8 +1274,7 @@ export const generateTransactionInvoice = async (req: AuthenticatedRequest, res:
         unitPrice: item.unitPrice ?? 0,
         totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
         discountAmount: item.discountAmount,
-        itemType: item.itemType,
-        baseUnit: item.baseUnit // e.g., "ml", "pieces", "tablets"
+        itemType: item.itemType
       })),
       subtotal,
       discountAmount: totalDiscounts,
@@ -1433,8 +1429,7 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
         unitPrice: item.unitPrice ?? 0,
         totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
         discountAmount: item.discountAmount,
-        itemType: item.itemType,
-        baseUnit: item.baseUnit // e.g., "ml", "pieces", "tablets"
+        itemType: item.itemType
       })),
       subtotal,
       discountAmount: totalDiscounts,

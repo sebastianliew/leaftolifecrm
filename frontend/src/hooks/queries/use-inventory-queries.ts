@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { fetchAPI, queryKeys } from '@/lib/query-client';
 import { Product } from '@/types/inventory/product.types';
 
-// ── Types ──
+// 🔧 Types 🔧
 
 export interface InventoryFilters {
   search?: string;
@@ -35,7 +35,7 @@ interface PaginatedProducts {
   };
 }
 
-// ── Queries ──
+// 🔧 Queries 🔧
 
 export function useInventory(filters: InventoryFilters = {}) {
   return useQuery({
@@ -68,7 +68,7 @@ export function useInventoryStats() {
   });
 }
 
-// ── Mutations ──
+// 🔧 Mutations 🔧
 
 export function useCreateInventoryItem() {
   const queryClient = useQueryClient();
