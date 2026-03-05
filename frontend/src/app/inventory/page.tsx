@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useCallback, memo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -52,6 +52,44 @@ interface Brand {
   active: boolean;
 }
 
+// ─────────────────────────────────────────────
+// Isolated search input — typing here does NOT
+// re-render the parent InventoryPage component.
+// Only calls onSearch (debounced) when the user
+// stops typing for 400ms.
+// ─────────────────────────────────────────────
+const DebouncedSearchInput = memo(function DebouncedSearchInput({
+  onSearch,
+  placeholder = "Search products or SKU...",
+}: {
+  onSearch: (term: string) => void
+  placeholder?: string
+}) {
+  const [value, setValue] = useState("")
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value
+    setValue(newValue)
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      onSearch(newValue)
+    }, 400)
+  }
+
+  return (
+    <div className="relative">
+      <HiMagnifyingGlass className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+      <Input
+        placeholder={placeholder}
+        value={value}
+        onChange={handleChange}
+        className="pl-10 w-64"
+      />
+    </div>
+  )
+})
+
 export default function InventoryPage() {
   const { toast } = useToast()
   const { user } = useAuth()
@@ -64,7 +102,6 @@ export default function InventoryPage() {
   const canDeleteProducts = hasPermission('inventory', 'canDeleteProducts')
 
   // ── Server-side filter/sort/pagination state ──
-  const [searchInput, setSearchInput] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [brandFilter, setBrandFilter] = useState("all")
@@ -84,16 +121,11 @@ export default function InventoryPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
-  // Debounced search — avoid hammering API on every keystroke
-  const searchTimer = useState<ReturnType<typeof setTimeout> | null>(null)
-  const handleSearchChange = (value: string) => {
-    setSearchInput(value)
-    if (searchTimer[0]) clearTimeout(searchTimer[0])
-    searchTimer[0] = setTimeout(() => {
-      setSearchTerm(value)
-      setCurrentPage(1) // Reset to page 1 on new search
-    }, 400)
-  }
+  // Stable callback — passed to the isolated search component
+  const handleSearch = useCallback((term: string) => {
+    setSearchTerm(term)
+    setCurrentPage(1)
+  }, [])
 
   // Build server-side filters
   const filters: InventoryFilters = {
@@ -108,7 +140,10 @@ export default function InventoryPage() {
   }
 
   // ── Queries ──
-  const { data: inventoryData, isLoading: loading, error: inventoryError } = useInventory(filters)
+  const { data: inventoryData, isLoading, isFetching, error: inventoryError } = useInventory(filters)
+  // Only show full-page skeleton on the very first load (no data at all yet).
+  // For subsequent searches/filters, data stays visible via placeholderData.
+  const isInitialLoad = isLoading && !inventoryData
   const { data: stats } = useInventoryStats()
   const { data: brands = [], isLoading: brandsLoading } = useBrands()
   const { data: categories = [], isLoading: categoriesLoading } = useCategoriesQuery()
@@ -334,8 +369,8 @@ export default function InventoryPage() {
     )
   }
 
-  // ── Loading state ──
-  if (loading) {
+  // ── Loading state (only first load — never unmounts the page after data exists) ──
+  if (isInitialLoad) {
     return (
       <div className="p-6">
         <div className="animate-pulse">
@@ -360,15 +395,8 @@ export default function InventoryPage() {
           <p className="text-sm text-gray-600">Manage your product inventory and stock levels</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="relative">
-            <HiMagnifyingGlass className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search products or SKU..."
-              value={searchInput}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="pl-10 w-64"
-            />
-          </div>
+          <DebouncedSearchInput onSearch={handleSearch} />
+          {isFetching && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
           <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2">
             <HiFunnel className="h-4 w-4" /> Filters
           </Button>

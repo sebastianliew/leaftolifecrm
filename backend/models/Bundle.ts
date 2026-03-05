@@ -149,9 +149,8 @@ bundleSchema.index({ tags: 1 });
 bundleSchema.index({ legacyId: 1, 'migrationData.source': 1 });
 bundleSchema.index({ 'migrationData.importedAt': 1 });
 
-// Pre-save middleware to generate SKU and calculate pricing
-bundleSchema.pre('save', async function(next) {
-  // Generate SKU if not provided
+// Pre-validate middleware to generate SKU before validation runs
+bundleSchema.pre('validate', async function(next) {
   if (!this.sku) {
     try {
       const count = await (this.constructor as mongoose.Model<unknown>).countDocuments({});
@@ -161,20 +160,24 @@ bundleSchema.pre('save', async function(next) {
       this.sku = `BDL-${Date.now()}`;
     }
   }
-  
+  next();
+});
+
+// Pre-save middleware to calculate pricing
+bundleSchema.pre('save', async function(next) {
   // Calculate pricing automatically
   if (this.bundleProducts && this.bundleProducts.length > 0) {
     this.individualTotalPrice = this.bundleProducts.reduce((total, item) => {
       item.totalPrice = item.quantity * item.individualPrice;
       return total + item.totalPrice;
     }, 0);
-    
+
     this.savings = Math.max(0, this.individualTotalPrice - this.bundlePrice);
-    this.savingsPercentage = this.individualTotalPrice > 0 
-      ? Math.round((this.savings / this.individualTotalPrice) * 100) 
+    this.savingsPercentage = this.individualTotalPrice > 0
+      ? Math.round((this.savings / this.individualTotalPrice) * 100)
       : 0;
   }
-  
+
   next();
 });
 

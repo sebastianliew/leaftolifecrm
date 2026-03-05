@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>LeafToLife Infrastructure Diagram</title>
+  <style>
+    :root {
+      --bg: #f5f5f7;
+      --card: #ffffff;
+      --stroke: #4b5563;
+      --accent: #7c3aed;
+      --text: #111827;
+      --muted: #6b7280;
+    }
+    body {
+      margin: 0;
+      padding: 2rem;
+      font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    h1 {
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+    p.description {
+      margin-top: 0;
+      margin-bottom: 2rem;
+      color: var(--muted);
+    }
+    .diagram-wrapper {
+      border-radius: 1.5rem;
+      background: var(--card);
+      box-shadow: 0 30px 80px rgba(15, 23, 42, 0.12);
+      padding: 2rem;
+      overflow: auto;
+    }
+    svg {
+      width: 100%;
+      max-width: 960px;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+    }
+    .note {
+      margin-top: 1.5rem;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <h1>LeafToLife System Context</h1>
+  <p class="description">High-level data flow between the Next.js frontend, Express API, MongoDB Atlas, and supporting services.</p>
+  <div class="diagram-wrapper">
+    <svg viewBox="0 0 960 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Infrastructure diagram">
+      <defs>
+        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#8b5cf6" />
+          <stop offset="100%" stop-color="#6366f1" />
+        </linearGradient>
+        <style>
+          .box { fill: #ffffff; stroke: #cbd5f5; stroke-width: 2; rx: 16; }
+          .label { font: 600 16px 'Segoe UI', sans-serif; fill: #111827; }
+          .sublabel { font: 13px 'Segoe UI', sans-serif; fill: #6b7280; }
+          .arrow { stroke: var(--stroke); stroke-width: 2.5; marker-end: url(#arrowhead); }
+        </style>
+        <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="6" refY="4" orient="auto">
+          <polygon points="0 0, 10 4, 0 8" fill="#4b5563" />
+        </marker>
+      </defs>
+
+      <!-- User -->
+      <rect class="box" x="40" y="200" width="140" height="120" />
+      <text class="label" x="110" y="240" text-anchor="middle">User</text>
+      <text class="sublabel" x="110" y="265" text-anchor="middle">Browser / Admin</text>
+
+      <!-- Frontend -->
+      <rect class="box" x="240" y="120" width="220" height="280" />
+      <text class="label" x="350" y="160" text-anchor="middle">Next.js Frontend</text>
+      <text class="sublabel" x="350" y="185" text-anchor="middle">App Router • React 18 • Tailwind</text>
+      <text class="sublabel" x="350" y="210" text-anchor="middle">NextAuth • Middleware Guards</text>
+      <text class="sublabel" x="350" y="235" text-anchor="middle">TanStack Query • API Client</text>
+
+      <!-- Backend -->
+      <rect class="box" x="520" y="90" width="250" height="340" />
+      <text class="label" x="645" y="130" text-anchor="middle">Express API Server</text>
+      <text class="sublabel" x="645" y="155" text-anchor="middle">TypeScript • Express 4</text>
+      <text class="sublabel" x="645" y="180" text-anchor="middle">Controllers • Services • Models</text>
+      <text class="sublabel" x="645" y="205" text-anchor="middle">Helmet • Rate Limits • JWT</text>
+      <text class="sublabel" x="645" y="230" text-anchor="middle">Invoice/PDF • Email Service</text>
+
+      <!-- MongoDB -->
+      <rect class="box" x="820" y="110" width="120" height="120" />
+      <text class="label" x="880" y="150" text-anchor="middle">MongoDB</text>
+      <text class="sublabel" x="880" y="175" text-anchor="middle">Atlas Cluster</text>
+
+      <!-- File Storage -->
+      <rect class="box" x="820" y="260" width="120" height="120" />
+      <text class="label" x="880" y="300" text-anchor="middle">File Storage</text>
+      <text class="sublabel" x="880" y="325" text-anchor="middle">Invoices / PDFs</text>
+
+      <!-- SMTP -->
+      <rect class="box" x="520" y="350" width="150" height="80" />
+      <text class="label" x="595" y="390" text-anchor="middle">SMTP</text>
+      <text class="sublabel" x="595" y="415" text-anchor="middle">Nodemailer</text>
+
+      <!-- Arrows -->
+      <line class="arrow" x1="180" y1="260" x2="240" y2="260" />
+      <line class="arrow" x1="460" y1="220" x2="520" y2="220" />
+      <line class="arrow" x1="770" y1="200" x2="820" y2="200" />
+      <line class="arrow" x1="770" y1="320" x2="820" y2="320" />
+      <line class="arrow" x1="645" y1="360" x2="645" y2="320" marker-end="url(#arrowhead)" />
+      <line class="arrow" x1="350" y1="320" x2="350" y2="360" marker-end="url(#arrowhead)" />
+
+      <!-- Refresh arrow (Frontend -> Backend) -->
+      <path d="M240 300 C 200 380, 480 380, 520 300" fill="none" class="arrow" />
+    </svg>
+  </div>
+  <p class="note">Diagram scope: application-level components only. External analytics, logging, or CDN layers are omitted for clarity.</p>
+</body>
+</html>

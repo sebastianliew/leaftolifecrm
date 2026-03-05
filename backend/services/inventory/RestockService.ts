@@ -121,14 +121,14 @@ export class MongoInventoryRepository implements IInventoryRepository {
     
     // Create inventory movement record to handle stock updates
     const inventoryMovement = new InventoryMovement({
-      productId: new Schema.Types.ObjectId(id),
+      productId: new Types.ObjectId(id),
       productName: product.name,
       movementType: 'adjustment',
       quantity: quantity,
       convertedQuantity: quantity,
       unitOfMeasurementId: typeof product.unitOfMeasurement === 'object'
         ? product.unitOfMeasurement as Schema.Types.ObjectId
-        : new Schema.Types.ObjectId(product.unitOfMeasurement as string),
+        : new Types.ObjectId(product.unitOfMeasurement as string),
       baseUnit: product.unitName || 'unit',
       reference: `RESTOCK-${Date.now()}`,
       reason: `Stock addition`,
@@ -206,12 +206,12 @@ export class RestockService {
       }
 
       const movementData = {
-        productId: new Schema.Types.ObjectId(operation.productId),
+        productId: new Types.ObjectId(operation.productId),
         movementType: 'adjustment' as const,
         quantity: operation.quantity,
         unitOfMeasurementId: typeof product.unitOfMeasurement === 'object'
           ? product.unitOfMeasurement as Schema.Types.ObjectId
-          : new Schema.Types.ObjectId((product.unitOfMeasurement as string) || '507f1f77bcf86cd799439011'),
+          : new Types.ObjectId((product.unitOfMeasurement as string) || '507f1f77bcf86cd799439011'),
         baseUnit: unitOfMeasurement?.name || 'unit',
         convertedQuantity: operation.quantity,
         reference: operation.reference || `RESTOCK-${Date.now()}`,

@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { fetchAPI, queryKeys } from '@/lib/query-client';
 import { Product } from '@/types/inventory/product.types';
 
@@ -53,8 +53,9 @@ export function useInventory(filters: InventoryFilters = {}) {
 
       return fetchAPI<PaginatedProducts>(`/inventory/products?${params}`);
     },
-    staleTime: 0,
-    gcTime: 0,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    placeholderData: keepPreviousData, // Keep showing old results while new search/filter loads
   });
 }
 
@@ -62,8 +63,8 @@ export function useInventoryStats() {
   return useQuery({
     queryKey: [...queryKeys.inventory, 'stats'],
     queryFn: () => fetchAPI<InventoryStats>('/inventory/products/stats'),
-    staleTime: 0,
-    gcTime: 0,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
   });
 }
 
