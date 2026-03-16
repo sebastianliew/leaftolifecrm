@@ -27,9 +27,10 @@ export function useSuppliers() {
         throw new Error('Failed to fetch suppliers')
       }
       const data = await response.json()
-      setSuppliers(data)
+      const suppliersArray = Array.isArray(data) ? data : (data.suppliers ?? data.data ?? [])
+      setSuppliers(suppliersArray)
       setError(null)
-      return data
+      return suppliersArray
     } catch (err) {
       setError("Failed to fetch suppliers")
       throw err
