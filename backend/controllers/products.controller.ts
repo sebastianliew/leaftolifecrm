@@ -5,6 +5,7 @@ import { IUser } from '../models/User.js';
 import { QueryBuilder } from '../lib/QueryBuilder.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middlewares/errorHandler.middleware.js';
 import { validateRefs } from '../lib/validations/referenceValidator.js';
+import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 
 // ── Types ──
 
@@ -164,7 +165,8 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     reservedStock: 0,
     costPrice, sellingPrice, status,
     isActive: status === 'active',
-    expiryDate
+    expiryDate,
+    looseStock: 0
   });
 
   if (!product.sku) await product.generateSKU();
@@ -179,6 +181,7 @@ export const updateProduct = asyncHandler(async (req: Request<{ id: string }>, r
   delete updates._id;
   delete updates.createdAt;
   delete updates.updatedAt;
+  delete updates.looseStock;
 
   // Validate references if being updated
   await validateRefs([
@@ -368,4 +371,54 @@ export const exportProducts = asyncHandler(async (req: Request, res: Response) =
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   res.send(buf);
+});
+
+export const manageProductPool = asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
+  const { action, bottleCount } = req.body as { action: "open" | "close"; bottleCount: number };
+
+  if (!["open", "close"].includes(action)) throw new ValidationError("action must be open or close");
+  if (!bottleCount || bottleCount <= 0 || !Number.isFinite(bottleCount)) throw new ValidationError("bottleCount must be a positive number");
+
+  const product = await Product.findById(req.params.id).lean() as any;
+  if (!product) throw new NotFoundError("Product", req.params.id);
+  if (!product.canSellLoose) throw new ValidationError("This product is not configured for loose sales. Enable canSellLoose first.");
+
+  const { validatePoolAllocation } = await import("../services/inventory/StockPoolService.js");
+  const validation = validatePoolAllocation(product as any, bottleCount, action);
+  if (!validation.valid) throw new ValidationError(validation.error || "Invalid pool allocation");
+
+  const authReq = req as AuthenticatedRequest;
+  const userId = authReq.user ? String((authReq.user as any)._id) : "system";
+
+  const movement = new InventoryMovement({
+    productId: product._id,
+    movementType: "pool_transfer",
+    quantity: validation.delta,
+    convertedQuantity: validation.delta,
+    unitOfMeasurementId: product.unitOfMeasurement,
+    baseUnit: product.unitName || "unit",
+    reference: `POOL-${Date.now()}`,
+    notes: `Pool ${action}: ${bottleCount} bottle(s) ${action === "open" ? "opened for loose sale" : "sealed back"}`,
+    createdBy: userId,
+    productName: product.name,
+    pool: "any",
+  });
+
+  await movement.save();
+  await movement.updateProductStock();
+
+  const updatedProduct = await Product.findById(req.params.id).populate(PRODUCT_POPULATE).lean() as any;
+  const looseStock = updatedProduct?.looseStock ?? 0;
+  const currentStock = updatedProduct?.currentStock ?? 0;
+
+  res.json({
+    success: true,
+    message: `Successfully ${action === "open" ? "opened" : "sealed"} ${bottleCount} bottle(s)`,
+    product: updatedProduct,
+    pool: {
+      looseStock,
+      sealedStock: currentStock - looseStock,
+      containerCapacity: updatedProduct?.containerCapacity ?? 1,
+    },
+  });
 });

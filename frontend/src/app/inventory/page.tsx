@@ -598,7 +598,7 @@ export default function InventoryPage() {
                             const stock = product.currentStock ?? 0;
                             const capacity = product.containerCapacity || 1;
                             const unit = product.unitOfMeasurement?.abbreviation || 'units';
-                            
+
                             if (capacity > 1) {
                               const containers = Math.floor(stock / capacity);
                               return `${stock} ${unit} (${containers} ${containers === 1 ? 'container' : 'containers'})`;
@@ -607,6 +607,11 @@ export default function InventoryPage() {
                           })()}
                         </span>
                       </Badge>
+                      {(product.looseStock ?? 0) > 0 && (
+                        <span className="ml-1 text-xs text-green-700 font-medium">
+                          ⚗️ {product.looseStock} loose
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-center text-xs">-</TableCell>
                     <TableCell>

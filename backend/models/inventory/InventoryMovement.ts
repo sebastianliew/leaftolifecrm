@@ -4,7 +4,8 @@ import mongoose from 'mongoose';
 
 export interface IInventoryMovement extends Document {
   productId: Schema.Types.ObjectId;
-  movementType: 'sale' | 'return' | 'adjustment' | 'transfer' | 'fixed_blend' | 'bundle_sale' | 'bundle_blend_ingredient' | 'blend_ingredient' | 'custom_blend';
+  movementType: 'sale' | 'return' | 'adjustment' | 'transfer' | 'fixed_blend' | 'bundle_sale' | 'bundle_blend_ingredient' | 'blend_ingredient' | 'custom_blend' | 'pool_transfer';
+  pool?: 'loose' | 'sealed' | 'any';
   quantity: number;
   unitOfMeasurementId: Schema.Types.ObjectId;
   baseUnit: string;
@@ -35,7 +36,7 @@ const InventoryMovementSchema = new Schema<IInventoryMovement>(
     movementType: {
       type: String,
       required: true,
-      enum: ['sale', 'return', 'adjustment', 'transfer', 'fixed_blend', 'bundle_sale', 'bundle_blend_ingredient', 'blend_ingredient', 'custom_blend'],
+      enum: ['sale', 'return', 'adjustment', 'transfer', 'fixed_blend', 'bundle_sale', 'bundle_blend_ingredient', 'blend_ingredient', 'custom_blend', 'pool_transfer'],
     },
     quantity: {
       type: Number,
@@ -78,6 +79,11 @@ const InventoryMovementSchema = new Schema<IInventoryMovement>(
     },
     containerId: String,
     remainingQuantity: Number,
+    pool: {
+      type: String,
+      enum: ['loose', 'sealed', 'any'],
+      default: 'any',
+    },
   },
   {
     timestamps: true,
@@ -113,37 +119,91 @@ InventoryMovementSchema.pre('save', async function(next) {
 
 // Method to update product stock using ATOMIC operations to prevent race conditions
 InventoryMovementSchema.methods.updateProductStock = async function(session?: any) {
-  const Product = model('Product');
+  const Product = model("Product");
+  const pool = (this.pool as string) || "any";
+  const mtype = this.movementType as string;
+  const qty = this.convertedQuantity as number;
 
-  // All stock changes use atomic $inc — no more container-specific branching
-  let stockChange = 0;
-  switch (this.movementType) {
-    case 'sale':
-    case 'fixed_blend':
-    case 'bundle_sale':
-    case 'bundle_blend_ingredient':
-    case 'blend_ingredient':
-    case 'custom_blend':
-      stockChange = -this.convertedQuantity;
-      break;
-    case 'return':
-      stockChange = this.convertedQuantity;
-      break;
-    case 'adjustment':
-      stockChange = this.convertedQuantity;
-      break;
-    case 'transfer':
-      break;
-  }
-
-  if (stockChange !== 0) {
+  if (mtype === "pool_transfer") {
+    // Only adjusts looseStock within 0..currentStock bounds
     await Product.updateOne(
       { _id: this.productId },
-      { $inc: { currentStock: stockChange, availableStock: stockChange } },
+      [{
+        $set: {
+          looseStock: {
+            $max: [0, {
+              $min: [
+                { $add: [{ $ifNull: ["$looseStock", 0] }, qty] },
+                "$currentStock"
+              ]
+            }]
+          }
+        }
+      }],
       session ? { session } : {}
     );
-    console.log(`[InventoryMovement] Atomic stock update: Product ${this.productId} ${stockChange > 0 ? '+' : ''}${stockChange}`);
+    return;
   }
+
+  if (mtype === "transfer") return;
+
+  const decreaseTypes = ["sale","fixed_blend","bundle_sale","bundle_blend_ingredient","blend_ingredient","custom_blend"];
+  const increaseTypes = ["return", "adjustment"];
+  const isDecrease = decreaseTypes.includes(mtype);
+  const isIncrease = increaseTypes.includes(mtype);
+  if (!isDecrease && !isIncrease) return;
+
+  const stockChange = isDecrease ? -qty : qty;
+
+  if (pool === "loose") {
+    await Product.updateOne(
+      { _id: this.productId },
+      [
+        { $set: {
+          currentStock: { $add: ["$currentStock", stockChange] },
+          availableStock: { $add: [{ $ifNull: ["$availableStock", "$currentStock"] }, stockChange] }
+        }},
+        { $set: {
+          looseStock: { $max: [0, { $min: [
+            { $add: [{ $ifNull: ["$looseStock", 0] }, stockChange] },
+            "$currentStock"
+          ]}]}
+        }}
+      ],
+      session ? { session } : {}
+    );
+  } else if (pool === "sealed") {
+    await Product.updateOne(
+      { _id: this.productId },
+      [
+        { $set: {
+          currentStock: { $add: ["$currentStock", stockChange] },
+          availableStock: { $add: [{ $ifNull: ["$availableStock", "$currentStock"] }, stockChange] }
+        }},
+        { $set: {
+          looseStock: { $max: [0, { $min: [{ $ifNull: ["$looseStock", 0] }, "$currentStock"] }] }
+        }}
+      ],
+      session ? { session } : {}
+    );
+  } else {
+    // "any" — blend/restock/adjustment
+    await Product.updateOne(
+      { _id: this.productId },
+      [
+        { $set: {
+          currentStock: { $add: ["$currentStock", stockChange] },
+          availableStock: { $add: [{ $ifNull: ["$availableStock", "$currentStock"] }, stockChange] }
+        }},
+        { $set: {
+          looseStock: { $max: [0, { $min: [{ $ifNull: ["$looseStock", 0] }, "$currentStock"] }] }
+        }}
+      ],
+      session ? { session } : {}
+    );
+  }
+
+  console.log(`[InventoryMovement] Stock update: Product ${this.productId} pool:${pool} ${stockChange > 0 ? "+" : ""}${stockChange}`);
 };
 
 export const InventoryMovement = mongoose.models.InventoryMovement || model<IInventoryMovement>('InventoryMovement', InventoryMovementSchema); 

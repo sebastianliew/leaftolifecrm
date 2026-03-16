@@ -75,7 +75,7 @@ export class ItemSalesController {
         $group: {
           _id: {
             productId: '$items.productId',
-            saleType: { $ifNull: ['$items.saleType', 'loose'] }
+            saleType: { $ifNull: ['$items.saleType', 'quantity'] }
           },
           item_name: { $first: '$items.name' },
           display_sku: { $first: { $ifNull: ['$items.displaySku', ''] } },
@@ -313,7 +313,7 @@ export class ItemSalesController {
         }
 
         // Determine sale type label
-        const saleTypeLabel = saleType === 'container' ? 'Container' : 'Loose';
+        const saleTypeLabel = saleType === 'quantity' ? 'Container' : 'Loose';
         
         // Determine unit label based on sale type and base unit
         let unitLabel = item.base_unit || 'unit';

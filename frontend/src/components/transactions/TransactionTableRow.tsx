@@ -27,6 +27,7 @@ interface TransactionTableRowProps {
   onCancelDraft?: (transaction: Transaction) => void
   onGenerateInvoice: (transactionId: string) => void
   canEdit?: boolean
+  canEditDrafts?: boolean
   canDelete?: boolean
   canCreate?: boolean
 }
@@ -92,6 +93,7 @@ export const TransactionTableRow = React.memo(({
   onCancelDraft,
   onGenerateInvoice,
   canEdit = false,
+  canEditDrafts = false,
   canDelete = false,
   canCreate = false
 }: TransactionTableRowProps) => {
@@ -146,7 +148,7 @@ export const TransactionTableRow = React.memo(({
                 View details
               </Link>
             </DropdownMenuItem>
-            {canEdit && (
+            {(canEdit || (canEditDrafts && (transaction.status === 'draft' || transaction.status === 'cancelled'))) && (
               <DropdownMenuItem onClick={() => onEdit(transaction)}>
                 <FaEdit className="mr-2 h-4 w-4" />
                 Edit
@@ -204,6 +206,7 @@ export const TransactionTableRow = React.memo(({
          prevProps.transaction.updatedAt === nextProps.transaction.updatedAt &&
          prevProps.isSelected === nextProps.isSelected &&
          prevProps.canEdit === nextProps.canEdit &&
+         prevProps.canEditDrafts === nextProps.canEditDrafts &&
          prevProps.canDelete === nextProps.canDelete &&
          prevProps.canCreate === nextProps.canCreate
 })

@@ -359,20 +359,34 @@ export class RefundService {
       }
 
       // Restore inventory via InventoryMovement (same pattern as sales/restocks)
+      // Look up original transaction to determine pool for each item
+      const originalTxn = await Transaction.findById(refund.transactionId);
+
       for (const item of refund.items) {
         const product = await Product.findById(item.productId);
         if (product) {
+          // Determine sale type from original transaction item
+          const originalItem = originalTxn?.items?.find(
+            (ti: { productId?: string }) => ti.productId === item.productId
+          );
+          const saleType = (originalItem as { saleType?: string })?.saleType || 'quantity';
+          const pool = saleType === 'volume' ? 'loose' : 'sealed';
+          const restoreConverted = saleType === 'volume'
+            ? item.refundQuantity
+            : item.refundQuantity * Math.max(1, product.containerCapacity ?? 1);
+
           const movement = new InventoryMovement({
             productId: product._id,
             movementType: 'return',
             quantity: item.refundQuantity,
-            convertedQuantity: item.refundQuantity,
+            convertedQuantity: restoreConverted,
             unitOfMeasurementId: product.unitOfMeasurement,
             baseUnit: 'unit',
             reference: `REFUND-${refund.refundNumber || refundId}`,
-            notes: `Refund: ${item.productName || product.name} x ${item.refundQuantity}`,
+            notes: `Refund: ${item.productName || product.name} x ${item.refundQuantity} (${pool})`,
             createdBy: userId,
             productName: item.productName || product.name,
+            pool,
           });
           await movement.save();
           await movement.updateProductStock(); // Atomic $inc on currentStock

@@ -82,7 +82,13 @@ export function QuantitySelectorModal({
   }
 
   const getMaxAllowed = () => {
-    return product.currentStock || 0
+    if (saleType === "volume") {
+      return product.looseStock ?? 0;
+    }
+    const cap = Math.max(1, product.containerCapacity || 1);
+    const looseStock = product.looseStock ?? 0;
+    const sealedStock = Math.max(0, (product.currentStock || 0) - looseStock);
+    return Math.floor(sealedStock / cap);
   }
 
   const getInputLabel = () => {
@@ -97,14 +103,9 @@ export function QuantitySelectorModal({
   }
 
   const getStockLabel = () => {
-    switch (saleType) {
-      case 'quantity':
-        return 'units available'
-      case 'volume':
-        return `${product.unitOfMeasurement?.abbreviation || 'units'} available`
-      default:
-        return 'units available'
-    }
+    if (saleType === "quantity") return "sealed containers available";
+    if (saleType === "volume") return `${product.unitOfMeasurement?.abbreviation || "units"} available (loose pool)`;
+    return "units available";
   }
 
   const hasValidationErrors = () => {
@@ -194,7 +195,9 @@ export function QuantitySelectorModal({
           <div className="flex items-center gap-2">
             <span className="text-blue-600">ℹ️</span>
             <span className="text-sm text-blue-800">
-              <strong>Available Stock:</strong> {getMaxAllowed()} units.
+              <strong>Available Stock:</strong> {saleType === "volume"
+                ? `${product.looseStock ?? 0} ${product.unitOfMeasurement?.abbreviation || "units"} (loose pool)`
+                : `${Math.floor(Math.max(0, (product.currentStock || 0) - (product.looseStock ?? 0)) / Math.max(1, product.containerCapacity || 1))} containers`}.
               <strong>Unit Price:</strong> ${unitPrice.toFixed(2).replace(/\.?0+$/, '')} per unit.
               {product.quantity && (
                 <>
@@ -229,20 +232,24 @@ export function QuantitySelectorModal({
 
                 <button
                   className={`p-3 rounded-lg border-2 transition-all ${
-                    product.canSellLoose !== true 
-                      ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed' 
+                    (product.looseStock ?? 0) <= 0
+                      ? 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
                       : saleType === 'volume'
                         ? 'border-green-500 bg-green-100 text-green-800'
                         : 'border-gray-200 bg-white hover:border-green-300'
                   }`}
-                  onClick={() => product.canSellLoose === true && handleSaleTypeChange('volume')}
-                  disabled={product.canSellLoose !== true}
+                  onClick={() => (product.looseStock ?? 0) > 0 && handleSaleTypeChange('volume')}
+                  disabled={(product.looseStock ?? 0) <= 0}
                 >
                   <div className="text-center">
                     <div className="text-lg font-bold">⚗️</div>
                     <div className="text-sm font-medium">Volume/Weight</div>
                     <div className="text-xs text-muted-foreground">
-                      {product.canSellLoose !== true ? 'Not available for this product' : 'Custom quantity (ml, g, etc.)'}
+                      {(product.looseStock ?? 0) <= 0
+                        ? 'No loose stock — open bottles in Inventory first'
+                        : product.canSellLoose !== true
+                          ? 'Not available for this product'
+                          : 'Custom quantity (ml, g, etc.)'}
                     </div>
                   </div>
                 </button>

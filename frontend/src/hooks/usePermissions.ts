@@ -17,6 +17,7 @@ export interface FeaturePermissions {
     canViewTransactions: boolean;
     canCreateTransactions: boolean;
     canEditTransactions: boolean;
+    canEditDrafts: boolean;
     canDeleteTransactions: boolean;
     canApplyDiscounts: boolean;
     canRefundTransactions: boolean;

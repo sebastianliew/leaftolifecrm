@@ -61,7 +61,8 @@ async function deductBlendIngredients(
       baseUnit: ing.unitName || 'unit',
       reference: transactionRef,
       notes: `${contextLabel}: ${ing.name} for ${template.name} x ${quantity}`,
-      createdBy: userId, productName: ing.name
+      createdBy: userId, productName: ing.name,
+      pool: 'any',
     }, session));
   }
   return movements;
@@ -79,8 +80,9 @@ const processProduct: ItemProcessor = async (item, ref, userId, session) => {
     unitOfMeasurementId: new mongoose.Types.ObjectId(item.unitOfMeasurementId),
     baseUnit: item.baseUnit || 'unit',
     reference: ref,
-    notes: `Sale: ${item.name} x ${item.quantity}${item.saleType === 'volume' ? ' (volume)' : ''}`,
+    notes: `Sale: ${item.name} x ${item.quantity}${item.saleType === 'volume' ? ' (volume/loose)' : ' (sealed)'}`,
     createdBy: userId, productName: item.name,
+    pool: item.saleType === 'volume' ? 'loose' : 'sealed',
   }, session);
 
   return [movement];
@@ -254,6 +256,7 @@ export class TransactionInventoryService {
           reference: `CANCEL-${transactionNumber}`,
           notes: `Cancellation reversal for ${orig.movementType}: ${orig.notes || ''}`,
           createdBy: userId, productName: orig.productName,
+          pool: (orig as any).pool || 'any',
         }, session);
 
         result.reversedMovements.push(reversal);

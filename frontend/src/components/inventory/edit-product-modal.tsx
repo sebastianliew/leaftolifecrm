@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch"
 import { Package } from "lucide-react"
 import { useToast } from "@/components/ui/toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { PoolManager } from "./pool-manager"
 import type { Product, ProductCategory, UnitOfMeasurement, Brand } from "@/types/inventory"
 
 const productSchema = z.object({
@@ -412,6 +413,16 @@ export function EditProductModal({
               </div>
             )}
           </div>
+
+          {/* Pool Manager */}
+          {watch('canSellLoose') && product && (
+            <PoolManager
+              product={{ ...product, ...{ canSellLoose: watch('canSellLoose'), containerCapacity: watch('containerCapacity') || product.containerCapacity } } as Product}
+              onUpdate={(updated) => {
+                setValue('currentStock', updated.currentStock || 0)
+              }}
+            />
+          )}
 
           {/* Form Actions */}
           <div className="flex justify-end space-x-2 pt-4">

@@ -42,7 +42,8 @@ export class CustomBlendService {
         convertedQuantity: ingredient.quantity,
         reference: transactionReference,
         notes: `Custom blend ingredient: ${customBlendData.name} (${transactionReference})`,
-        createdBy: userId
+        createdBy: userId,
+        pool: 'any',
       });
 
       await movement.save();
@@ -169,7 +170,8 @@ export class CustomBlendService {
           convertedQuantity: ingredient.quantity,
           reference: transactionNumber,
           notes: `Custom blend ingredient: ${ingredient.name}`,
-          createdBy: mixedBy
+          createdBy: mixedBy,
+          pool: 'any',
         });
         
         await movement.save();

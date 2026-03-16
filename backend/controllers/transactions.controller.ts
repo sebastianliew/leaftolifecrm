@@ -437,11 +437,20 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
           const serverContainerCapacity = ((product as { containerCapacity?: number }).containerCapacity && (product as { containerCapacity?: number }).containerCapacity! >= 1) ? (product as { containerCapacity?: number }).containerCapacity! : 1;
 
           if (item.saleType === 'volume') {
-            // Loose sale - check canSellLoose
+            // Loose sale - canSellLoose is still required
             if (!(product as { canSellLoose?: boolean }).canSellLoose) {
-              res.status(400).json({ 
-                success: false, 
-                message: `${(product as { name?: string }).name} cannot be sold loose. Only whole container sales allowed.` 
+              res.status(400).json({
+                success: false,
+                message: `${(product as { name?: string }).name} cannot be sold loose. Only whole container sales allowed.`
+              });
+              return;
+            }
+            // Pool check: looseStock must be > 0 for volume sales
+            const productLooseStock = (product as { looseStock?: number }).looseStock ?? 0;
+            if (productLooseStock <= 0) {
+              res.status(400).json({
+                success: false,
+                message: `${(product as { name?: string }).name} has no loose stock available. Open a container first via the pool management feature.`
               });
               return;
             }
@@ -479,15 +488,27 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
         .map((item: { productId: string }) => item.productId);
 
       if (stockCheckProductIds.length > 0) {
-        const stockProducts = await Product.find({ _id: { $in: stockCheckProductIds } }).select('_id name currentStock').lean() as unknown as Array<{ _id: unknown; name: string; currentStock: number }>;
+        const stockProducts = await Product.find({ _id: { $in: stockCheckProductIds } }).select('_id name currentStock looseStock containerCapacity').lean() as unknown as Array<{ _id: unknown; name: string; currentStock: number; looseStock?: number; containerCapacity?: number }>;
         const stockMap = new Map(stockProducts.map((p) => [String(p._id), p]));
 
         const stockWarnings: string[] = [];
         for (const item of transactionData.items) {
           if (!item.productId) continue;
-          const prod = stockMap.get(item.productId) as { name: string; currentStock: number } | undefined;
-          if (prod && item.convertedQuantity > prod.currentStock) {
-            stockWarnings.push(`${prod.name}: selling ${item.convertedQuantity} but only ${prod.currentStock} in stock`);
+          const prod = stockMap.get(item.productId);
+          if (!prod) continue;
+
+          if (item.saleType === 'volume') {
+            // Volume/loose sale — warn if convertedQty exceeds looseStock
+            const looseAvail = prod.looseStock ?? 0;
+            if (item.convertedQuantity > looseAvail) {
+              stockWarnings.push(`${prod.name}: selling ${item.convertedQuantity} loose but only ${looseAvail} in loose pool`);
+            }
+          } else {
+            // Sealed sale — warn if insufficient sealed stock
+            const sealedStock = Math.max(0, prod.currentStock - (prod.looseStock ?? 0));
+            if (item.convertedQuantity > sealedStock) {
+              stockWarnings.push(`${prod.name}: selling ${item.convertedQuantity} sealed but only ${sealedStock} in sealed pool`);
+            }
           }
         }
 
@@ -1623,6 +1644,16 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
 export const saveDraft = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { draftId, draftName, formData } = req.body;
+
+    if (!formData || typeof formData !== 'object') {
+      res.status(400).json({ error: 'Missing formData in request body' });
+      return;
+    }
+
+    if (!draftId) {
+      res.status(400).json({ error: 'Missing draftId in request body' });
+      return;
+    }
 
     if (!req.user?.id) {
       res.status(401).json({ error: 'Unauthorized' });

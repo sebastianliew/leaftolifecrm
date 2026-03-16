@@ -53,6 +53,7 @@ export interface IProduct extends Document {
   };
   baseUnitSize?: number;
   canSellLoose?: boolean;
+  looseStock: number;
   containerCapacity?: number;
   isDeleted?: boolean;
   deletedAt?: Date;
@@ -126,6 +127,7 @@ const productSchema = new mongoose.Schema<IProduct>({
   baseUnitSize: { type: Number, default: 1 },
   canSellLoose: { type: Boolean, default: false },
   containerCapacity: { type: Number, default: 1 },
+  looseStock: { type: Number, default: 0, min: 0 },
   supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
   supplierName: String,
   isDeleted: { type: Boolean, default: false },
@@ -133,6 +135,14 @@ const productSchema = new mongoose.Schema<IProduct>({
   deletedBy: String,
   deleteReason: String
 }, { timestamps: true });
+
+// ── Pre-save: clamp looseStock to currentStock ──
+productSchema.pre('save', function(next) {
+  if (this.looseStock > this.currentStock) {
+    this.looseStock = Math.max(0, this.currentStock);
+  }
+  next();
+});
 
 // ── Indexes ──
 

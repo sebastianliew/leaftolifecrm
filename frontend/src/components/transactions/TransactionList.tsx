@@ -52,6 +52,7 @@ export function TransactionList() {
 
   // Get transaction permissions
   const canEditTransactions = hasPermission('transactions', 'canEditTransactions')
+  const canEditDrafts = hasPermission('transactions', 'canEditDrafts')
   const canDeleteTransactions = hasPermission('transactions', 'canDeleteTransactions')
   const canCreateTransactions = hasPermission('transactions', 'canCreateTransactions')
 
@@ -462,6 +463,7 @@ export function TransactionList() {
         onItemsPerPageChange={handleItemsPerPageChange}
         activeSearchTerm={searchTerm}
         canEditTransactions={canEditTransactions}
+        canEditDrafts={canEditDrafts}
         canDeleteTransactions={canDeleteTransactions}
         canCreateTransactions={canCreateTransactions}
       />

@@ -39,6 +39,7 @@ interface TransactionTableProps {
   onItemsPerPageChange?: (limit: number) => void
   activeSearchTerm?: string
   canEditTransactions?: boolean
+  canEditDrafts?: boolean
   canDeleteTransactions?: boolean
   canCreateTransactions?: boolean
 }
@@ -62,6 +63,7 @@ export function TransactionTable({
   onItemsPerPageChange,
   activeSearchTerm,
   canEditTransactions = false,
+  canEditDrafts = false,
   canDeleteTransactions = false,
   canCreateTransactions = false
 }: TransactionTableProps) {
@@ -206,6 +208,7 @@ export function TransactionTable({
                   onCancelDraft={onCancelDraft}
                   onGenerateInvoice={onGenerateInvoice}
                   canEdit={canEditTransactions}
+                  canEditDrafts={canEditDrafts}
                   canDelete={canDeleteTransactions}
                   canCreate={canCreateTransactions}
                 />

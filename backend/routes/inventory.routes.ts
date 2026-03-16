@@ -25,7 +25,8 @@ import {
   getProductTemplates,
   bulkDeleteProducts,
   getInventoryStats,
-  exportProducts
+  exportProducts,
+  manageProductPool
 } from '../controllers/products.controller.js';
 import {
   getRestockSuggestions,
@@ -64,6 +65,7 @@ router.post('/products/bulk-delete', bulkOperationRateLimit, requirePermission('
 router.get('/products/:id', requirePermission('inventory', 'canViewInventory'), getProductById);
 router.post('/products', requirePermission('inventory', 'canAddProducts'), createProduct);
 router.put('/products/:id', requirePermission('inventory', 'canEditProducts'), updateProduct);
+router.post('/products/:id/pool', requirePermission('inventory', 'canEditProducts'), manageProductPool);
 router.delete('/products/:id', requirePermission('inventory', 'canDeleteProducts'), deleteProduct);
 
 // Restock routes
