@@ -27,7 +27,7 @@ import { PatientSelector } from "./PatientSelector"
 import { ConsultationSelector } from "./ConsultationSelector"
 import { MiscellaneousSelector } from "./MiscellaneousSelector"
 import { useUnits } from "@/hooks/useUnits"
-import { computeUnitPrice, detectPriceMismatch } from "@/lib/pricing"
+import { computeUnitPrice, detectPriceMismatch, getDisplayQuantity } from "@/lib/pricing"
 // TODO: Purchase history — needs backend endpoint /api/customers/:id/purchase-history to enable ReorderSuggestions
 // import { ReorderSuggestions } from "./ReorderSuggestions"
 import { DiscountService } from "@/services/DiscountService"
@@ -90,7 +90,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         customerName: initialData.customerName || "",
         customerEmail: initialData.customerEmail || "",
         customerPhone: initialData.customerPhone || "",
-        items: initialData.items.map(item => {
+        items: (initialData.items || []).map(item => {
           // Handle both string IDs and object IDs for productId
           const productId = typeof item.productId === 'object' && item.productId !== null 
             ? (item.productId as { _id: string })._id 
@@ -1425,10 +1425,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                       >
                         -
                       </Button>
-                      <span className="w-16 text-center text-sm">
-                        {item.baseUnit
-                          ? `${item.quantity} ${item.baseUnit}`
-                          : item.quantity}
+                      <span className="w-20 text-center text-sm">
+                        {getDisplayQuantity(item.quantity, item.saleType, item.product?.containerCapacity)} {item.baseUnit || ''}
                       </span>
                       <Button
                         type="button"
