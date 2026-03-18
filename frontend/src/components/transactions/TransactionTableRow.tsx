@@ -76,11 +76,11 @@ const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString('en-GB')
 }
 
-const formatCurrency = (amount: number) => {
+const formatCurrency = (amount: number | undefined | null) => {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'SGD'
-  }).format(amount)
+  }).format(amount ?? 0)
 }
 
 export const TransactionTableRow = React.memo(({
@@ -97,7 +97,7 @@ export const TransactionTableRow = React.memo(({
   canDelete = false,
   canCreate = false
 }: TransactionTableRowProps) => {
-  const itemCount = transaction.items.reduce((sum, item) => sum + item.quantity, 0)
+  const itemCount = (transaction.items || []).reduce((sum, item) => sum + (item.quantity ?? 0), 0)
   
   return (
     <TableRow className="hover:bg-gray-50">

@@ -22,11 +22,11 @@ export function TransactionItemsTable({
   onRemoveItem,
   disabled 
 }: TransactionItemsTableProps) {
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | undefined | null) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "SGD",
-    }).format(amount)
+    }).format(amount ?? 0)
   }
 
   const getItemTypeIcon = (item: TransactionItem) => {

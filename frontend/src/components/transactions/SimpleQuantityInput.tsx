@@ -92,10 +92,10 @@ export function SimpleQuantityInput({ open, onClose, onConfirm, product, initial
   const quantityUnitLabel = isLoose ? baseUnitLabel : isSimple ? baseUnitLabel : 'container(s)'
 
   const priceLabel = isLoose
-    ? `$${unitPrice.toFixed(2)} per ${baseUnitLabel}`
+    ? `$${(unitPrice ?? 0).toFixed(2)} per ${baseUnitLabel}`
     : isSimple
-      ? `$${unitPrice.toFixed(2)} per ${baseUnitLabel}`
-      : `$${unitPrice.toFixed(2)} per container (${containerCapacity} ${baseUnitLabel})`
+      ? `$${(unitPrice ?? 0).toFixed(2)} per ${baseUnitLabel}`
+      : `$${(unitPrice ?? 0).toFixed(2)} per container (${containerCapacity} ${baseUnitLabel})`
 
   const stockLabel = isLoose
     ? `${loosePool} ${baseUnitLabel} in loose pool`
@@ -238,12 +238,12 @@ export function SimpleQuantityInput({ open, onClose, onConfirm, product, initial
               {isLoose && (
                 <div className="flex justify-between text-sm text-gray-600">
                   <span>Price per {baseUnitLabel}:</span>
-                  <span>${unitPrice.toFixed(2)}</span>
+                  <span>${(unitPrice ?? 0).toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between items-center text-lg font-medium">
                 <span>Total:</span>
-                <span className="text-green-600">${totalPrice.toFixed(2)}</span>
+                <span className="text-green-600">${(totalPrice ?? 0).toFixed(2)}</span>
               </div>
             </div>
           </div>

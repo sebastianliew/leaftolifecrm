@@ -250,7 +250,7 @@ export function BlendHistorySelector({
                             ${(blend.sellingPrice ?? 0).toFixed(2)}
                           </div>
                           <div className="text-sm text-gray-500">
-                            Cost: ${blend.totalIngredientCost.toFixed(2)}
+                            Cost: ${(blend.totalIngredientCost ?? 0).toFixed(2)}
                           </div>
                         </div>
                       </div>

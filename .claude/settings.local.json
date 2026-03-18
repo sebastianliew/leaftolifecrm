@@ -35,7 +35,10 @@
       "Bash(grep '\"\"sonner\"\"' package.json)",
       "Bash(timeout 15 npx tsx src/index.ts)",
       "Bash(ls \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/backend/\"*.ts \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/backend/index\"*)",
-      "Bash(ls \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/backend/server\"*)"
+      "Bash(ls \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/backend/server\"*)",
+      "Bash(curl:*)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(pkill -f \"tsx watch\")"
     ]
   }
 }
