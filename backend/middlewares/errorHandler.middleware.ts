@@ -52,6 +52,13 @@ export class ForbiddenError extends AppError {
   }
 }
 
+export class ReferenceConflictError extends AppError {
+  constructor(message: string, details?: { type: 'blend_template' | 'bundle'; name: string; id: string }) {
+    super(409, message, 'REFERENCE_CONFLICT', details);
+    this.name = 'ReferenceConflictError';
+  }
+}
+
 // ── asyncHandler ──
 // Wraps async route handlers so thrown errors go to the error middleware
 // instead of crashing with unhandled promise rejection.

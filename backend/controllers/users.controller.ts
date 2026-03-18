@@ -16,6 +16,21 @@ type UserData = Partial<Pick<IUser,
   dateOfBirth?: Date;
 };
 
+export const getUserStats = async (_req: Request, res: Response): Promise<Response | void> => {
+  try {
+    const [totalUsers, activeUsers, adminUsers, staffUsers] = await Promise.all([
+      User.countDocuments({}),
+      User.countDocuments({ isActive: true }),
+      User.countDocuments({ role: { $in: ['admin', 'super_admin'] } }),
+      User.countDocuments({ role: { $in: ['staff', 'manager'] } }),
+    ]);
+    return res.json({ totalUsers, activeUsers, adminUsers, staffUsers });
+  } catch (error) {
+    console.error('Error fetching user stats:', error);
+    return res.status(500).json({ error: 'Failed to fetch user stats' });
+  }
+};
+
 export const getAllUsers = async (req: Request, res: Response): Promise<Response | void> => {
   try {
     const {

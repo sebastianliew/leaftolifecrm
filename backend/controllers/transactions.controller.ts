@@ -13,14 +13,46 @@ import { PermissionService } from '../lib/permissions/PermissionService.js';
 import type { FeaturePermissions } from '../lib/permissions/types.js';
 import { createAuditLog } from '../models/AuditLog.js';
 import { transactionInventoryService } from '../services/TransactionInventoryService.js';
+import { computeUnitPrice, safeContainerCapacity } from '../utils/pricingUtils.js';
 import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 import { normalizeTransactionForPayment, formatInvoiceFilename } from '../utils/transactionUtils.js';
 
 // Fix #4: In-memory lock to prevent concurrent invoice sends for the same transaction
 const invoiceSendLocks = new Set<string>();
 import { DiscountValidationService } from '../services/DiscountValidationService.js';
+import { transactionCalculationService } from '../services/TransactionCalculationService.js';
 
 const permissionService = PermissionService.getInstance();
+
+// ========================================================================
+// CALCULATE TRANSACTION (Preview endpoint)
+// Returns server-calculated prices, discounts, and totals without saving.
+// Frontend calls this to show accurate values before submission.
+// ========================================================================
+export const calculateTransactionPreview = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { items, customerId, discountAmount } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: 'Items array is required and must not be empty' });
+      return;
+    }
+
+    const result = await transactionCalculationService.calculateTransaction({
+      items,
+      customerId: customerId || null,
+      discountAmount: discountAmount || 0,
+    });
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error('[TransactionCalculation] Error:', error);
+    res.status(500).json({ error: 'Failed to calculate transaction' });
+  }
+};
 
 // Helper function to generate invoice asynchronously (fire-and-forget)
 // This runs in background after response is sent to user
@@ -433,8 +465,8 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
           const serverSellingPrice = (product as { sellingPrice?: number }).sellingPrice ?? 0;
           
           // ── SERVER-SIDE convertedQuantity & Can Sell Loose ──
-          // Guard containerCapacity
-          const serverContainerCapacity = ((product as { containerCapacity?: number }).containerCapacity && (product as { containerCapacity?: number }).containerCapacity! >= 1) ? (product as { containerCapacity?: number }).containerCapacity! : 1;
+          // Guard containerCapacity via shared utility
+          const serverContainerCapacity = safeContainerCapacity((product as { containerCapacity?: number }).containerCapacity);
 
           if (item.saleType === 'volume') {
             // Loose sale - canSellLoose is still required
@@ -442,6 +474,14 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
               res.status(400).json({
                 success: false,
                 message: `${(product as { name?: string }).name} cannot be sold loose. Only whole container sales allowed.`
+              });
+              return;
+            }
+            // Reject volume sales when containerCapacity is not properly configured
+            if (serverContainerCapacity <= 1) {
+              res.status(400).json({
+                success: false,
+                message: `${(product as { name?: string }).name} has container capacity of 1 — cannot sell loose. Edit the product and set the correct container capacity (e.g. 75 for a 75ml bottle).`
               });
               return;
             }
@@ -455,12 +495,12 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
               return;
             }
             item.convertedQuantity = item.quantity; // already in loose units
-            item.unitPrice = Math.round((serverSellingPrice / serverContainerCapacity) * 100) / 100;
-            item.costPrice = Math.round((((product as { costPrice?: number }).costPrice || 0) / serverContainerCapacity) * 100) / 100;
+            item.unitPrice = computeUnitPrice(serverSellingPrice, serverContainerCapacity, 'volume');
+            item.costPrice = computeUnitPrice((product as { costPrice?: number }).costPrice || 0, serverContainerCapacity, 'volume');
           } else {
             // Whole container sale
             item.convertedQuantity = item.quantity * serverContainerCapacity; // convert to loose units
-            item.unitPrice = serverSellingPrice;
+            item.unitPrice = computeUnitPrice(serverSellingPrice, serverContainerCapacity, 'quantity');
             item.costPrice = (product as { costPrice?: number }).costPrice || 0;
           }
 
@@ -883,6 +923,63 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
     // When a draft is being completed, update type to COMPLETED
     if (wasDraft && isBeingCompleted) {
       updateData.type = 'COMPLETED';
+
+      // -----------------------------------------------------------------------
+      // SERVER-SIDE PRICE VERIFICATION ON DRAFT COMPLETION
+      // Same logic as createTransaction — never trust frontend prices
+      // -----------------------------------------------------------------------
+      if (updateData.items && Array.isArray(updateData.items)) {
+        const priceVerifyIds = updateData.items
+          .filter((item: { productId?: string; itemType?: string }) =>
+            item.productId && /^[a-fA-F0-9]{24}$/.test(item.productId) && item.itemType !== 'custom_blend'
+          )
+          .map((item: { productId: string }) => item.productId);
+
+        if (priceVerifyIds.length > 0) {
+          const priceProducts = await Product.find({ _id: { $in: priceVerifyIds } }).lean();
+          const priceProductMap = new Map(priceProducts.map((p) => [String(p._id), p]));
+
+          for (const item of updateData.items) {
+            if (item.itemType === 'custom_blend') continue;
+            const prod = priceProductMap.get(item.productId);
+            if (!prod) continue;
+
+            const serverSellingPrice = (prod as { sellingPrice?: number }).sellingPrice ?? 0;
+            const serverCap = safeContainerCapacity((prod as { containerCapacity?: number }).containerCapacity);
+
+            if (item.saleType === 'volume') {
+              if (serverCap <= 1) {
+                res.status(400).json({
+                  success: false,
+                  message: `${(prod as { name?: string }).name} has container capacity of 1 — cannot sell loose.`
+                });
+                return;
+              }
+              item.unitPrice = computeUnitPrice(serverSellingPrice, serverCap, 'volume');
+              item.costPrice = computeUnitPrice((prod as { costPrice?: number }).costPrice || 0, serverCap, 'volume');
+              item.convertedQuantity = item.quantity;
+            } else {
+              item.unitPrice = computeUnitPrice(serverSellingPrice, serverCap, 'quantity');
+              item.costPrice = (prod as { costPrice?: number }).costPrice || 0;
+              item.convertedQuantity = item.quantity * serverCap;
+            }
+            item.containerCapacityAtSale = serverCap;
+          }
+
+          // Recalculate totals from verified prices
+          const recalcSubtotal = updateData.items.reduce(
+            (sum: number, item: { unitPrice?: number; quantity?: number }) =>
+              sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)), 0
+          );
+          const recalcItemDiscounts = updateData.items.reduce(
+            (sum: number, item: { discountAmount?: number }) => sum + (item.discountAmount ?? 0), 0
+          );
+          const recalcTotal = recalcSubtotal - recalcItemDiscounts - (updateData.discountAmount ?? 0);
+          updateData.subtotal = Math.round(recalcSubtotal * 100) / 100;
+          updateData.totalAmount = Math.round(recalcTotal * 100) / 100;
+        }
+      }
+
       // -----------------------------------------------------------------------
       // TRANSACTION NORMALIZATION - Explicit Controller Call
       // -----------------------------------------------------------------------

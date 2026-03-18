@@ -175,10 +175,10 @@ export function TransactionList() {
         description: `${isDraft ? 'Draft' : 'Transaction'} deleted successfully`
       })
       refetch()
-    } catch (_error) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: `Failed to delete ${isDraft ? 'draft' : 'transaction'}`,
+        description: error instanceof Error ? error.message : `Failed to delete ${isDraft ? 'draft' : 'transaction'}`,
         variant: 'destructive'
       })
     } finally {
@@ -203,10 +203,10 @@ export function TransactionList() {
       setDuplicatingTransaction(null)
       // Redirect to the new transaction
       router.push(`/transactions/${newTransaction._id}`)
-    } catch (_error) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to duplicate transaction',
+        description: error instanceof Error ? error.message : 'Failed to duplicate transaction',
         variant: 'destructive'
       })
     }
@@ -235,10 +235,10 @@ export function TransactionList() {
         description: 'The draft has been marked as cancelled'
       })
       refetch()
-    } catch (_error) {
+    } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to cancel draft',
+        description: error instanceof Error ? error.message : 'Failed to cancel draft',
         variant: 'destructive'
       })
     } finally {
@@ -323,10 +323,10 @@ export function TransactionList() {
           description: `${transactionIds.length} transactions deleted successfully`
         })
         refetch()
-      } catch (_error) {
+      } catch (error) {
         toast({
           title: 'Error',
-          description: 'Failed to delete some transactions',
+          description: error instanceof Error ? error.message : 'Failed to delete some transactions',
           variant: 'destructive'
         })
       }

@@ -113,6 +113,36 @@ export function useDeleteInventoryItem() {
   });
 }
 
+export function useDeactivateInventoryItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) =>
+      fetchAPI(`/inventory/products/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: 'inactive' }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory, refetchType: 'all' });
+    },
+  });
+}
+
+export function usePoolTransfer() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, action, amount }: { id: string; action: "open" | "close"; amount: number }) =>
+      fetchAPI(`/inventory/products/${id}/pool`, {
+        method: 'POST',
+        body: JSON.stringify({ action, amount }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory, refetchType: 'all' });
+    },
+  });
+}
+
 export function useBulkDeleteInventoryItems() {
   const queryClient = useQueryClient();
 

@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   HiCube,
   HiExclamationTriangle,
+  HiExclamationCircle,
   HiMagnifyingGlass,
   HiPencil,
   HiTrash,
@@ -27,9 +28,12 @@ import {
   useCreateInventoryItem,
   useUpdateInventoryItem,
   useDeleteInventoryItem,
+  useDeactivateInventoryItem,
+  usePoolTransfer,
   useBulkDeleteInventoryItems,
   type InventoryFilters,
 } from "@/hooks/queries/use-inventory-queries"
+import { APIError, type ReferenceConflictDetails } from "@/lib/errors/api-error"
 import { useCategoriesQuery } from "@/hooks/queries/use-categories-query"
 import { useUnitsQuery } from "@/hooks/queries/use-units-query"
 import { useBrands } from "@/hooks/queries/use-common-queries"
@@ -40,6 +44,7 @@ import { usePermissions } from "@/hooks/usePermissions"
 import { AddProductModal } from "@/components/inventory/add-product-modal"
 import { EditProductModal } from "@/components/inventory/edit-product-modal"
 import { ProductDeleteDialog } from "@/components/inventory/product-delete-dialog"
+import { PoolTransferDialog } from "@/components/inventory/pool-transfer-dialog"
 import type { AddProductSubmitData } from "@/components/inventory/add-product-modal"
 import type { EditProductSubmitData } from "@/components/inventory/edit-product-modal"
 import type { ProductCategory } from "@/types/inventory/category.types"
@@ -119,6 +124,9 @@ export default function InventoryPage() {
   const [productToEdit, setProductToEdit] = useState<Product | null>(null)
   const [productToDelete, setProductToDelete] = useState<Product | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteConflict, setDeleteConflict] = useState<ReferenceConflictDetails | null>(null)
+  const [poolProduct, setPoolProduct] = useState<Product | null>(null)
+  const [showPoolDialog, setShowPoolDialog] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
   // Stable callback ΓÇö passed to the isolated search component
@@ -156,6 +164,8 @@ export default function InventoryPage() {
   const createMutation = useCreateInventoryItem()
   const updateMutation = useUpdateInventoryItem()
   const deleteMutation = useDeleteInventoryItem()
+  const deactivateMutation = useDeactivateInventoryItem()
+  const poolTransferMutation = usePoolTransfer()
   const bulkDeleteMutation = useBulkDeleteInventoryItems()
 
   // ΓöÇΓöÇ Stock status helper ΓöÇΓöÇ
@@ -174,7 +184,7 @@ export default function InventoryPage() {
       return {
         status: "low",
         color: "bg-yellow-100 text-yellow-800",
-        icon: <span className="text-lg">Γåô</span>,
+        icon: <HiExclamationCircle className="w-3 h-3" />,
         text: "Low Stock"
       }
     }
@@ -254,7 +264,7 @@ export default function InventoryPage() {
   // ΓöÇΓöÇ Add product ΓöÇΓöÇ
   const handleAddProduct = async (data: AddProductSubmitData) => {
     try {
-      await createMutation.mutateAsync({
+      const created = await createMutation.mutateAsync({
         name: data.name,
         category: data.category.id,
         brand: data.brand?.id,
@@ -265,13 +275,31 @@ export default function InventoryPage() {
         reorderPoint: data.reorderPoint || 10,
         description: data.bundleInfo,
         status: 'active',
+        canSellLoose: data.canSellLoose,
         containerCapacity: data.containerCapacity,
-      })
+      }) as unknown as { _id: string }
+
+      // If user opened containers during creation, do the pool transfer immediately
+      if (data.canSellLoose && data.initialContainersToOpen && data.initialContainersToOpen > 0 && created?._id) {
+        try {
+          await poolTransferMutation.mutateAsync({
+            id: created._id,
+            action: 'open',
+            amount: data.initialContainersToOpen,
+          })
+        } catch (poolError) {
+          // Don't fail the whole creation — product was saved, just warn about pool
+          toast({ title: "Product created", description: `Product added but pool setup failed: ${poolError instanceof APIError ? poolError.message : 'Try opening containers from the edit screen.'}`, variant: "destructive" })
+          setShowAddModal(false)
+          return
+        }
+      }
+
       toast({ title: "Success", description: "Product added successfully!" })
       setShowAddModal(false)
     } catch (error) {
       console.error('Failed to add product:', error)
-      toast({ title: "Error", description: error instanceof Error ? error.message : "Failed to add product.", variant: "destructive" })
+      toast({ title: "Error", description: error instanceof APIError ? error.message : "Failed to add product.", variant: "destructive" })
     }
   }
 
@@ -311,6 +339,7 @@ export default function InventoryPage() {
 
   // ΓöÇΓöÇ Delete product ΓöÇΓöÇ
   const handleDeleteProduct = (product: Product) => {
+    setDeleteConflict(null)
     setProductToDelete(product)
     setShowDeleteDialog(true)
   }
@@ -322,19 +351,67 @@ export default function InventoryPage() {
       toast({ title: "Success", description: `Product "${productToDelete.name}" deleted successfully!` })
       setShowDeleteDialog(false)
       setProductToDelete(null)
+      setDeleteConflict(null)
     } catch (error: unknown) {
-      let msg = "Failed to delete product."
-      if (error instanceof Error) {
-        if (error.message?.includes('401')) msg = "Authentication required. Please log in again."
-        else if (error.message?.includes('403')) msg = "You don't have permission to delete products."
-        else if (error.message?.includes('404')) msg = "Product not found. It may have already been deleted."
+      if (error instanceof APIError) {
+        if (error.isReferenceConflict()) {
+          // Transition dialog to conflict resolution mode — don't close it
+          setDeleteConflict(error.details as ReferenceConflictDetails)
+          return
+        }
+        if (error.isUnauthorized()) {
+          toast({ title: "Error", description: "Authentication required. Please log in again.", variant: "destructive" })
+        } else if (error.isForbidden()) {
+          toast({ title: "Error", description: "You don't have permission to delete products.", variant: "destructive" })
+        } else if (error.isNotFound()) {
+          toast({ title: "Error", description: "Product not found. It may have already been deleted.", variant: "destructive" })
+          setShowDeleteDialog(false)
+          setProductToDelete(null)
+        } else {
+          toast({ title: "Error", description: error.message || "Failed to delete product.", variant: "destructive" })
+        }
+      } else {
+        toast({ title: "Error", description: "Failed to delete product.", variant: "destructive" })
       }
+    }
+  }
+
+  const handleDeactivateInstead = async () => {
+    if (!productToDelete) return
+    try {
+      await deactivateMutation.mutateAsync(productToDelete._id)
+      toast({ title: "Product Deactivated", description: `"${productToDelete.name}" has been deactivated and hidden from active use.` })
+      setShowDeleteDialog(false)
+      setProductToDelete(null)
+      setDeleteConflict(null)
+    } catch (error: unknown) {
+      const msg = error instanceof APIError ? error.message : "Failed to deactivate product."
       toast({ title: "Error", description: msg, variant: "destructive" })
     }
   }
 
   // ΓöÇΓöÇ Bulk delete ΓöÇΓöÇ
-  const handleBulkDelete = async () => {
+  const handleOpenPoolDialog = (product: Product) => {
+    setPoolProduct(product)
+    setShowPoolDialog(true)
+  }
+
+  const handlePoolTransfer = async (action: "open" | "close", amount: number) => {
+    if (!poolProduct) return
+    try {
+      await poolTransferMutation.mutateAsync({ id: poolProduct._id, action, amount })
+      const unit = (poolProduct as unknown as { unitName?: string }).unitName || "units"
+      const label = action === "open" ? "moved to loose pool" : "sealed back"
+      toast({ title: "Pool Updated", description: `${amount} ${unit} ${label} for "${poolProduct.name}"` })
+      setShowPoolDialog(false)
+      setPoolProduct(null)
+    } catch (error: unknown) {
+      const msg = error instanceof APIError ? error.message : "Failed to update pool."
+      toast({ title: "Error", description: msg, variant: "destructive" })
+    }
+  }
+
+    const handleBulkDelete = async () => {
     const selectedArray = Array.from(selectedProducts)
     if (selectedArray.length === 0) return
     const names = products.filter(p => selectedProducts.has(p._id)).map(p => p.name).slice(0, 3)
@@ -410,62 +487,20 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* Stats Cards ΓÇö from backend /stats endpoint */}
-      <div className={`grid ${canViewCostPrices ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
-        <Card
-          className={`cursor-pointer transition-all hover:shadow-md ${stockStatusFilter === "all" ? "ring-2 ring-blue-500" : ""}`}
-          onClick={() => handleCardFilter("all")}
-        >
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-medium">Total Products</h3>
-                <p className="text-xs text-gray-500">{stats?.activeProducts ?? 0} active</p>
-              </div>
-              <div className="text-2xl font-bold">{stats?.totalProducts ?? 0}</div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={`cursor-pointer transition-all hover:shadow-md ${stockStatusFilter !== "all" ? "ring-2 ring-blue-500" : ""}`}
-          onClick={() => handleCardFilter(
-            stockStatusFilter === "all"
-              ? ((stats?.lowStock ?? 0) > 0 ? "low_stock" : "out_of_stock")
-              : "all"
-          )}
-        >
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-medium">Alerts</h3>
-                <p className="text-xs text-gray-500">
-                  {(stats?.lowStock ?? 0) > 0 && `${stats!.lowStock} low stock`}
-                  {(stats?.lowStock ?? 0) > 0 && (stats?.outOfStock ?? 0) > 0 ? ', ' : ''}
-                  {(stats?.outOfStock ?? 0) > 0 && `${stats!.outOfStock} out of stock`}
-                </p>
-              </div>
-              <div className="text-2xl font-bold text-red-600">
-                {(stats?.lowStock ?? 0) + (stats?.outOfStock ?? 0)}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
+      {/* Stats summary */}
+      <div className="flex items-center gap-6 text-sm text-gray-600">
+        <button onClick={() => handleCardFilter("all")} className={`hover:text-gray-900 ${stockStatusFilter === "all" ? "text-gray-900 font-semibold" : ""}`}>
+          <strong className="text-gray-900">{stats?.totalProducts ?? 0}</strong> products ({stats?.activeProducts ?? 0} active)
+        </button>
+        <button onClick={() => handleCardFilter(stockStatusFilter === "all" ? ((stats?.lowStock ?? 0) > 0 ? "low_stock" : "out_of_stock") : "all")}
+          className={`hover:text-gray-900 ${stockStatusFilter !== "all" ? "text-gray-900 font-semibold" : ""}`}>
+          {(stats?.lowStock ?? 0) > 0 && <span className="text-amber-600">{stats!.lowStock} low stock</span>}
+          {(stats?.lowStock ?? 0) > 0 && (stats?.outOfStock ?? 0) > 0 && <span> / </span>}
+          {(stats?.outOfStock ?? 0) > 0 && <span className="text-red-600">{stats!.outOfStock} out of stock</span>}
+          {(stats?.lowStock ?? 0) === 0 && (stats?.outOfStock ?? 0) === 0 && <span className="text-green-600">No alerts</span>}
+        </button>
         {canViewCostPrices && (
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-medium">Total Value</h3>
-                  <p className="text-xs text-gray-500">Current inventory value</p>
-                </div>
-                <div className="text-2xl font-bold text-green-600">
-                  {formatCurrency(stats?.totalValue ?? 0)}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <span>Value: <strong className="text-gray-900">{formatCurrency(stats?.totalValue ?? 0)}</strong></span>
         )}
       </div>
 
@@ -520,50 +555,49 @@ export default function InventoryPage() {
           <Table>
             <TableHeader className="sticky top-0 bg-white z-10">
               <TableRow>
-                <TableHead className="w-12">
+                <TableHead className="w-8">
                   <Checkbox checked={isAllSelected} onCheckedChange={handleSelectAll} />
                 </TableHead>
-                <TableHead className="w-48">
+                <TableHead>
                   <button onClick={() => handleSort('name')} className="flex items-center hover:text-blue-600 transition-colors">
                     Product Name {renderSortIcon('name')}
                   </button>
                 </TableHead>
-                <TableHead className="w-16 text-center">Unit</TableHead>
-                <TableHead className="w-24 text-center">Capacity</TableHead>
-                <TableHead className="w-32 text-center">
+                <TableHead className="text-center">Unit</TableHead>
+                <TableHead className="text-center">Capacity</TableHead>
+                <TableHead className="text-center">
                   <button onClick={() => handleSort('category')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
                     Category {renderSortIcon('category')}
                   </button>
                 </TableHead>
-                <TableHead className="w-36 text-center">
+                <TableHead className="text-center">
                   <button onClick={() => handleSort('brand')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
-                    Brand/Supplier {renderSortIcon('brand')}
+                    Brand {renderSortIcon('brand')}
                   </button>
                 </TableHead>
                 {canViewCostPrices && (
-                  <TableHead className="w-24 text-center">
+                  <TableHead className="text-center">
                     <button onClick={() => handleSort('costPrice')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
-                      Cost Price {renderSortIcon('costPrice')}
+                      Cost {renderSortIcon('costPrice')}
                     </button>
                   </TableHead>
                 )}
-                <TableHead className="w-24 text-center">
+                <TableHead className="text-center">
                   <button onClick={() => handleSort('sellingPrice')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
-                    Selling Price {renderSortIcon('sellingPrice')}
+                    Price {renderSortIcon('sellingPrice')}
                   </button>
                 </TableHead>
-                <TableHead className="w-28 text-center">
+                <TableHead className="text-center">
                   <button onClick={() => handleSort('reorderPoint')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
-                    Reorder Point {renderSortIcon('reorderPoint')}
+                    Reorder Pt {renderSortIcon('reorderPoint')}
                   </button>
                 </TableHead>
-                <TableHead className="w-28 text-center">
+                <TableHead className="text-center whitespace-nowrap">
                   <button onClick={() => handleSort('currentStock')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
                     Current Stock {renderSortIcon('currentStock')}
                   </button>
                 </TableHead>
-                <TableHead className="w-28 text-center">Location</TableHead>
-                <TableHead className="w-24 text-center">Actions</TableHead>
+                <TableHead className="text-center">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -590,36 +624,45 @@ export default function InventoryPage() {
                     )}
                     <TableCell className="text-center text-xs">{formatCurrency(product.sellingPrice || 0)}</TableCell>
                     <TableCell className="text-center text-xs">{product.reorderPoint || '-'}</TableCell>
-                    <TableCell className="text-center">
-                      <Badge className={`text-xs ${stockStatus.color}`}>
-                        <span className="flex items-center gap-1">
-                          {stockStatus.icon}
-                          {(() => {
-                            const stock = product.currentStock ?? 0;
-                            const capacity = product.containerCapacity || 1;
-                            const unit = product.unitOfMeasurement?.abbreviation || 'units';
+                    <TableCell className="text-center whitespace-nowrap">
+                      <div className="inline-flex items-center gap-1">
+                        <Badge className={`text-[11px] px-1.5 py-0 ${stockStatus.color}`}>
+                          <span className="flex items-center gap-0.5">
+                            {stockStatus.icon}
+                            {(() => {
+                              const stock = product.currentStock ?? 0;
+                              const capacity = product.containerCapacity || 1;
+                              const unit = product.unitOfMeasurement?.abbreviation || 'units';
 
-                            if (capacity > 1) {
-                              const containers = Math.floor(stock / capacity);
-                              return `${stock} ${unit} (${containers} ${containers === 1 ? 'container' : 'containers'})`;
-                            }
-                            return stock;
-                          })()}
-                        </span>
-                      </Badge>
-                      {(product.looseStock ?? 0) > 0 && (
-                        <span className="ml-1 text-xs text-green-700 font-medium">
-                          ⚗️ {product.looseStock} loose
-                        </span>
-                      )}
+                              if (capacity > 1) {
+                                const containers = Math.floor(stock / capacity);
+                                return `${stock}${unit} (${containers}${containers === 1 ? 'ctn' : 'ctns'})`;
+                              }
+                              return stock;
+                            })()}
+                          </span>
+                        </Badge>
+                        {(product.looseStock ?? 0) > 0 && (
+                          <span className="text-[11px] text-green-700 font-medium">
+                            ⚗️{product.looseStock} loose
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
-                    <TableCell className="text-center text-xs">-</TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-1">
                         <Button variant="ghost" size="sm" onClick={() => handleEditProduct(product)} disabled={!canEditProducts}
                           title={canEditProducts ? `Edit ${product.name}` : 'No permission to edit'}>
                           <HiPencil className="h-3 w-3" />
                         </Button>
+                        {product.canSellLoose && (product.containerCapacity ?? 1) > 1 && (
+                          <Button variant="ghost" size="sm"
+                            onClick={() => handleOpenPoolDialog(product)}
+                            title="Manage loose pool — open or seal containers"
+                            className="hover:text-blue-600">
+                            <span className="text-xs font-bold leading-none">~</span>
+                          </Button>
+                        )}
                         <Button variant="ghost" size="sm" onClick={() => handleDeleteProduct(product)}
                           disabled={deleteMutation.isPending || !canDeleteProducts}
                           className="hover:text-red-600"
@@ -750,9 +793,24 @@ export default function InventoryPage() {
           updatedAt: productToDelete.updatedAt || new Date()
         } : null}
         open={showDeleteDialog}
-        onOpenChange={setShowDeleteDialog}
+        onOpenChange={(open) => {
+          setShowDeleteDialog(open)
+          if (!open) setDeleteConflict(null)
+        }}
         onConfirm={confirmDeleteProduct}
-        loading={deleteMutation.isPending}
+        onDeactivateInstead={handleDeactivateInstead}
+        loading={deleteMutation.isPending || deactivateMutation.isPending}
+        conflictDetails={deleteConflict}
+      />
+      <PoolTransferDialog
+        product={poolProduct}
+        open={showPoolDialog}
+        onOpenChange={(open) => {
+          setShowPoolDialog(open)
+          if (!open) setPoolProduct(null)
+        }}
+        onConfirm={handlePoolTransfer}
+        loading={poolTransferMutation.isPending}
       />
     </div>
   )

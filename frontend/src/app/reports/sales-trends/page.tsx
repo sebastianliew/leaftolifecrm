@@ -55,6 +55,13 @@ interface SalesTrendsResponse {
   dailyData: SalesTrendData[]
   categoryData: CategoryData[]
   topProducts: TopProductData[]
+  summary?: {
+    totalRevenue: number
+    totalProfit: number
+    avgDailyRevenue: number
+    totalTransactions: number
+    profitMargin: number
+  }
 }
 
 type DateFilterOption = "24h" | "7d" | "14d" | "28d" | "custom"
@@ -116,15 +123,16 @@ export default function SalesTrendsReport() {
   const categoryData = typedData?.categoryData || []
   const topProducts = typedData?.topProducts || []
 
-  // Calculate summary metrics
-  const summary = {
+  // Use server-computed summary (fallback to local calculation)
+  const summary = typedData?.summary ?? {
     totalRevenue: dailyData.reduce((sum, item) => sum + item.revenue, 0),
     totalProfit: dailyData.reduce((sum, item) => sum + item.profit, 0),
     avgDailyRevenue: dailyData.length > 0 ? dailyData.reduce((sum, item) => sum + item.revenue, 0) / dailyData.length : 0,
     totalTransactions: dailyData.reduce((sum, item) => sum + item.transactions, 0),
+    profitMargin: 0,
   }
 
-  const profitMargin = summary.totalRevenue > 0 ? (summary.totalProfit / summary.totalRevenue) * 100 : 0
+  const profitMargin = summary.profitMargin || (summary.totalRevenue > 0 ? (summary.totalProfit / summary.totalRevenue) * 100 : 0)
 
   return (
     <div className="min-h-screen bg-gray-50">

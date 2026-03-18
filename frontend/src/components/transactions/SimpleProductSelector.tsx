@@ -97,7 +97,7 @@ export function SimpleProductSelector({ open, onClose, onSelectProduct, products
                     </div>
                   </div>
                   <Badge variant="secondary" className="text-lg px-3 py-1">
-                    ${product.sellingPrice.toFixed(2)}
+                    ${(product.sellingPrice ?? 0).toFixed(2)}
                   </Badge>
                 </div>
               </div>

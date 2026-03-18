@@ -32,6 +32,8 @@ export interface RestockSuggestion {
     name: string;
     currentStock: number;
     reorderPoint: number;
+    unitAbbreviation?: string;
+    containerCapacity?: number;
   };
   currentStock: number;
   reorderPoint: number;
@@ -195,6 +197,8 @@ export interface UseRestockCartItem extends RestockOperation {
   productName: string;
   currentStock: number;
   estimatedCost?: number;
+  unitAbbreviation?: string;
+  containerCapacity?: number;
 }
 
 export interface UseRestockCartReturn {

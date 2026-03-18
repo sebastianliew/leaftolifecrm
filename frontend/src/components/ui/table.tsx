@@ -1,5 +1,4 @@
 import * as React from "react"
-
 import { cn } from "@/lib/utils"
 
 const Table = React.forwardRef<
@@ -20,7 +19,11 @@ const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn("[&_tr]:border-b", className)} {...props} />
+  <thead
+    ref={ref}
+    className={cn("bg-gray-50/50 [&_tr]:border-b [&_tr]:border-gray-200", className)}
+    {...props}
+  />
 ))
 TableHeader.displayName = "TableHeader"
 
@@ -58,7 +61,12 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      "border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted",
+      // Base
+      "border-b border-gray-100 bg-white relative",
+      // Spring-bounce hover — matches MasterGuide InboxList row animation
+      "transition-[transform,box-shadow,background-color] duration-[700ms] ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+      "hover:scale-[1.01] hover:-translate-y-[2px] hover:shadow-[0_8px_24px_rgba(0,0,0,0.09)] hover:z-10 hover:bg-white",
+      "data-[state=selected]:bg-emerald-50/60",
       className
     )}
     {...props}
@@ -73,7 +81,7 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      "h-10 px-3 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      "h-9 px-3 text-left align-middle text-xs font-medium text-gray-500 uppercase tracking-wider [&:has([role=checkbox])]:pr-0",
       className
     )}
     {...props}
@@ -87,7 +95,7 @@ const TableCell = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <td
     ref={ref}
-    className={cn("p-3 align-middle [&:has([role=checkbox])]:pr-0", className)}
+    className={cn("px-3 py-2.5 align-middle [&:has([role=checkbox])]:pr-0", className)}
     {...props}
   />
 ))

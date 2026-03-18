@@ -397,9 +397,19 @@ export class ItemSalesController {
       });
 
 
+      // Pre-compute summary metrics so frontend doesn't need to reduce()
+      const summaryTotalRevenue = filteredResults.reduce((sum, item) => sum + item.total_sales, 0);
+      const summaryTotalCost = filteredResults.reduce((sum, item) => sum + item.total_cost, 0);
+
       const response = {
         data: filteredResults,
         success: true,
+        summary: {
+          totalRevenue: summaryTotalRevenue,
+          totalCost: summaryTotalCost,
+          totalProfit: summaryTotalRevenue - summaryTotalCost,
+          totalItems: filteredResults.length,
+        },
         metadata: {
           totalItems: filteredResults.length,
           generatedAt: new Date().toISOString()

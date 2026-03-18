@@ -9,7 +9,7 @@ interface PermissionErrorProviderProps {
 }
 
 export function PermissionErrorProvider({ children }: PermissionErrorProviderProps) {
-  const { toast, ToastContainer } = useToast();
+  const { toast } = useToast();
 
   useEffect(() => {
     const unsubscribe = permissionErrorHandler.subscribe((error: PermissionError) => {
@@ -31,7 +31,6 @@ export function PermissionErrorProvider({ children }: PermissionErrorProviderPro
   return (
     <>
       {children}
-      <ToastContainer />
     </>
   );
 }

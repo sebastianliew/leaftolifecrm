@@ -6,6 +6,17 @@ import { DraftStorage } from "@/lib/client/draftStorage"
 import { DiscountService } from "@/services/DiscountService"
 import { fetchAPI } from "@/lib/query-client"
 
+// Debounce helper for server calculation calls
+function debounce<T extends (...args: unknown[]) => void>(fn: T, delay: number): T & { cancel: () => void } {
+  let timer: NodeJS.Timeout | null = null
+  const debounced = (...args: unknown[]) => {
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => fn(...args), delay)
+  }
+  debounced.cancel = () => { if (timer) clearTimeout(timer) }
+  return debounced as T & { cancel: () => void }
+}
+
 interface DraftData {
   draftId: string
   formData: Record<string, unknown>
@@ -104,66 +115,112 @@ export function useTransactionForm({
     }))
   }, [formData.items, formData.discountAmount, formData.paidAmount])
 
+  // Ref to track latest server calculation request
+  const calcRequestRef = useRef(0)
+
+  // Debounced server calculation
+  const serverCalcRef = useRef(
+    debounce(async (...args: unknown[]) => {
+      const [items, customerId, discountAmount, requestId] = args as [TransactionItem[], string | undefined, number, number]
+      try {
+        const result = await DiscountService.calculateTransactionServer(
+          items.map(item => ({
+            productId: item.productId,
+            name: item.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalPrice: item.totalPrice,
+            discountAmount: item.discountAmount,
+            itemType: item.itemType,
+            isService: item.isService,
+            saleType: item.saleType,
+            customBlendData: item.customBlendData,
+          })),
+          customerId,
+          discountAmount
+        )
+
+        // Only apply if this is still the latest request
+        if (calcRequestRef.current !== requestId) return
+
+        if (result.success) {
+          setFormData(prev => {
+            const updatedItems = prev.items.map(item => {
+              const serverItem = result.items.find(si => si.productId === item.productId && si.name === item.name)
+              if (serverItem) {
+                return {
+                  ...item,
+                  unitPrice: serverItem.unitPrice,
+                  discountAmount: serverItem.discountAmount,
+                  totalPrice: serverItem.totalPrice,
+                  ...(serverItem.convertedQuantity !== undefined && { convertedQuantity: serverItem.convertedQuantity }),
+                  ...(serverItem.containerCapacityAtSale !== undefined && { containerCapacityAtSale: serverItem.containerCapacityAtSale }),
+                  ...(serverItem.displaySku !== undefined && { displaySku: serverItem.displaySku }),
+                }
+              }
+              return item
+            })
+            return {
+              ...prev,
+              items: updatedItems,
+              subtotal: result.subtotal,
+              totalAmount: result.totalAmount,
+            }
+          })
+        }
+      } catch (error) {
+        console.warn('[useTransactionForm] Server calculation failed, keeping local values:', error)
+      }
+    }, 300)
+  )
+
   const updateFormData = useCallback((updates: Partial<TransactionFormData>) => {
     setFormData(prev => {
-      // Check if customer ID is being updated - this indicates a patient change
-      if (updates.customerId && updates.customerId !== prev.customerId) {
-        // Find the patient to get discount information
-        const selectedPatient = patients.find(p => p.id === updates.customerId);
-        
-        if (selectedPatient?.memberBenefits?.discountPercentage && selectedPatient.memberBenefits.discountPercentage > 0) {
-          // Recalculate all item prices with the new customer's discount
-          const updatedItems = prev.items.map((item) => {
-            // Skip recalculation for items without product reference or "Sell in Parts" items
-            // Note: itemType eligibility is now handled by DiscountService
-            if (!item.product || item.saleType === 'volume') {
-              return item;
-            }
+      const next = { ...prev, ...updates }
 
-            // Get the product for discount calculation
-            const product = products.find(p => p._id === item.productId) || item.product;
-            
-            // Create customer object compatible with DiscountService
+      // If customer changed, apply optimistic local discounts then reconcile with server
+      if (updates.customerId && updates.customerId !== prev.customerId) {
+        const selectedPatient = patients.find(p => p.id === updates.customerId)
+
+        if (selectedPatient?.memberBenefits?.discountPercentage && selectedPatient.memberBenefits.discountPercentage > 0) {
+          // Optimistic local calculation for instant UI feedback
+          const updatedItems = prev.items.map((item) => {
+            if (!item.product || item.saleType === 'volume') return item
+
+            const product = products.find(p => p._id === item.productId) || item.product
             const customerForDiscount = {
               _id: selectedPatient.id,
               discountRate: selectedPatient.memberBenefits!.discountPercentage
-            };
+            }
 
             if (product) {
-              // Calculate member discount for this item (service handles itemType eligibility)
-              const discountResult = DiscountService.calculateItemDiscount(
-                product,
-                item.quantity,
-                item.unitPrice,
-                customerForDiscount,
-                { itemType: item.itemType }
-              );
-
+              const discountResult = DiscountService.calculateItemDiscountLocal(
+                product, item.quantity, item.unitPrice,
+                customerForDiscount, { itemType: item.itemType }
+              )
               if (discountResult.eligible && discountResult.discountCalculation) {
-                // Apply the member discount
                 return {
                   ...item,
                   discountAmount: discountResult.discountCalculation.discountAmount,
                   totalPrice: discountResult.discountCalculation.finalPrice
-                };
+                }
               }
             }
+            return { ...item, discountAmount: 0, totalPrice: item.quantity * item.unitPrice }
+          })
 
-            // If no discount applicable, reset any existing discounts
-            return {
-              ...item,
-              discountAmount: 0,
-              totalPrice: item.quantity * item.unitPrice
-            };
-          });
+          const optimisticNext = { ...next, items: updatedItems }
 
-          return { ...prev, ...updates, items: updatedItems };
+          // Fire server calculation to reconcile
+          const requestId = ++calcRequestRef.current
+          serverCalcRef.current(updatedItems, updates.customerId, next.discountAmount, requestId)
+
+          return optimisticNext
         }
       }
 
-      // For all other updates, just apply them normally
-      return { ...prev, ...updates };
-    });
+      return next
+    })
   }, [patients, products])
 
   const addItem = useCallback((item: TransactionItem) => {

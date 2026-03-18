@@ -88,9 +88,9 @@ export function useUpdateTransaction() {
 
 export function useDeleteTransaction() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: (id: string) => 
+    mutationFn: (id: string) =>
       fetchAPI(`/transactions/${id}`, {
         method: 'DELETE',
       }),
@@ -98,6 +98,7 @@ export function useDeleteTransaction() {
       queryClient.invalidateQueries({ queryKey: queryKeys.transactions });
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStats });
     },
+    meta: { showErrorToast: false },
   });
 }
 

@@ -3,9 +3,10 @@ import mongoose from 'mongoose';
 import { Product } from '../models/Product.js';
 import { IUser } from '../models/User.js';
 import { QueryBuilder } from '../lib/QueryBuilder.js';
-import { asyncHandler, NotFoundError, ValidationError } from '../middlewares/errorHandler.middleware.js';
+import { asyncHandler, NotFoundError, ValidationError, ReferenceConflictError } from '../middlewares/errorHandler.middleware.js';
 import { validateRefs } from '../lib/validations/referenceValidator.js';
 import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
+import { stockAlertService } from '../services/StockAlertService.js';
 
 // ── Types ──
 
@@ -62,6 +63,13 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     products: sanitized,
     pagination: QueryBuilder.paginationResponse(total, pagination.page, pagination.limit)
   });
+});
+
+// ── Alerts ──
+
+export const getStockAlerts = asyncHandler(async (_req: Request, res: Response) => {
+  const alerts = await stockAlertService.getAlerts();
+  res.json({ success: true, alerts });
 });
 
 // ── Stats ──
@@ -136,7 +144,8 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
   const {
     name, sku, description, category, brand, unitOfMeasurement,
     quantity, reorderPoint, currentStock, costPrice, sellingPrice,
-    status = 'active', expiryDate
+    status = 'active', expiryDate, canSellLoose, containerCapacity,
+    bundleInfo, bundlePrice, hasBundle, discountFlags, supplierId
   } = req.body;
 
   // Validate references
@@ -155,6 +164,15 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     if (existing) throw new ValidationError(`Product with name "${name}" already exists`);
   }
 
+  // Validate: canSellLoose requires containerCapacity > 1
+  const effectiveContainerCapacity = containerCapacity || 1;
+  if (canSellLoose && effectiveContainerCapacity <= 1) {
+    throw new ValidationError(
+      'Container capacity must be greater than 1 when loose selling is enabled. ' +
+      'Set the container capacity to the amount of base units per container (e.g. 75 for a 75ml bottle).'
+    );
+  }
+
   const product = new Product({
     name, sku, description, category, brand, unitOfMeasurement,
     quantity: quantity || 0,
@@ -166,7 +184,11 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     costPrice, sellingPrice, status,
     isActive: status === 'active',
     expiryDate,
-    looseStock: 0
+    looseStock: 0,
+    canSellLoose: canSellLoose || false,
+    containerCapacity: effectiveContainerCapacity,
+    bundleInfo, bundlePrice, hasBundle,
+    discountFlags, supplierId,
   });
 
   if (!product.sku) await product.generateSKU();
@@ -176,12 +198,20 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
   res.status(201).json(product);
 });
 
+// Fields that can be modified via PUT /products/:id.
+// Anything not listed here is silently dropped — prevents mass-assignment of
+// sensitive fields like isDeleted, deletedAt, reservedStock, totalQuantity, etc.
+const ALLOWED_UPDATE_FIELDS = [
+  'name', 'sku', 'description', 'category', 'brand', 'unitOfMeasurement',
+  'reorderPoint', 'currentStock', 'costPrice', 'sellingPrice', 'status',
+  'expiryDate', 'canSellLoose', 'containerCapacity', 'bundleInfo',
+  'bundlePrice', 'hasBundle', 'discountFlags', 'supplierId',
+];
+
 export const updateProduct = asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
-  const updates = { ...req.body };
-  delete updates._id;
-  delete updates.createdAt;
-  delete updates.updatedAt;
-  delete updates.looseStock;
+  const updates: Record<string, any> = Object.fromEntries(
+    Object.entries(req.body).filter(([k]) => ALLOWED_UPDATE_FIELDS.includes(k))
+  );
 
   // Validate references if being updated
   await validateRefs([
@@ -217,6 +247,16 @@ export const updateProduct = asyncHandler(async (req: Request<{ id: string }>, r
   // Check cost price permission
   const originalProduct = await Product.findById(req.params.id);
   if (!originalProduct) throw new NotFoundError('Product', req.params.id);
+
+  // Validate: canSellLoose requires containerCapacity > 1
+  const effectiveCanSellLoose = updates.canSellLoose !== undefined ? updates.canSellLoose : originalProduct.canSellLoose;
+  const effectiveContainerCapacity = updates.containerCapacity !== undefined ? updates.containerCapacity : originalProduct.containerCapacity;
+  if (effectiveCanSellLoose && (effectiveContainerCapacity || 1) <= 1) {
+    throw new ValidationError(
+      'Container capacity must be greater than 1 when loose selling is enabled. ' +
+      'Set the container capacity to the amount of base units per container (e.g. 75 for a 75ml bottle).'
+    );
+  }
 
   const authReq = req as AuthenticatedRequest;
   if (updates.costPrice !== undefined && updates.costPrice !== originalProduct.costPrice) {
@@ -260,10 +300,18 @@ export const deleteProduct = asyncHandler(async (req: Request<{ id: string }>, r
   ]);
 
   if (blendRef) {
-    throw new ValidationError(`Cannot delete: product is an ingredient in active blend template "${(blendRef as unknown as { name: string }).name}"`);
+    const ref = blendRef as unknown as { _id: { toString(): string }; name: string };
+    throw new ReferenceConflictError(
+      `Cannot delete: product is an ingredient in active blend template "${ref.name}"`,
+      { type: 'blend_template', name: ref.name, id: ref._id.toString() }
+    );
   }
   if (bundleRef) {
-    throw new ValidationError(`Cannot delete: product is part of active bundle "${(bundleRef as unknown as { name: string }).name}"`);
+    const ref = bundleRef as unknown as { _id: { toString(): string }; name: string };
+    throw new ReferenceConflictError(
+      `Cannot delete: product is part of active bundle "${ref.name}"`,
+      { type: 'bundle', name: ref.name, id: ref._id.toString() }
+    );
   }
 
   const authReq = req as AuthenticatedRequest;
@@ -374,21 +422,22 @@ export const exportProducts = asyncHandler(async (req: Request, res: Response) =
 });
 
 export const manageProductPool = asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
-  const { action, bottleCount } = req.body as { action: "open" | "close"; bottleCount: number };
+  const { action, amount } = req.body as { action: "open" | "close"; amount: number };
 
-  if (!["open", "close"].includes(action)) throw new ValidationError("action must be open or close");
-  if (!bottleCount || bottleCount <= 0 || !Number.isFinite(bottleCount)) throw new ValidationError("bottleCount must be a positive number");
+  if (!["open", "close"].includes(action)) throw new ValidationError("action must be 'open' or 'close'");
+  if (!amount || amount <= 0 || !Number.isFinite(amount)) throw new ValidationError("amount must be a positive number in the product's base unit (ml, g, pieces, etc.)");
 
   const product = await Product.findById(req.params.id).lean() as any;
   if (!product) throw new NotFoundError("Product", req.params.id);
   if (!product.canSellLoose) throw new ValidationError("This product is not configured for loose sales. Enable canSellLoose first.");
 
   const { validatePoolAllocation } = await import("../services/inventory/StockPoolService.js");
-  const validation = validatePoolAllocation(product as any, bottleCount, action);
+  const validation = validatePoolAllocation(product as any, amount, action);
   if (!validation.valid) throw new ValidationError(validation.error || "Invalid pool allocation");
 
   const authReq = req as AuthenticatedRequest;
   const userId = authReq.user ? String((authReq.user as any)._id) : "system";
+  const unit = product.unitName || "units";
 
   const movement = new InventoryMovement({
     productId: product._id,
@@ -396,9 +445,9 @@ export const manageProductPool = asyncHandler(async (req: Request<{ id: string }
     quantity: validation.delta,
     convertedQuantity: validation.delta,
     unitOfMeasurementId: product.unitOfMeasurement,
-    baseUnit: product.unitName || "unit",
+    baseUnit: unit,
     reference: `POOL-${Date.now()}`,
-    notes: `Pool ${action}: ${bottleCount} bottle(s) ${action === "open" ? "opened for loose sale" : "sealed back"}`,
+    notes: `Pool ${action}: ${amount} ${unit} ${action === "open" ? "moved to loose pool" : "sealed back"}`,
     createdBy: userId,
     productName: product.name,
     pool: "any",
@@ -413,7 +462,7 @@ export const manageProductPool = asyncHandler(async (req: Request<{ id: string }
 
   res.json({
     success: true,
-    message: `Successfully ${action === "open" ? "opened" : "sealed"} ${bottleCount} bottle(s)`,
+    message: `Successfully ${action === "open" ? "moved" : "sealed back"} ${amount} ${unit} ${action === "open" ? "to loose pool" : ""}`.trim(),
     product: updatedProduct,
     pool: {
       looseStock,

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Router as ExpressRouter } from 'express';
 import {
   getAllUsers,
+  getUserStats,
   createUser,
   getUserById,
   updateUser,
@@ -16,6 +17,8 @@ import { authRateLimit } from '../middlewares/rateLimiting.middleware.js';
 const router: ExpressRouter = Router();
 
 router.use(authenticateToken);
+
+router.get('/stats', requirePermission('userManagement', 'canViewUsers'), getUserStats);
 
 router.get('/', requirePermission('userManagement', 'canViewUsers'), getAllUsers);
 

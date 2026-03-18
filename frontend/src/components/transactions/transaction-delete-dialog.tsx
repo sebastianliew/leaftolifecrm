@@ -46,7 +46,7 @@ export function TransactionDeleteDialog({
               <div className="space-y-1 text-sm mb-4">
                 <div><strong>Transaction Number:</strong> {transaction.transactionNumber}</div>
                 <div><strong>Customer:</strong> {transaction.customerName}</div>
-                <div><strong>Amount:</strong> {transaction.currency} {transaction.totalAmount.toFixed(2)}</div>
+                <div><strong>Amount:</strong> {transaction.currency} {(transaction.totalAmount ?? 0).toFixed(2)}</div>
                 <div><strong>Type:</strong> {transaction.type}</div>
                 {transaction.createdAt && (
                   <div><strong>Date:</strong> {new Date(transaction.createdAt).toLocaleDateString()}</div>

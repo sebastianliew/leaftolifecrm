@@ -1,4 +1,5 @@
 import { permissionErrorHandler } from './permission-error-handler';
+import { APIError } from './errors/api-error';
 
 export async function fetchAPI<T>(
   endpoint: string,
@@ -40,18 +41,16 @@ export async function fetchAPI<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Network error' }));
+    const message = error.message || error.error || `HTTP error! status: ${response.status}`;
+    const code = error.code || 'UNKNOWN';
 
     // Handle 403 Forbidden - trigger permission error toast
     if (response.status === 403) {
       const method = options?.method || 'GET';
-      permissionErrorHandler.handlePermissionDenied(
-        endpoint,
-        method,
-        error.message || error.error || 'Permission denied'
-      );
+      permissionErrorHandler.handlePermissionDenied(endpoint, method, message);
     }
 
-    throw new Error(error.message || error.error || `HTTP error! status: ${response.status}`);
+    throw new APIError(message, response.status, code, error.details);
   }
 
   return response.json();

@@ -45,6 +45,12 @@ interface InventoryCostResponse {
   data: InventoryCostData[]
   success: boolean
   error?: string
+  summary?: {
+    totalProducts: number
+    totalInventoryValue: number
+    averageCostPerItem: number
+    lowStockItems: number
+  }
   metadata?: {
     totalItems: number
     totalInventoryValue: number
@@ -62,6 +68,7 @@ type StockFilterOption = "all" | "optimal" | "low" | "overstock" | "out"
 export default function InventoryCostReport() {
   const [data, setData] = useState<InventoryCostData[]>([])
   const [filteredData, setFilteredData] = useState<InventoryCostData[]>([])
+  const [serverSummary, setServerSummary] = useState<{ totalProducts: number; totalInventoryValue: number; averageCostPerItem: number; lowStockItems: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
@@ -140,6 +147,7 @@ export default function InventoryCostReport() {
         if (result.success) {
           setData(result.data)
           setFilteredData(result.data)
+          if (result.summary) setServerSummary(result.summary)
         } else {
           setError(result.error || 'Failed to fetch inventory cost data')
         }
@@ -169,8 +177,8 @@ export default function InventoryCostReport() {
     }
   }, [data, searchTerm])
 
-  // Calculate summary metrics
-  const summary = {
+  // Use server-computed summary (fallback to local calculation)
+  const summary = serverSummary ?? {
     totalProducts: data.length,
     totalInventoryValue: data.reduce((sum, item) => sum + item.total_cost, 0),
     averageCostPerItem: data.length > 0 ? data.reduce((sum, item) => sum + item.total_cost, 0) / data.length : 0,

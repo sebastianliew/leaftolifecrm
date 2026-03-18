@@ -2,13 +2,13 @@
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { FaBox, FaFlask, FaCubes, FaStethoscope, FaAdjust } from "react-icons/fa"
+import { FaBox, FaFlask, FaCubes, FaStethoscope } from "react-icons/fa"
 import { HiOutlinePencilSquare } from "react-icons/hi2"
 
 interface TransactionTypeSelectorProps {
   open: boolean
   onClose: () => void
-  onSelectType: (type: 'product' | 'blend' | 'bundle' | 'consultation' | 'partial' | 'miscellaneous') => void
+  onSelectType: (type: 'product' | 'blend' | 'bundle' | 'consultation' | 'miscellaneous') => void
 }
 
 export function TransactionTypeSelector({ open, onClose, onSelectType }: TransactionTypeSelectorProps) {
@@ -38,15 +38,6 @@ export function TransactionTypeSelector({ open, onClose, onSelectType }: Transac
       icon: FaCubes,
       color: 'text-green-600',
       bgColor: 'bg-green-50 hover:bg-green-100',
-      disabled: false
-    },
-    {
-      id: 'partial',
-      title: 'Sell in Parts',
-      description: 'Sell partial quantities from containers',
-      icon: FaAdjust,
-      color: 'text-indigo-600',
-      bgColor: 'bg-indigo-50 hover:bg-indigo-100',
       disabled: false
     },
     {
@@ -85,7 +76,7 @@ export function TransactionTypeSelector({ open, onClose, onSelectType }: Transac
                 className={`cursor-pointer transition-all ${type.bgColor} ${
                   type.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'
                 }`}
-                onClick={() => !type.disabled && onSelectType(type.id as 'product' | 'blend' | 'bundle' | 'consultation' | 'partial' | 'miscellaneous')}
+                onClick={() => !type.disabled && onSelectType(type.id as 'product' | 'blend' | 'bundle' | 'consultation' | 'miscellaneous')}
               >
                 <CardHeader className="text-center">
                   <Icon className={`w-12 h-12 mx-auto mb-2 ${type.color}`} />

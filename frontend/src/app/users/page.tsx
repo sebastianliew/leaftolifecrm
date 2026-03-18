@@ -101,7 +101,7 @@ export default function UsersPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
-  const { toast, ToastContainer } = useToast()
+  const { toast } = useToast()
   const { user: currentUser } = useAuth()
   const { hasPermission } = usePermissions()
 
@@ -266,8 +266,6 @@ export default function UsersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <ToastContainer />
-
       <header className="shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">

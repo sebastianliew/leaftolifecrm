@@ -14,6 +14,12 @@ export interface InventoryCostData {
 export interface InventoryCostResponse {
   data: InventoryCostData[]
   success: boolean
+  summary?: {
+    totalProducts: number
+    totalInventoryValue: number
+    averageCostPerItem: number
+    lowStockItems: number
+  }
   metadata?: {
     totalItems: number
     totalInventoryValue: number

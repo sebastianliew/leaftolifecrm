@@ -258,7 +258,9 @@ export const RestockCart: React.FC<RestockCartProps> = ({
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-sm font-medium">Quantity</label>
+                        <label className="text-sm font-medium">
+                          Quantity {item.unitAbbreviation ? `(${item.unitAbbreviation})` : ''}
+                        </label>
                         <Input
                           type="number"
                           min="1"
@@ -268,6 +270,11 @@ export const RestockCart: React.FC<RestockCartProps> = ({
                             quantity: parseInt(e.target.value) || 0
                           }))}
                         />
+                        {(item.containerCapacity ?? 1) > 1 && (editForm.quantity ?? 0) > 0 && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            = {((editForm.quantity ?? 0) / (item.containerCapacity ?? 1)).toFixed(1)} containers
+                          </p>
+                        )}
                       </div>
                       <div>
                         <label className="text-sm font-medium">Unit Cost</label>
@@ -327,7 +334,13 @@ export const RestockCart: React.FC<RestockCartProps> = ({
                       
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-muted-foreground">
                         <div>
-                          <span className="font-medium">Quantity:</span> {item.quantity}
+                          <span className="font-medium">Quantity:</span>{' '}
+                          {item.quantity} {item.unitAbbreviation || ''}
+                          {(item.containerCapacity ?? 1) > 1 && (
+                            <span className="text-muted-foreground text-xs ml-1">
+                              ({(item.quantity / (item.containerCapacity ?? 1)).toFixed(1)} containers)
+                            </span>
+                          )}
                         </div>
                         <div>
                           <span className="font-medium">Unit Cost:</span> ${(item.unitCost || 0).toFixed(2)}
@@ -336,7 +349,8 @@ export const RestockCart: React.FC<RestockCartProps> = ({
                           <span className="font-medium">Total:</span> ${(item.estimatedCost || 0).toFixed(2)}
                         </div>
                         <div>
-                          <span className="font-medium">New Stock:</span> {item.currentStock + item.quantity}
+                          <span className="font-medium">New Stock:</span>{' '}
+                          {item.currentStock + item.quantity} {item.unitAbbreviation || ''}
                         </div>
                       </div>
                       

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { formatContainerBreakdown } from "@/lib/pricing"
 import { z } from 'zod'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -11,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Package } from "lucide-react"
-import { useToast } from "@/components/ui/toast"
+import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { PoolManager } from "./pool-manager"
 import type { Product, ProductCategory, UnitOfMeasurement, Brand } from "@/types/inventory"
@@ -29,7 +30,13 @@ const productSchema = z.object({
   bundleInfo: z.string().optional(),
   bundlePrice: z.number().min(0, "Bundle price must be positive").optional(),
   category: z.string().min(1, "Category is required"),
-})
+}).refine(
+  (data) => !data.canSellLoose || (data.containerCapacity !== undefined && data.containerCapacity > 1),
+  {
+    message: "Container capacity must be greater than 1 when loose selling is enabled (e.g. 75 for a 75ml bottle)",
+    path: ["containerCapacity"],
+  }
+)
 
 type EditProductFormData = z.infer<typeof productSchema>
 
@@ -76,7 +83,8 @@ export function EditProductModal({
   const { toast } = useToast()
   const { hasPermission } = usePermissions()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  
+  const [stockInputMode, setStockInputMode] = useState<'units' | 'containers'>('containers')
+
   // Check permissions
   const canEditProducts = hasPermission('inventory', 'canEditProducts')
   const canEditCostPrices = hasPermission('inventory', 'canEditCostPrices')
@@ -351,40 +359,91 @@ export function EditProductModal({
           </div>
 
           {/* Stock Information */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="reorderPoint">Reorder Point *</Label>
-              <Input
-                id="reorderPoint"
-                type="number"
-                step="0.01"
-                {...register("reorderPoint", { valueAsNumber: true })}
-                placeholder="10"
-              />
-              {errors.reorderPoint && (
-                <p className="text-sm text-red-500">{errors.reorderPoint.message}</p>
-              )}
-            </div>
+          {(() => {
+            const selUnit = units.find(u => (u._id || u.id) === watch('unitOfMeasurement'))
+            const unitLabel = selUnit?.abbreviation || 'units'
+            const cap = watch('containerCapacity') || 1
+            const hasContainers = cap > 1
+            const inContainerMode = hasContainers && stockInputMode === 'containers'
 
-            <div className="space-y-2">
-              <Label htmlFor="currentStock">Current Stock *</Label>
-              <Input
-                id="currentStock"
-                type="number"
-                step="0.01"
-                {...register("currentStock", { valueAsNumber: true })}
-                placeholder="0"
-                disabled={!canManageStock}
-                title={!canManageStock ? "You don't have permission to manage stock" : ""}
-              />
-              {errors.currentStock && (
-                <p className="text-sm text-red-500">{errors.currentStock.message}</p>
-              )}
-              {!canManageStock && (
-                <p className="text-sm text-yellow-600">Stock management requires permission</p>
-              )}
-            </div>
-          </div>
+            const stockVal = watch('currentStock') || 0
+            const reorderVal = watch('reorderPoint') || 0
+
+            return (
+              <div className="space-y-3">
+                {/* Mode toggle — only shown for container products */}
+                {hasContainers && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Enter as:</span>
+                    <button type="button"
+                      className={`px-2 py-1 rounded ${stockInputMode === 'containers' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}
+                      onClick={() => setStockInputMode('containers')}>
+                      Containers
+                    </button>
+                    <button type="button"
+                      className={`px-2 py-1 rounded ${stockInputMode === 'units' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}
+                      onClick={() => setStockInputMode('units')}>
+                      {unitLabel}
+                    </button>
+                  </div>
+                )}
+
+                {(() => {
+                  // All inputs are controlled via watch()/setValue() — no register() on visible inputs.
+                  const displayStock = inContainerMode ? Math.round(stockVal / cap) : stockVal
+                  const displayReorder = inContainerMode ? Math.round(reorderVal / cap) : reorderVal
+                  const stepVal = inContainerMode ? '1' : '0.01'
+
+                  const onStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+                    const raw = e.target.value === '' ? 0 : Number(e.target.value)
+                    const baseUnits = inContainerMode ? Math.max(0, Math.round(raw)) * cap : Math.max(0, raw)
+                    setValue('currentStock', +baseUnits.toFixed(2), { shouldValidate: true })
+                  }
+                  const onReorderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+                    const raw = e.target.value === '' ? 0 : Number(e.target.value)
+                    const baseUnits = inContainerMode ? Math.max(0, Math.round(raw)) * cap : Math.max(0, raw)
+                    setValue('reorderPoint', +baseUnits.toFixed(2), { shouldValidate: true })
+                  }
+
+                  return (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Reorder Point * {inContainerMode ? '(containers)' : `(${unitLabel})`}</Label>
+                        <Input type="number" min="0" step={stepVal}
+                          value={displayReorder} onChange={onReorderChange} placeholder="0" />
+                        {hasContainers && (
+                          <p className="text-xs text-muted-foreground">
+                            {inContainerMode
+                              ? `= ${reorderVal} ${unitLabel}`
+                              : formatContainerBreakdown(reorderVal, cap, unitLabel)}
+                          </p>
+                        )}
+                        {errors.reorderPoint && <p className="text-sm text-red-500">{errors.reorderPoint.message}</p>}
+                        <input type="hidden" {...register("reorderPoint", { valueAsNumber: true })} />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Current Stock * {inContainerMode ? '(containers)' : `(${unitLabel})`}</Label>
+                        <Input type="number" min="0" step={stepVal}
+                          value={displayStock} onChange={onStockChange} placeholder="0"
+                          disabled={!canManageStock} />
+                        {hasContainers && (
+                          <p className="text-xs text-muted-foreground">
+                            {inContainerMode
+                              ? `= ${stockVal} ${unitLabel}`
+                              : formatContainerBreakdown(stockVal, cap, unitLabel)}
+                          </p>
+                        )}
+                        {errors.currentStock && <p className="text-sm text-red-500">{errors.currentStock.message}</p>}
+                        {!canManageStock && <p className="text-sm text-yellow-600">Stock management requires permission</p>}
+                        <input type="hidden" {...register("currentStock", { valueAsNumber: true })} />
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+            )
+          })()}
 
           {/* Bundle Information */}
           <div className="space-y-4">

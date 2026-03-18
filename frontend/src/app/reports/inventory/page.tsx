@@ -56,6 +56,7 @@ export default function InventoryReport() {
   const canViewInventoryReports = hasPermission('reports', 'canViewInventoryReports')
 
   const [inventoryData, setInventoryData] = useState<InventoryItem[]>([])
+  const [serverSummary, setServerSummary] = useState<{ totalItems: number; totalValue: number; lowStockItems: number; avgTurnover: number } | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -71,9 +72,10 @@ export default function InventoryReport() {
         
         // The API client wraps the backend response in response.data
         // The backend returns { data: InventoryAnalysisData, success: true }
-        const responseData = response.data as { data: InventoryAnalysisData } | InventoryAnalysisData
+        const responseData = response.data as { data: InventoryAnalysisData & { summary?: { totalItems: number; totalValue: number; lowStockItems: number; avgTurnover: number } } } | (InventoryAnalysisData & { summary?: { totalItems: number; totalValue: number; lowStockItems: number; avgTurnover: number } })
         const backendData = 'data' in responseData ? responseData.data : responseData
         setInventoryData(backendData.inventoryData || [])
+        if (backendData.summary) setServerSummary(backendData.summary)
       } catch (error) {
         console.error('Error fetching inventory data:', error)
       } finally {
@@ -84,11 +86,11 @@ export default function InventoryReport() {
     fetchData()
   }, [canViewInventoryReports])
 
-  // Calculate summary metrics
-  const totalItems = inventoryData.length
-  const totalValue = inventoryData.reduce((sum, item) => sum + item.total_value, 0)
-  const lowStockItems = inventoryData.filter(item => item.status === 'low' || item.status === 'out').length
-  const avgTurnover = inventoryData.reduce((sum, item) => sum + item.turnover_rate, 0) / totalItems || 0
+  // Use server-computed summary (fallback to local calculation)
+  const totalItems = serverSummary?.totalItems ?? inventoryData.length
+  const totalValue = serverSummary?.totalValue ?? inventoryData.reduce((sum, item) => sum + item.total_value, 0)
+  const lowStockItems = serverSummary?.lowStockItems ?? inventoryData.filter(item => item.status === 'low' || item.status === 'out').length
+  const avgTurnover = serverSummary?.avgTurnover ?? (inventoryData.reduce((sum, item) => sum + item.turnover_rate, 0) / inventoryData.length || 0)
 
 
 

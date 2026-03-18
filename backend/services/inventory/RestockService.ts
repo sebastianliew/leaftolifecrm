@@ -77,6 +77,8 @@ export interface RestockSuggestion {
     sku: string;
     currentStock: number;
     reorderPoint: number;
+    unitAbbreviation: string;
+    containerCapacity: number;
   };
   currentStock: number;
   reorderPoint: number;
@@ -370,7 +372,9 @@ export class RestockService {
         name: product.name,
         sku: product.sku,
         currentStock: product.currentStock,
-        reorderPoint: product.reorderPoint
+        reorderPoint: product.reorderPoint,
+        unitAbbreviation: (product.unitOfMeasurement as unknown as { abbreviation?: string })?.abbreviation || product.unitName || 'units',
+        containerCapacity: product.containerCapacity || 1,
       },
       currentStock,
       reorderPoint,

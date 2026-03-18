@@ -254,16 +254,69 @@ export class BlendTemplateService {
   // Get template categories
   async getCategories(): Promise<string[]> {
     await connectDB();
-    
+
     try {
-      const categories = await BlendTemplate.distinct('category', { 
-        isActive: true, 
-        category: { $exists: true, $ne: null, $not: { $eq: '' } } 
+      const categories = await BlendTemplate.distinct('category', {
+        isActive: true,
+        category: { $exists: true, $ne: null, $not: { $eq: '' } }
       });
       return categories.filter(cat => cat).sort();
     } catch (error: unknown) {
       console.error('Error fetching template categories:', error);
       throw new Error(`Failed to fetch categories: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  async getTemplateStats(): Promise<{
+    totalTemplates: number;
+    activeTemplates: number;
+    totalUsage: number;
+    categoriesCount: number;
+    averageUsage: string;
+  }> {
+    await connectDB();
+
+    const result = await BlendTemplate.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalTemplates: { $sum: 1 },
+          activeTemplates: { $sum: { $cond: ['$isActive', 1, 0] } },
+          totalUsage: { $sum: { $ifNull: ['$usageCount', 0] } },
+          categories: { $addToSet: '$category' },
+        },
+      },
+      {
+        $project: {
+          totalTemplates: 1,
+          activeTemplates: 1,
+          totalUsage: 1,
+          categoriesCount: { $size: { $filter: { input: '$categories', as: 'c', cond: { $and: [{ $ne: ['$$c', null] }, { $ne: ['$$c', ''] }] } } } },
+          averageUsage: {
+            $cond: [
+              { $gt: ['$totalTemplates', 0] },
+              { $divide: ['$totalUsage', '$totalTemplates'] },
+              0,
+            ],
+          },
+        },
+      },
+    ]);
+
+    const stats = result[0] || {
+      totalTemplates: 0,
+      activeTemplates: 0,
+      totalUsage: 0,
+      categoriesCount: 0,
+      averageUsage: 0,
+    };
+
+    return {
+      totalTemplates: stats.totalTemplates,
+      activeTemplates: stats.activeTemplates,
+      totalUsage: stats.totalUsage,
+      categoriesCount: stats.categoriesCount,
+      averageUsage: (stats.averageUsage || 0).toFixed(1),
+    };
   }
 }

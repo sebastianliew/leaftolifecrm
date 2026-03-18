@@ -29,6 +29,20 @@ router.get('/', requirePermission('blends', 'canViewFixedBlends'), async (req: R
   }
 });
 
+// GET /api/blend-templates/stats - Get template statistics
+router.get('/stats', requirePermission('blends', 'canViewFixedBlends'), async (_req: Request, res: Response) => {
+  try {
+    const stats = await blendTemplateService.getTemplateStats();
+    return res.json(stats);
+  } catch (error: unknown) {
+    console.error('Error fetching template stats:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch template stats',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // GET /api/blend-templates/categories - Get template categories
 router.get('/categories', requirePermission('blends', 'canViewFixedBlends'), async (req: Request, res: Response) => {
   try {

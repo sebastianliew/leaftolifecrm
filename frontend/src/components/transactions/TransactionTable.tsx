@@ -98,40 +98,51 @@ export function TransactionTable({
     <div className="space-y-4">
       {/* Search, Filters, and Bulk Actions */}
       <div className="space-y-3">
-        {/* Top row: Search and Bulk Actions */}
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4 flex-1">
-            <div className="relative w-full max-w-sm">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search transactions... (Press Enter)"
-                value={searchTerm}
-                onChange={(e) => onSearchChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && onSearchSubmit) {
-                    onSearchSubmit()
-                  }
+        {/* Single row: Search | Filters | Bulk Actions */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Search bar */}
+          <div className="relative w-full max-w-sm shrink-0">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search transactions... (Press Enter)"
+              value={searchTerm}
+              onChange={(e) => onSearchChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && onSearchSubmit) {
+                  onSearchSubmit()
+                }
+              }}
+              className="pl-10 pr-10"
+            />
+            {searchTerm && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 p-0"
+                onClick={() => {
+                  onSearchChange('')
+                  if (onSearchSubmit) onSearchSubmit()
                 }}
-                className="pl-10 pr-10"
-              />
-              {searchTerm && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 p-0"
-                  onClick={() => {
-                    onSearchChange('')
-                    if (onSearchSubmit) onSearchSubmit()
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
 
+          {/* Filters (pushed to the right) */}
+          {filters && onFiltersChange && onClearFilters && (
+            <div className="ml-auto">
+              <TransactionFilters
+                filters={filters}
+                onFiltersChange={onFiltersChange}
+                onClearFilters={onClearFilters}
+              />
+            </div>
+          )}
+
+          {/* Bulk actions (pushed to far right when items selected) */}
           {selectedTransactions.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 ml-auto">
               <span className="text-sm text-muted-foreground">
                 {selectedTransactions.length} selected
               </span>
@@ -148,15 +159,6 @@ export function TransactionTable({
             </div>
           )}
         </div>
-
-        {/* Filters row */}
-        {filters && onFiltersChange && onClearFilters && (
-          <TransactionFilters
-            filters={filters}
-            onFiltersChange={onFiltersChange}
-            onClearFilters={onClearFilters}
-          />
-        )}
 
         {/* Search results indicator */}
         {activeSearchTerm && pagination && (

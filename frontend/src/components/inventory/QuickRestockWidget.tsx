@@ -207,7 +207,9 @@ export const QuickRestockWidget: React.FC<QuickRestockWidgetProps> = ({
                 <div className="mt-3 pt-3 border-t space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-sm font-medium">Quantity</label>
+                      <label className="text-sm font-medium">
+                        Quantity {suggestion.product.unitAbbreviation ? `(${suggestion.product.unitAbbreviation})` : ''}
+                      </label>
                       <Input
                         type="number"
                         min="1"
@@ -218,6 +220,11 @@ export const QuickRestockWidget: React.FC<QuickRestockWidgetProps> = ({
                         }))}
                         placeholder="Enter quantity"
                       />
+                      {(suggestion.product.containerCapacity ?? 1) > 1 && formData.quantity > 0 && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          = {(formData.quantity / (suggestion.product.containerCapacity ?? 1)).toFixed(1)} containers
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="text-sm font-medium">Notes (optional)</label>

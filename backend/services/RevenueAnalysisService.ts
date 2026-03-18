@@ -189,10 +189,24 @@ export class RevenueAnalysisService {
       percentage: totalPaymentRevenue > 0 ? (payment.amount / totalPaymentRevenue) * 100 : 0
     }))
 
+    // Pre-compute summary metrics so frontend doesn't need to reduce()
+    const summaryTotalRevenue = categoryData.reduce((sum, item) => sum + item.revenue, 0)
+    const summaryTotalProfit = categoryData.reduce((sum, item) => sum + item.profit, 0)
+    const avgMonthlyRevenue = monthlyData.length > 0
+      ? monthlyData.reduce((sum, item) => sum + item.revenue, 0) / monthlyData.length
+      : 0
+    const overallMargin = summaryTotalRevenue > 0 ? (summaryTotalProfit / summaryTotalRevenue) * 100 : 0
+
     return {
       monthlyData,
       categoryData,
-      paymentData
+      paymentData,
+      summary: {
+        totalRevenue: summaryTotalRevenue,
+        totalProfit: summaryTotalProfit,
+        avgMonthlyRevenue,
+        overallMargin,
+      }
     }
   }
 

@@ -44,10 +44,16 @@ export class InventoryCostController {
         }
       }
 
-      // Send successful response
+      // Send successful response with summary for frontend
       res.json({
         data: analysisData.inventoryCostData,
         success: true,
+        summary: {
+          totalProducts: analysisData.summary.totalProducts,
+          totalInventoryValue: analysisData.summary.totalInventoryValue,
+          averageCostPerItem: analysisData.summary.averageCostPerItem,
+          lowStockItems: analysisData.summary.lowStockItems,
+        },
         metadata
       })
     } catch (error) {

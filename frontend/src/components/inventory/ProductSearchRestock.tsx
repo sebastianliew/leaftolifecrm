@@ -22,6 +22,7 @@ interface SearchResult {
   sku: string;
   currentStock: number;
   reorderPoint: number;
+  containerCapacity?: number;
   unitOfMeasurement?: {
     name: string;
     abbreviation: string;
@@ -43,22 +44,8 @@ export const ProductSearchRestock: React.FC<ProductSearchRestockProps> = ({
   placeholder = "Search products by name or SKU...",
   className = ""
 }) => {
-  // Helper function to determine display unit - use category for container-based products
-  const getDisplayUnit = (product: SearchResult) => {
-    if (!product.category) return product.unitOfMeasurement?.abbreviation || '';
-    // Check if category name contains "bottle" or other container types (case insensitive)
-    const categoryName = product.category.name.toLowerCase();
-    if (categoryName.includes('bottle') || 
-        categoryName.includes('pack') || 
-        categoryName.includes('container') ||
-        categoryName.includes('jar') ||
-        categoryName.includes('tube') ||
-        categoryName.includes('box')) {
-      return product.category.name;
-    }
-    // For volume/weight based products, use unit of measurement
-    return product.unitOfMeasurement?.abbreviation || '';
-  };
+  const getUnitLabel = (product: SearchResult) =>
+    product.unitOfMeasurement?.abbreviation || 'units';
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -146,7 +133,9 @@ export const ProductSearchRestock: React.FC<ProductSearchRestockProps> = ({
       supplier: product.supplier?._id,
       unitCost: product.costPrice,
       notes: `Added via search`,
-      estimatedCost: (product.costPrice || 0) * quantity
+      estimatedCost: (product.costPrice || 0) * quantity,
+      unitAbbreviation: product.unitOfMeasurement?.abbreviation,
+      containerCapacity: product.containerCapacity,
     };
 
     onAddToCart(cartItem);
@@ -206,7 +195,7 @@ export const ProductSearchRestock: React.FC<ProductSearchRestockProps> = ({
                           </div>
                           
                           <div className="text-sm text-muted-foreground space-y-1">
-                            <p>SKU: {product.sku} | Stock: {product.currentStock} {getDisplayUnit(product)}</p>
+                            <p>SKU: {product.sku} | Stock: {product.currentStock} {getUnitLabel(product)}</p>
                             {product.supplier && (
                               <p>Supplier: {product.supplier.name}</p>
                             )}
@@ -221,25 +210,37 @@ export const ProductSearchRestock: React.FC<ProductSearchRestockProps> = ({
 
                         <div className="ml-4 space-y-2">
                           <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              min="0"
-                              value={currentQuantity}
-                              onChange={(e) => handleQuantityChange(product._id, parseInt(e.target.value) || 0)}
-                              placeholder="Qty"
-                              className="w-20 h-8"
-                            />
+                            <div className="flex flex-col gap-0.5">
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={currentQuantity}
+                                  onChange={(e) => handleQuantityChange(product._id, parseInt(e.target.value) || 0)}
+                                  placeholder="Qty"
+                                  className="w-20 h-8"
+                                />
+                                <span className="text-xs text-muted-foreground font-medium w-8">
+                                  {getUnitLabel(product)}
+                                </span>
+                              </div>
+                              {(product.containerCapacity ?? 1) > 1 && currentQuantity > 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                  = {(currentQuantity / (product.containerCapacity ?? 1)).toFixed(1)} containers
+                                </p>
+                              )}
+                            </div>
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleQuantityChange(product._id, 10)}
+                              onClick={() => handleQuantityChange(product._id, (selectedQuantities[product._id] || 0) + 10)}
                             >
                               +10
                             </Button>
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleQuantityChange(product._id, 25)}
+                              onClick={() => handleQuantityChange(product._id, (selectedQuantities[product._id] || 0) + 25)}
                             >
                               +25
                             </Button>

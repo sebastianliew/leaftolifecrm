@@ -29,6 +29,12 @@ export interface RevenueAnalysisResponse {
   monthlyData: MonthlyRevenue[]
   categoryData: CategoryRevenue[]
   paymentData: PaymentMethodRevenue[]
+  summary?: {
+    totalRevenue: number
+    totalProfit: number
+    avgMonthlyRevenue: number
+    overallMargin: number
+  }
 }
 
 export interface MonthlyRevenueAggregation {

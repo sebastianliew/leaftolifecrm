@@ -46,6 +46,13 @@ interface SalesTrendsResponse {
   dailyData: SalesTrendData[];
   categoryData: CategoryData[];
   topProducts: TopProductData[];
+  summary?: {
+    totalRevenue: number;
+    totalProfit: number;
+    avgDailyRevenue: number;
+    totalTransactions: number;
+    profitMargin: number;
+  };
 }
 
 export class SalesTrendsController {
@@ -88,10 +95,22 @@ export class SalesTrendsController {
       const topProducts = await generateTopProductsData(transactions);
 
 
+      // Pre-compute summary metrics so frontend doesn't need to reduce()
+      const summaryTotalRevenue = dailyData.reduce((sum, item) => sum + item.revenue, 0);
+      const summaryTotalProfit = dailyData.reduce((sum, item) => sum + item.profit, 0);
+      const summaryTotalTransactions = dailyData.reduce((sum, item) => sum + item.transactions, 0);
+
       const response: SalesTrendsResponse = {
         dailyData,
         categoryData,
-        topProducts
+        topProducts,
+        summary: {
+          totalRevenue: summaryTotalRevenue,
+          totalProfit: summaryTotalProfit,
+          avgDailyRevenue: dailyData.length > 0 ? summaryTotalRevenue / dailyData.length : 0,
+          totalTransactions: summaryTotalTransactions,
+          profitMargin: summaryTotalRevenue > 0 ? (summaryTotalProfit / summaryTotalRevenue) * 100 : 0,
+        },
       };
 
       return res.json(response);

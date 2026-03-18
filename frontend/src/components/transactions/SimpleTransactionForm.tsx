@@ -19,7 +19,6 @@ import { normalizePatient } from "@/types/patient"
 import { TransactionTypeSelector } from "./TransactionTypeSelector"
 import { SimpleProductSelector } from "./SimpleProductSelector"
 import { SimpleQuantityInput } from "./SimpleQuantityInput"
-import { PartialQuantitySelector } from "./PartialQuantitySelector"
 import { SimpleBlendSelector } from "./SimpleBlendSelector"
 import { FixedBlendSelector } from "./FixedBlendSelector"
 import { CustomBlendCreator } from "./CustomBlendCreator"
@@ -28,6 +27,7 @@ import { PatientSelector } from "./PatientSelector"
 import { ConsultationSelector } from "./ConsultationSelector"
 import { MiscellaneousSelector } from "./MiscellaneousSelector"
 import { useUnits } from "@/hooks/useUnits"
+import { computeUnitPrice, detectPriceMismatch } from "@/lib/pricing"
 // TODO: Purchase history — needs backend endpoint /api/customers/:id/purchase-history to enable ReorderSuggestions
 // import { ReorderSuggestions } from "./ReorderSuggestions"
 import { DiscountService } from "@/services/DiscountService"
@@ -58,7 +58,6 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   const [showTypeSelector, setShowTypeSelector] = useState(false)
   const [showProductSelector, setShowProductSelector] = useState(false)
   const [showQuantityInput, setShowQuantityInput] = useState(false)
-  const [showPartialQuantitySelector, setShowPartialQuantitySelector] = useState(false)
   const [showBlendSelector, setShowBlendSelector] = useState(false)
   const [showFixedBlendSelector, setShowFixedBlendSelector] = useState(false)
   const [showCustomBlendCreator, setShowCustomBlendCreator] = useState(false)
@@ -67,7 +66,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   const [showConsultationSelector, setShowConsultationSelector] = useState(false)
   const [showMiscellaneousSelector, setShowMiscellaneousSelector] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
-  const [isPartialMode, setIsPartialMode] = useState(false)
+  const [editingCartItem, setEditingCartItem] = useState<TransactionItem | null>(null)
   const [editingConsultationId, setEditingConsultationId] = useState<string | null>(null)
   const [editingCustomBlend, setEditingCustomBlend] = useState<TransactionItem | null>(null)
   const [editingFixedBlend, setEditingFixedBlend] = useState<TransactionItem | null>(null)
@@ -175,93 +174,59 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
             });
             setSelectedPatient(patient)
 
-            // CRITICAL FIX: Recalculate discounts for all items when restoring patient in edit mode
-            // Only recalculate if products have loaded (products.length > 0) or if all items are fixed blends
+            // Recalculate discounts via backend when restoring patient in edit mode
             if (patient.memberBenefits?.discountPercentage) {
-              console.log('[Discount] Edit mode restoration - products loaded:', products.length);
+              // Call backend to recalculate all prices and discounts
+              try {
+                const result = await DiscountService.calculateTransactionServer(
+                  formData.items.map(item => ({
+                    productId: item.productId,
+                    name: item.name,
+                    quantity: item.quantity,
+                    unitPrice: item.unitPrice,
+                    itemType: item.itemType,
+                    isService: item.isService,
+                    saleType: item.saleType,
+                    customBlendData: item.customBlendData,
+                  })),
+                  initialData.customerId,
+                  formData.discountAmount
+                )
 
-              // Check if we should wait for products to load
-              const hasRegularProducts = initialData.items.some(i => i.itemType === 'product');
-              const shouldWaitForProducts = hasRegularProducts && products.length === 0;
+                if (result.success) {
+                  setFormData(prev => {
+                    const updatedItems = prev.items.map(item => {
+                      const serverItem = result.items.find(si => si.productId === item.productId && si.name === item.name)
+                      if (serverItem) {
+                        return {
+                          ...item,
+                          unitPrice: serverItem.unitPrice,
+                          discountAmount: serverItem.discountAmount,
+                          totalPrice: serverItem.totalPrice,
+                        }
+                      }
+                      return item
+                    })
 
-              if (shouldWaitForProducts) {
-                console.log('[Discount] Waiting for products to load before applying discounts in edit mode');
-                // Products dependency will trigger this effect again when products load
-                return;
-              }
-
-              console.log('[Discount] Recalculating discounts for edit mode with patient discount:', patient.memberBenefits!.discountPercentage + '%');
-              setFormData(prev => {
-                const updatedItems = prev.items.map((item) => {
-                  // Skip non-eligible items (services, custom blends, bundles, etc.)
-                  // Note: "Sell in Parts" items (saleType: 'volume') ARE eligible for member discounts
-                  if (item.isService ||
-                      (item.itemType !== 'product' && item.itemType !== 'fixed_blend')) {
-                    return item
-                  }
-
-                  // Get product for discount calculation
-                  let product = item.product;
-                  if (item.itemType === 'product') {
-                    // Try multiple sources for product data to handle race conditions
-                    const foundProduct = products.find(p => p._id === item.productId);
-                    if (foundProduct) {
-                      product = foundProduct;
-                    } else if (item.product) {
-                      product = item.product;
-                    } else {
-                      // Create minimal product with default discount flags (discountable by default)
-                      product = {
-                        _id: item.productId || '',
-                        discountFlags: { discountableForMembers: true, discountableForAll: true, discountableInBlends: false }
-                      } as Partial<Product> as Product;
+                    const discountedCount = updatedItems.filter(i => (i.discountAmount || 0) > 0).length
+                    if (discountedCount > 0) {
+                      toast({
+                        title: "Member Discount Restored",
+                        description: `${patient.memberBenefits!.discountPercentage}% ${patient.memberBenefits!.membershipTier?.toUpperCase()} discount applied to ${discountedCount} eligible item(s)`,
+                      })
                     }
-                  } else if (item.itemType === 'fixed_blend' && !product) {
-                    product = {
-                      _id: item.productId || '',
-                      discountFlags: { discountableForMembers: true, discountableForAll: false, discountableInBlends: false }
-                    } as Partial<Product> as Product;
-                  }
 
-                  if (product) {
-                    const customerForDiscount = {
-                      _id: patient.id,
-                      discountRate: patient.memberBenefits!.discountPercentage
-                    };
-
-                    const discountResult = DiscountService.calculateItemDiscount(
-                      product,
-                      item.quantity,
-                      item.unitPrice,
-                      customerForDiscount,
-                      { itemType: item.itemType }
-                    );
-
-                    if (discountResult.eligible && discountResult.discountCalculation) {
-                      console.log('[Discount] ✓ Applied edit mode discount to:', item.name);
-                      return {
-                        ...item,
-                        discountAmount: discountResult.discountCalculation.discountAmount,
-                        totalPrice: discountResult.discountCalculation.finalPrice
-                      };
+                    return {
+                      ...prev,
+                      items: updatedItems,
+                      subtotal: result.subtotal,
+                      totalAmount: result.totalAmount,
                     }
-                  } else {
-                    console.log('[Discount] ⚠️ Product not available for:', item.name);
-                  }
-
-                  return item;
-                });
-
-                const discountedCount = updatedItems.filter(i => (i.discountAmount || 0) > 0).length;
-                if (discountedCount > 0) {
-                  toast({
-                    title: "Member Discount Restored",
-                    description: `${patient.memberBenefits!.discountPercentage}% ${patient.memberBenefits!.membershipTier?.toUpperCase()} discount applied to ${discountedCount} eligible item(s)`,
-                  });
+                  })
                 }
-
-                return { ...prev, items: updatedItems };
-              });
+              } catch (error) {
+                console.warn('[Discount] Server calculation failed in edit mode, keeping existing values:', error)
+              }
             }
 
           }
@@ -292,77 +257,45 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
             const discountChanged = oldDiscount !== newDiscount
 
             if (discountChanged) {
-              // Update patient and recalculate all discounts
+              // Update patient and recalculate all discounts via backend
               setSelectedPatient(updatedPatient)
 
-              // Recalculate all item discounts with new patient data
-              setFormData(prev => {
-                const updatedItems = prev.items.map((item) => {
-                  // Skip non-eligible items for membership discounts (services, custom blends, bundles, etc.)
-                  // Note: "Sell in Parts" items (saleType: 'volume') ARE eligible for member discounts
-                  if (item.isService ||
-                      (item.itemType !== 'product' && item.itemType !== 'fixed_blend')) {
-                    return item
-                  }
+              try {
+                const result = await DiscountService.calculateTransactionServer(
+                  formData.items.map(item => ({
+                    productId: item.productId,
+                    name: item.name,
+                    quantity: item.quantity,
+                    unitPrice: item.unitPrice,
+                    itemType: item.itemType,
+                    isService: item.isService,
+                    saleType: item.saleType,
+                    customBlendData: item.customBlendData,
+                  })),
+                  updatedPatient.id,
+                  formData.discountAmount
+                )
 
-                  // For regular products, find in products array; for fixed blends, create synthetic product
-                  let product = item.product;
-                  if (item.itemType === 'product') {
-                    // Try multiple sources for product data to handle race conditions
-                    const foundProduct = products.find(p => p._id === item.productId);
-                    if (foundProduct) {
-                      product = foundProduct;
-                    } else if (item.product) {
-                      product = item.product;
-                    } else {
-                      // Create minimal product with default discount flags (discountable by default)
-                      product = {
-                        _id: item.productId || '',
-                        discountFlags: { discountableForMembers: true, discountableForAll: true, discountableInBlends: false }
-                      } as Partial<Product> as Product;
-                    }
-                  } else if (item.itemType === 'fixed_blend' && !product) {
-                    product = {
-                      _id: item.productId || '',
-                      discountFlags: { discountableForMembers: true, discountableForAll: false, discountableInBlends: false }
-                    } as Partial<Product> as Product;
-                  }
-
-                  const discountRate = updatedPatient.memberBenefits?.discountPercentage
-
-                  if (discountRate && product) {
-                    const customerForDiscount = {
-                      _id: updatedPatient.id,
-                      discountRate: discountRate
-                    }
-                    
-                    const discountCalc = DiscountService.calculateItemDiscount(
-                      product,
-                      item.quantity,
-                      item.unitPrice,
-                      customerForDiscount,
-                      { itemType: item.itemType }
-                    )
-
-                    if (discountCalc.eligible && discountCalc.discountCalculation) {
-                      return {
-                        ...item,
-                        discountAmount: discountCalc.discountCalculation.discountAmount,
-                        totalPrice: discountCalc.discountCalculation.finalPrice
+                if (result.success) {
+                  setFormData(prev => {
+                    const updatedItems = prev.items.map(item => {
+                      const serverItem = result.items.find(si => si.productId === item.productId && si.name === item.name)
+                      if (serverItem) {
+                        return {
+                          ...item,
+                          unitPrice: serverItem.unitPrice,
+                          discountAmount: serverItem.discountAmount,
+                          totalPrice: serverItem.totalPrice,
+                        }
                       }
-                    }
-                  }
-
-                  // No discount applicable
-                  return {
-                    ...item,
-                    discountAmount: 0,
-                    totalPrice: item.quantity * item.unitPrice
-                  }
-                })
-
-                return { ...prev, items: updatedItems }
-              })
+                      return { ...item, discountAmount: 0, totalPrice: item.quantity * item.unitPrice }
+                    })
+                    return { ...prev, items: updatedItems, subtotal: result.subtotal, totalAmount: result.totalAmount }
+                  })
+                }
+              } catch (error) {
+                console.warn('[Discount] Server calculation failed on focus refresh:', error)
+              }
             }
           }
         } catch (error) {
@@ -388,29 +321,56 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   const handleDiscountChange = useCallback((value: string) => {
     setDiscountValue(value)
     setIsTyping(true)
-    
+
     // Clear existing timeout
     if (debounceRef.current) {
       clearTimeout(debounceRef.current)
     }
-    
+
     // Set new timeout
-    debounceRef.current = setTimeout(() => {
+    debounceRef.current = setTimeout(async () => {
       const numValue = Number.parseFloat(value) || 0
-      
-      // Calculate total membership discounts
+
+      // Calculate bill-level discount amount from percentage or direct amount
       const memberDiscountTotal = formData.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0)
-      
-      const calculation = DiscountService.calculateAdditionalDiscount(
-        discountMode === 'percentage' 
-          ? ((formData.subtotal - memberDiscountTotal) * numValue / 100)
-          : numValue
-      )
-      
-      setFormData(prev => ({ ...prev, discountAmount: calculation.discountAmount }))
+      const billDiscountAmount = discountMode === 'percentage'
+        ? ((formData.subtotal - memberDiscountTotal) * numValue / 100)
+        : numValue
+      const sanitizedAmount = Math.max(0, billDiscountAmount)
+
+      // Apply optimistic local value immediately
+      setFormData(prev => ({ ...prev, discountAmount: sanitizedAmount }))
+
+      // Reconcile with server calculation
+      try {
+        const result = await DiscountService.calculateTransactionServer(
+          formData.items.map(item => ({
+            productId: item.productId,
+            name: item.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            itemType: item.itemType,
+            isService: item.isService,
+            saleType: item.saleType,
+            customBlendData: item.customBlendData,
+          })),
+          formData.customerId,
+          sanitizedAmount
+        )
+        if (result.success) {
+          setFormData(prev => ({
+            ...prev,
+            subtotal: result.subtotal,
+            totalAmount: result.totalAmount,
+          }))
+        }
+      } catch {
+        // Keep optimistic values on error
+      }
+
       setIsTyping(false)
     }, 1000)
-  }, [formData.subtotal, formData.items, discountMode])
+  }, [formData.subtotal, formData.items, formData.customerId, discountMode])
 
   // Sync discount value with mode changes (but not when user is typing)
   useEffect(() => {
@@ -449,30 +409,24 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     }
   }, [formData.paymentStatus, formData.totalAmount])
 
-  const handleTypeSelection = (type: 'product' | 'blend' | 'bundle' | 'consultation' | 'partial' | 'miscellaneous') => {
-    
+  const handleTypeSelection = (type: 'product' | 'blend' | 'bundle' | 'consultation' | 'miscellaneous') => {
+
     // Close all modals first to prevent overlaps
     setShowTypeSelector(false)
     setShowProductSelector(false)
     setShowQuantityInput(false)
-    setShowPartialQuantitySelector(false)
     setShowBlendSelector(false)
     setShowFixedBlendSelector(false)
     setShowCustomBlendCreator(false)
     setShowBundleSelector(false)
     setShowConsultationSelector(false)
     setShowMiscellaneousSelector(false)
-    setIsPartialMode(false)
-    
+
     // Add a small delay to ensure clean state transitions
     setTimeout(() => {
-      
+
       switch (type) {
         case 'product':
-          setShowProductSelector(true)
-          break
-        case 'partial':
-          setIsPartialMode(true)
           setShowProductSelector(true)
           break
         case 'blend':
@@ -494,114 +448,67 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   const handleProductSelect = (product: Product) => {
     setSelectedProduct(product)
     setShowProductSelector(false)
-    if (isPartialMode) {
-      // Check if product can be sold loose
-      if (!product.canSellLoose) {
-        toast({
-          title: "Cannot Sell Loose",
-          description: "This product cannot be sold loose. Please select whole container sale.",
-          variant: "destructive",
-        })
-        setIsPartialMode(false)
-        setShowQuantityInput(true)
-      } else {
-        setShowPartialQuantitySelector(true)
-      }
-    } else {
-      setShowQuantityInput(true)
-    }
+    // Unified flow — SimpleQuantityInput auto-detects loose vs container mode
+    setShowQuantityInput(true)
   }
 
-  const handleQuantityConfirm = (quantity: number) => {
+  // Unified quantity handler — saleType is auto-determined by SimpleQuantityInput
+  const handleQuantityConfirm = (quantity: number, saleType: 'quantity' | 'volume' = 'quantity', unitDisplay?: string) => {
     if (!selectedProduct) return
 
     const unitOfMeasurement = selectedProduct.unitOfMeasurement
     let unitId = ''
-    let baseUnit = 'unit'
+    let baseUnit = unitDisplay || 'unit'
 
     if (typeof unitOfMeasurement === 'object' && unitOfMeasurement !== null) {
       unitId = unitOfMeasurement._id || unitOfMeasurement.id || ''
-      baseUnit = unitOfMeasurement.baseUnit || unitOfMeasurement.name || 'unit'
+      if (!unitDisplay) baseUnit = unitOfMeasurement.abbreviation || unitOfMeasurement.name || 'unit'
     } else if (typeof unitOfMeasurement === 'string') {
       unitId = unitOfMeasurement
-      baseUnit = unitOfMeasurement
+      if (!unitDisplay) baseUnit = unitOfMeasurement
     }
 
+    const unitPrice = computeUnitPrice(selectedProduct.sellingPrice, selectedProduct.containerCapacity, saleType)
+    const basePrice = unitPrice * quantity
+
     const baseItem: TransactionItem = {
-      id: `item_${Date.now()}`,
+      id: editingCartItem?.id || `item_${Date.now()}`,
       productId: selectedProduct._id,
       product: selectedProduct,
       name: selectedProduct.name,
       description: selectedProduct.description,
       quantity: quantity,
-      unitPrice: selectedProduct.sellingPrice,
-      totalPrice: selectedProduct.sellingPrice * quantity, // Base price before discount
+      unitPrice: unitPrice,
+      totalPrice: basePrice,
       discountAmount: 0,
       isService: false,
-      itemType: 'product', // Set item type for regular products
-      saleType: 'quantity',
+      itemType: 'product',
+      saleType: saleType,
       unitOfMeasurementId: unitId,
       baseUnit: baseUnit,
-      convertedQuantity: quantity,
+      convertedQuantity: saleType === 'volume' ? quantity : quantity, // backend overrides this
       sku: selectedProduct.sku
     }
 
-    // Apply member discount using centralized function
     const newItem = applyMemberDiscount(baseItem)
 
     setFormData(prev => ({
       ...prev,
-      items: [...prev.items, newItem]
+      items: editingCartItem
+        ? prev.items.map(i => i.id === editingCartItem.id ? newItem : i)  // replace
+        : [...prev.items, newItem]                                        // add
     }))
     setSelectedProduct(null)
+    setEditingCartItem(null)
   }
 
-  const handlePartialQuantityConfirm = (quantity: number, containerId?: string | null, unitDisplay?: string) => {
-    if (!selectedProduct) return
-
-    const unitOfMeasurement = selectedProduct.unitOfMeasurement
-    let unitId = ''
-
-    if (typeof unitOfMeasurement === 'object' && unitOfMeasurement !== null) {
-      unitId = unitOfMeasurement._id || unitOfMeasurement.id || ''
-    } else if (typeof unitOfMeasurement === 'string') {
-      unitId = unitOfMeasurement
-    }
-
-    const containerCapacity = selectedProduct.containerCapacity || 1
-    const pricePerUnit = Math.round((selectedProduct.sellingPrice / containerCapacity) * 100) / 100
-    const basePrice = pricePerUnit * quantity
-
-    const newItem: TransactionItem = {
-      id: `item_${Date.now()}`,
-      productId: selectedProduct._id,
-      product: selectedProduct,
-      name: selectedProduct.name,
-      description: selectedProduct.description,
-      quantity: quantity,
-      unitPrice: pricePerUnit,
-      totalPrice: basePrice,
-      discountAmount: 0, // Will be set by applyMemberDiscount
-      isService: false,
-      itemType: 'product', // Set itemType for discount eligibility
-      saleType: 'volume', // Always use volume for partial sales
-      unitOfMeasurementId: unitId,
-      baseUnit: unitDisplay || 'pieces', // Use the unit display from PartialQuantitySelector
-      convertedQuantity: quantity, // For volume sales, convertedQuantity equals quantity
-      sku: selectedProduct.sku,
-      // Include containerId for bottle-level tracking
-      containerId: containerId || undefined
-    }
-
-    // Apply member discount if eligible (now includes Sell in Parts items)
-    const itemWithDiscount = applyMemberDiscount(newItem)
-
-    setFormData(prev => ({
-      ...prev,
-      items: [...prev.items, itemWithDiscount]
-    }))
-    setSelectedProduct(null)
-    setIsPartialMode(false)
+  const handleEditCartItem = (item: TransactionItem) => {
+    // Find the product in the products array to get full product data
+    const product = products.find(p => p._id === item.productId)
+    if (!product) return
+    setSelectedProduct(product)
+    setEditingCartItem(item)
+    setShowQuantityInput(true)
   }
 
   const handleBlendSelection = (blendItem: TransactionItem) => {
@@ -880,11 +787,9 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     currentPrice: number | null;
     difference: number
   } => {
-    // Only check regular products with quantity-based pricing
-    // Skip: bundles, blends, services, volume-based, miscellaneous
+    // Only check regular products — skip bundles, blends, services, miscellaneous
     if (
       item.itemType !== 'product' ||
-      item.saleType === 'volume' ||
       item.isService
     ) {
       return { hasMismatch: false, currentPrice: null, difference: 0 };
@@ -895,12 +800,19 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       return { hasMismatch: false, currentPrice: null, difference: 0 };
     }
 
-    const currentPrice = currentProduct.sellingPrice;
-    const draftPrice = item.unitPrice;
-    const hasMismatch = Math.abs(currentPrice - draftPrice) > 0.001;
-    const difference = currentPrice - draftPrice;
+    // Use centralized price comparison that handles both quantity and volume sale types
+    const result = detectPriceMismatch(
+      item.unitPrice,
+      currentProduct.sellingPrice,
+      currentProduct.containerCapacity,
+      item.saleType,
+    );
 
-    return { hasMismatch, currentPrice, difference };
+    return {
+      hasMismatch: result.hasMismatch,
+      currentPrice: result.currentPrice,
+      difference: result.difference,
+    };
   }, [products]);
 
   // Helper to detect ingredient price mismatches in custom blends
@@ -966,7 +878,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         const currentProduct = products.find(p => p._id === item.productId);
         if (!currentProduct) return item;
 
-        const newUnitPrice = currentProduct.sellingPrice;
+        // Use centralized pricing — correctly divides by containerCapacity for volume items
+        const newUnitPrice = computeUnitPrice(currentProduct.sellingPrice, currentProduct.containerCapacity, item.saleType);
         const baseTotal = newUnitPrice * item.quantity;
 
         // Recalculate member discount if applicable
@@ -1513,10 +1426,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                         -
                       </Button>
                       <span className="w-16 text-center text-sm">
-                        {item.saleType === 'volume' && item.baseUnit
+                        {item.baseUnit
                           ? `${item.quantity} ${item.baseUnit}`
-                          : item.saleType === 'quantity'
-                          ? (item.quantity === 1 ? '1 unit' : `${item.quantity} units`)
                           : item.quantity}
                       </span>
                       <Button
@@ -1634,6 +1545,18 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                         className="text-blue-600 hover:text-blue-800"
                         onClick={() => handleEditFixedBlend(item)}
                         title="Edit fixed blend"
+                      >
+                        <FaEdit className="h-4 w-4" />
+                      </Button>
+                    )}
+                    {/* Edit Item Button — for product items */}
+                    {item.itemType === 'product' && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-gray-500 hover:text-gray-800"
+                        onClick={() => handleEditCartItem(item)}
                       >
                         <FaEdit className="h-4 w-4" />
                       </Button>
@@ -1850,21 +1773,16 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         open={showProductSelector}
         onClose={() => setShowProductSelector(false)}
         onSelectProduct={handleProductSelect}
-        products={isPartialMode ? products.filter(p => p.canSellLoose === true) : products}
+        products={products}
       />
 
       <SimpleQuantityInput
         open={showQuantityInput}
-        onClose={() => setShowQuantityInput(false)}
+        onClose={() => { setShowQuantityInput(false); setEditingCartItem(null) }}
         onConfirm={handleQuantityConfirm}
         product={selectedProduct}
-      />
-
-      <PartialQuantitySelector
-        open={showPartialQuantitySelector}
-        onClose={() => setShowPartialQuantitySelector(false)}
-        onConfirm={handlePartialQuantityConfirm}
-        product={selectedProduct}
+        initialQuantity={editingCartItem?.quantity}
+        initialSaleType={editingCartItem?.saleType}
       />
 
       <SimpleBlendSelector

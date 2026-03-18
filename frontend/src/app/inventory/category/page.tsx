@@ -20,7 +20,7 @@ export default function CategoryPage() {
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
-  const { toast, ToastContainer } = useToast()
+  const { toast } = useToast()
 
   // Data fetching
   const { data: categories = [], isLoading: loading, error } = useCategoriesQuery()
@@ -148,8 +148,6 @@ export default function CategoryPage() {
 
   return (
     <div>
-      <ToastContainer />
-
       <header className="shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">

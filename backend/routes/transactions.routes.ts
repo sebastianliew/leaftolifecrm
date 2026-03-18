@@ -17,7 +17,8 @@ import {
   saveDraft,
   getDrafts,
   deleteDraft,
-  duplicateTransaction
+  duplicateTransaction,
+  calculateTransactionPreview
 } from '../controllers/transactions.controller.js';
 
 const router: IRouter = express.Router();
@@ -27,6 +28,9 @@ router.use(authenticateToken);
 
 // GET /api/transactions - Get all transactions
 router.get('/', requirePermission('transactions', 'canViewTransactions'), getTransactions);
+
+// POST /api/transactions/calculate - Preview server-calculated prices/discounts/totals
+router.post('/calculate', requirePermission('transactions', 'canCreateTransactions'), calculateTransactionPreview);
 
 // Draft-related routes (must come before /:id to avoid conflicts)
 // GET /api/transactions/drafts - Get user's drafts

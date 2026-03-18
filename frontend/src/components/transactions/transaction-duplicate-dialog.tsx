@@ -46,7 +46,7 @@ export function TransactionDuplicateDialog({
                 <div><strong>Original Transaction:</strong> {transaction.transactionNumber}</div>
                 <div><strong>Customer:</strong> {transaction.customerName}</div>
                 <div><strong>Items:</strong> {itemCount} item{itemCount !== 1 ? 's' : ''}</div>
-                <div><strong>Amount:</strong> {transaction.currency} {transaction.totalAmount.toFixed(2)}</div>
+                <div><strong>Amount:</strong> {transaction.currency} {(transaction.totalAmount ?? 0).toFixed(2)}</div>
               </div>
 
               <p className="text-muted-foreground">

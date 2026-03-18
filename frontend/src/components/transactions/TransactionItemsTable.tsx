@@ -112,7 +112,7 @@ export function TransactionItemsTable({
                     step="0.1"
                     disabled={disabled}
                   />
-                  <span className="text-sm text-muted-foreground">g</span>
+                  <span className="text-sm text-muted-foreground">{item.baseUnit || 'units'}</span>
                 </div>
               ) : (
                 <span>{item.quantity}</span>

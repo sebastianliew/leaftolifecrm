@@ -19,7 +19,7 @@ router.get('/transaction-date-range', requirePermission('reports', 'canViewFinan
     const { Transaction } = await import('../models/Transaction.js');
     
     const dateRangeQuery = await Transaction.aggregate([
-      { $match: { type: 'sale', status: 'completed' } },
+      { $match: { type: 'COMPLETED', status: { $in: ['completed', 'partially_refunded'] } } },
       { 
         $group: {
           _id: null,

@@ -66,6 +66,12 @@ interface RevenueAnalysisData {
   monthlyData: MonthlyRevenue[]
   categoryData: CategoryRevenue[]
   paymentData: PaymentMethodRevenue[]
+  summary?: {
+    totalRevenue: number
+    totalProfit: number
+    avgMonthlyRevenue: number
+    overallMargin: number
+  }
 }
 
 type DateFilterOption = "24h" | "7d" | "14d" | "28d" | "6months" | "12months" | "custom"
@@ -77,6 +83,7 @@ export default function RevenueAnalysisReport() {
   const [monthlyData, setMonthlyData] = useState<MonthlyRevenue[]>([])
   const [categoryData, setCategoryData] = useState<CategoryRevenue[]>([])
   const [paymentData, setPaymentData] = useState<PaymentMethodRevenue[]>([])
+  const [serverSummary, setServerSummary] = useState<{ totalRevenue: number; totalProfit: number; avgMonthlyRevenue: number; overallMargin: number } | null>(null)
   const [loading, setLoading] = useState(true)
 
   // Date filter states
@@ -159,6 +166,7 @@ export default function RevenueAnalysisReport() {
         setMonthlyData(data.monthlyData || [])
         setCategoryData(data.categoryData || [])
         setPaymentData(data.paymentData || [])
+        if (data.summary) setServerSummary(data.summary)
       } catch (error) {
         console.error('Error fetching revenue analysis data:', error)
       } finally {
@@ -169,11 +177,11 @@ export default function RevenueAnalysisReport() {
     fetchData()
   }, [canViewFinancialReports, dateFilter, customStartDate, customEndDate, getDateRange])
 
-  // Calculate summary metrics
-  const totalRevenue = categoryData.reduce((sum, item) => sum + item.revenue, 0)
-  const totalProfit = categoryData.reduce((sum, item) => sum + item.profit, 0)
-  const avgMonthlyRevenue = monthlyData.length > 0 ? monthlyData.reduce((sum, item) => sum + item.revenue, 0) / monthlyData.length : 0
-  const overallMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
+  // Use server-computed summary (fallback to local calculation)
+  const totalRevenue = serverSummary?.totalRevenue ?? categoryData.reduce((sum, item) => sum + item.revenue, 0)
+  const totalProfit = serverSummary?.totalProfit ?? categoryData.reduce((sum, item) => sum + item.profit, 0)
+  const avgMonthlyRevenue = serverSummary?.avgMonthlyRevenue ?? (monthlyData.length > 0 ? monthlyData.reduce((sum, item) => sum + item.revenue, 0) / monthlyData.length : 0)
+  const overallMargin = serverSummary?.overallMargin ?? (totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0)
 
   if (!canViewFinancialReports) {
     return (

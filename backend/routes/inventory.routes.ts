@@ -25,6 +25,7 @@ import {
   getProductTemplates,
   bulkDeleteProducts,
   getInventoryStats,
+  getStockAlerts,
   exportProducts,
   manageProductPool
 } from '../controllers/products.controller.js';
@@ -55,6 +56,9 @@ router.get('/categories/:id', requirePermission('inventory', 'canViewInventory')
 router.post('/categories', requirePermission('inventory', 'canAddProducts'), createCategory);
 router.put('/categories/:id', requirePermission('inventory', 'canEditProducts'), updateCategory);
 router.delete('/categories/:id', requirePermission('inventory', 'canDeleteProducts'), deleteCategory);
+
+// Stock alerts
+router.get('/alerts', requirePermission('inventory', 'canViewInventory'), getStockAlerts);
 
 // Products routes
 router.get('/products/stats', requirePermission('inventory', 'canViewInventory'), getInventoryStats);

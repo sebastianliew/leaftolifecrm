@@ -38,6 +38,12 @@ export interface InventoryAnalysisData {
   inventoryData: InventoryItem[]
   categoryData: CategorySummary[]
   stockStatus: StockStatus[]
+  summary?: {
+    totalItems: number
+    totalValue: number
+    lowStockItems: number
+    avgTurnover: number
+  }
 }
 
 export class InventoryAnalysisService {
@@ -71,10 +77,30 @@ export class InventoryAnalysisService {
     // Get stock status summary
     const stockStatusData = this.getStockStatusSummary(enhancedInventoryData)
     
+    // Pre-compute summary metrics so frontend doesn't need to reduce()
+    const totalItems = enhancedInventoryData.length
+    const summaryTotalValue = enhancedInventoryData.reduce((sum, item) => {
+      const val = (item as { total_value?: number }).total_value
+      return sum + (typeof val === 'number' && !isNaN(val) ? val : 0)
+    }, 0)
+    const lowStockItems = enhancedInventoryData.filter((item) => {
+      const status = (item as { status?: string }).status
+      return status === 'low' || status === 'out'
+    }).length
+    const avgTurnover = totalItems > 0
+      ? enhancedInventoryData.reduce((sum, item) => sum + ((item as { turnover_rate?: number }).turnover_rate ?? 0), 0) / totalItems
+      : 0
+
     return {
       inventoryData: enhancedInventoryData,
       categoryData: categoryDataWithPercentage,
-      stockStatus: stockStatusData
+      stockStatus: stockStatusData,
+      summary: {
+        totalItems,
+        totalValue: summaryTotalValue,
+        lowStockItems,
+        avgTurnover,
+      }
     }
   }
 

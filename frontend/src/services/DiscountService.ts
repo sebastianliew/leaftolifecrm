@@ -1,8 +1,11 @@
 /**
- * Frontend DiscountService - Placeholder for decoupled architecture
- * This is a minimal frontend version to prevent build errors
- * Real discount calculations should be handled by the backend
+ * DiscountService — Frontend wrapper for server-side discount calculations.
+ *
+ * All real discount calculations are performed by the backend via POST /transactions/calculate.
+ * Local methods are kept only as fast optimistic previews — the server response is authoritative.
  */
+
+import { fetchAPI } from "@/lib/query-client"
 
 interface DiscountCalculation {
   discountAmount: number
@@ -15,13 +18,6 @@ interface DiscountResult {
   eligible: boolean
   discountCalculation?: DiscountCalculation
 }
-
-// interface DiscountRequest {
-//   price: number
-//   quantity?: number
-//   customerId?: string
-//   membershipLevel?: string
-// }
 
 interface Product {
   _id: string
@@ -41,56 +37,82 @@ interface DiscountOptions {
   itemType?: string
 }
 
+interface TransactionItem {
+  productId?: string
+  name?: string
+  quantity: number
+  unitPrice: number
+  totalPrice?: number
+  discountAmount?: number
+  itemType?: string
+  isService?: boolean
+  saleType?: string
+  customBlendData?: unknown
+  [key: string]: unknown
+}
+
+interface CalculateResponse {
+  success: boolean
+  items: Array<{
+    productId?: string
+    unitPrice: number
+    totalPrice: number
+    discountAmount: number
+    convertedQuantity?: number
+    containerCapacityAtSale?: number
+    displaySku?: string
+    [key: string]: unknown
+  }>
+  subtotal: number
+  totalItemDiscounts: number
+  totalAmount: number
+  warnings: string[]
+  memberDiscount?: {
+    percentage: number
+    tier?: string
+  }
+}
+
 export class DiscountService {
   /**
-   * Calculate item discount
-   * Signature: (product, quantity, unitPrice, customer, options) => DiscountResult
+   * Call the backend to calculate the full transaction (prices, discounts, totals).
+   * This is the authoritative source of truth.
    */
-  static calculateItemDiscount(
+  static async calculateTransactionServer(
+    items: TransactionItem[],
+    customerId?: string | null,
+    discountAmount?: number
+  ): Promise<CalculateResponse> {
+    return fetchAPI<CalculateResponse>('/transactions/calculate', {
+      method: 'POST',
+      body: JSON.stringify({ items, customerId, discountAmount }),
+    })
+  }
+
+  /**
+   * Local optimistic preview for instant UI feedback.
+   * The backend is authoritative — this is only for responsiveness.
+   */
+  static calculateItemDiscountLocal(
     product: Product,
     quantity: number,
     unitPrice: number,
     customer: Customer,
     options?: DiscountOptions
   ): DiscountResult {
-    // Check if discount is eligible based on product flags and item type
-    // NOTE: If discountFlags is undefined (old products), default to true (schema default)
-    const discountableForMembers = product.discountFlags?.discountableForMembers !== false;
-
+    const discountableForMembers = product.discountFlags?.discountableForMembers !== false
     const isEligible =
       customer.discountRate > 0 &&
       discountableForMembers &&
       (options?.itemType === 'product' || options?.itemType === 'fixed_blend')
 
-    console.log('[DiscountService] Calculating discount:', {
-      customerDiscountRate: customer.discountRate,
-      discountableForMembers: product.discountFlags?.discountableForMembers,
-      treatAsDiscountable: discountableForMembers,
-      itemType: options?.itemType,
-      isEligible
-    });
-
     if (!isEligible) {
-      console.log('[DiscountService] Not eligible:', {
-        reason: customer.discountRate <= 0 ? 'Customer has no discount rate' :
-                !discountableForMembers ? 'Product explicitly marked as not discountable for members' :
-                'Item type not product or fixed_blend'
-      });
-      return {
-        eligible: false
-      }
+      return { eligible: false }
     }
 
     const subtotal = unitPrice * quantity
     const discountAmount = subtotal * (customer.discountRate / 100)
     const finalPrice = subtotal - discountAmount
-
-    console.log('[DiscountService] ✓ Discount calculated:', {
-      subtotal,
-      discountAmount,
-      finalPrice,
-      discountPercentage: customer.discountRate
-    });
 
     return {
       eligible: true,
@@ -104,24 +126,26 @@ export class DiscountService {
   }
 
   /**
-   * Calculate additional discount (placeholder implementation)
+   * @deprecated Use calculateTransactionServer() instead. Kept for backward compat.
    */
-  static calculateAdditionalDiscount(amount: number, _discountType?: string): DiscountCalculation {
-    // Placeholder - no additional discount
-    // TODO: Call backend API for real discount calculation
-    return {
-      discountAmount: Math.max(0, amount),
-      finalPrice: 0, // Will be calculated by caller
-      discountPercentage: 0
-    }
+  static calculateItemDiscount(
+    product: Product,
+    quantity: number,
+    unitPrice: number,
+    customer: Customer,
+    options?: DiscountOptions
+  ): DiscountResult {
+    return this.calculateItemDiscountLocal(product, quantity, unitPrice, customer, options)
   }
 
   /**
-   * Convert additional discount (placeholder implementation)
+   * Calculate additional (bill-level) discount — simple math, no server call needed.
    */
-  static convertAdditionalDiscount(discount: unknown): unknown {
-    // Placeholder - return as-is
-    // TODO: Implement proper conversion logic
-    return discount
+  static calculateAdditionalDiscount(amount: number, _discountType?: string): DiscountCalculation {
+    return {
+      discountAmount: Math.max(0, amount),
+      finalPrice: 0,
+      discountPercentage: 0
+    }
   }
 }

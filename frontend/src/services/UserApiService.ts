@@ -97,16 +97,29 @@ export class UserApiService {
 }
 
 export class UserUtilsService {
+  /**
+   * Fetch user stats from the backend (single source of truth).
+   * Falls back to local calculation if the API call fails.
+   */
+  static async fetchUserStats(): Promise<UserStats> {
+    try {
+      const response = await api.get<UserStats>('/users/stats');
+      if (response.ok && response.data) {
+        return response.data;
+      }
+    } catch {
+      // Fall through to local calculation
+    }
+    return { totalUsers: 0, activeUsers: 0, adminUsers: 0, staffUsers: 0 };
+  }
+
+  /**
+   * @deprecated Use fetchUserStats() for server-computed stats. Kept for backward compat.
+   */
   static calculateUserStats(users: User[]): UserStats {
     if (!users || !Array.isArray(users)) {
-      return {
-        totalUsers: 0,
-        activeUsers: 0,
-        adminUsers: 0,
-        staffUsers: 0,
-      };
+      return { totalUsers: 0, activeUsers: 0, adminUsers: 0, staffUsers: 0 };
     }
-    
     return {
       totalUsers: users.length,
       activeUsers: users.filter(u => u.isActive).length,

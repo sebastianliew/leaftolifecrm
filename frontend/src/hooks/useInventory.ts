@@ -282,73 +282,36 @@ export function useInventoryMovements() {
 
 export function useStockAlerts() {
   const [alerts, setAlerts] = useState<StockAlert[]>([])
+  const [loading, setLoading] = useState(false)
 
-  const generateAlerts = useCallback((products: Product[]) => {
-    const newAlerts: StockAlert[] = []
-
-    products.forEach((product) => {
-      // Low stock alert
-      if (product.currentStock <= product.reorderPoint && product.currentStock > 0) {
-        newAlerts.push({
-          id: `alert_${product._id}_low`,
-          productId: product._id,
-          alertType: "low_stock",
-          currentLevel: product.currentStock,
-          threshold: product.reorderPoint,
-          message: `${product.name} is running low (${product.currentStock} remaining)`,
-          priority: "medium",
-          isActive: true,
-          createdAt: new Date().toISOString(),
-        })
+  const fetchAlerts = useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await apiClient.get('/inventory/alerts')
+      if (response.ok) {
+        const data = response.data as { alerts: StockAlert[] }
+        setAlerts(data.alerts || [])
+        return data.alerts || []
       }
-
-      // Out of stock alert
-      if (product.currentStock === 0) {
-        newAlerts.push({
-          id: `alert_${product._id}_out`,
-          productId: product._id,
-          alertType: "out_of_stock",
-          currentLevel: 0,
-          threshold: 0,
-          message: `${product.name} is out of stock`,
-          priority: "high",
-          isActive: true,
-          createdAt: new Date().toISOString(),
-        })
-      }
-
-      // Expired stock alert (only for already expired products)
-      if (product.expiryDate) {
-        const expiryDate = new Date(product.expiryDate)
-        const today = new Date()
-        const daysUntilExpiry = Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-        
-        if (daysUntilExpiry < 0) {
-          // Product is expired - this needs immediate attention
-          newAlerts.push({
-            id: `alert_${product._id}_expired`,
-            productId: product._id,
-            alertType: "expired",
-            currentLevel: product.currentStock,
-            threshold: 0,
-            message: `${product.name} has expired (${Math.abs(daysUntilExpiry)} days ago)`,
-            priority: "critical",
-            isActive: true,
-            createdAt: new Date().toISOString(),
-          })
-        }
-        // Note: "expiring soon" alerts removed from individual alerts list
-        // They are now shown as summary count in dashboard cards
-      }
-
-    })
-
-    setAlerts(newAlerts)
-    return newAlerts
+      return []
+    } catch (err) {
+      console.error('Failed to fetch stock alerts:', err)
+      return []
+    } finally {
+      setLoading(false)
+    }
   }, [])
+
+  // Kept for backward compatibility — calls the server endpoint instead of local logic
+  const generateAlerts = useCallback((_products: Product[]) => {
+    fetchAlerts()
+    return alerts
+  }, [fetchAlerts, alerts])
 
   return {
     alerts,
+    loading,
     generateAlerts,
+    fetchAlerts,
   }
 }

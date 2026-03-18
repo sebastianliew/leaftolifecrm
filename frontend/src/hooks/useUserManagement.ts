@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { UserApiService, UserUtilsService } from '@/services/UserApiService';
 import { User, CreateUserData, UpdateUserData, UserFilters, UserStats } from '@/types/user';
 
@@ -101,7 +101,16 @@ export function useUserManagement(): UseUserManagementState & UseUserManagementA
     await fetchUsers();
   }, [fetchUsers]);
 
-  const stats = UserUtilsService.calculateUserStats(users || []);
+  // Use local fallback stats initially, then fetch from server
+  const [serverStats, setServerStats] = useState<UserStats | null>(null);
+  const stats = serverStats ?? UserUtilsService.calculateUserStats(users || []);
+
+  // Fetch server-computed stats
+  useEffect(() => {
+    UserUtilsService.fetchUserStats().then(s => {
+      if (s.totalUsers > 0 || users.length === 0) setServerStats(s);
+    });
+  }, [users.length]);
 
   return {
     users,
