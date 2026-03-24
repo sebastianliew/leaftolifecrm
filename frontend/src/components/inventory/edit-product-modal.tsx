@@ -299,6 +299,16 @@ export function EditProductModal({
             />
           </div>
 
+          {/* Pool Manager — shown immediately when loose is enabled */}
+          {watch('canSellLoose') && product && (
+            <PoolManager
+              product={{ ...product, ...{ canSellLoose: watch('canSellLoose'), containerCapacity: watch('containerCapacity') || product.containerCapacity } } as Product}
+              onUpdate={(updated) => {
+                setValue('currentStock', updated.currentStock || 0)
+              }}
+            />
+          )}
+
           {/* Brand */}
           <div className="space-y-2">
             <Label htmlFor="brand">Brand/Supplier</Label>
@@ -472,16 +482,6 @@ export function EditProductModal({
               </div>
             )}
           </div>
-
-          {/* Pool Manager */}
-          {watch('canSellLoose') && product && (
-            <PoolManager
-              product={{ ...product, ...{ canSellLoose: watch('canSellLoose'), containerCapacity: watch('containerCapacity') || product.containerCapacity } } as Product}
-              onUpdate={(updated) => {
-                setValue('currentStock', updated.currentStock || 0)
-              }}
-            />
-          )}
 
           {/* Form Actions */}
           <div className="flex justify-end space-x-2 pt-4">
