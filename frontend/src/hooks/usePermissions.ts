@@ -11,6 +11,7 @@ export interface FeaturePermissions {
     canManageStock: boolean;
     canCreateRestockOrders: boolean;
     canBulkOperations: boolean;
+    canViewCostPrices: boolean;
     canEditCostPrices: boolean;
   };
   transactions: {

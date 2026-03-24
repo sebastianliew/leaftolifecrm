@@ -101,7 +101,7 @@ export default function InventoryPage() {
   const { hasPermission } = usePermissions()
 
   // Permissions
-  const canViewCostPrices = user?.role === 'super_admin' || user?.role === 'admin'
+  const canViewCostPrices = hasPermission('inventory', 'canViewCostPrices')
   const canAddProducts = hasPermission('inventory', 'canAddProducts')
   const canEditProducts = hasPermission('inventory', 'canEditProducts')
   const canDeleteProducts = hasPermission('inventory', 'canDeleteProducts')

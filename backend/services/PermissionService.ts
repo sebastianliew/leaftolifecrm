@@ -192,7 +192,7 @@ export class PermissionService {
           canManageStock: true,
           canCreateRestockOrders: true,
           canBulkOperations: true,
-          canViewCostPrices: false,
+          canViewCostPrices: false,  // admin cannot view cost prices by default
           canEditCostPrices: false
         };
         defaultPermissions.userManagement = {
