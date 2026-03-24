@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import type { Product } from "@/types/inventory"
 import { computeUnitPrice, safeContainerCapacity } from "@/lib/pricing"
+import { getUomBehavior } from "@/lib/uom"
 
 interface SimpleQuantityInputProps {
   open: boolean
@@ -84,9 +85,15 @@ export function SimpleQuantityInput({ open, onClose, onConfirm, product, initial
       ? totalBaseStock
       : sealedContainers
 
+  // ── UOM behavior (drives step/parse/format for loose sales) ──
+  const uomType = typeof product.unitOfMeasurement === 'object' && product.unitOfMeasurement !== null
+    ? (product.unitOfMeasurement as { type?: string }).type
+    : undefined
+  const uomCfg = getUomBehavior(isLoose ? uomType : undefined)
+
   // ── Step / min ──
-  const step = isLoose ? 0.1 : 1
-  const minValue = isLoose ? 0.1 : 1
+  const step = isLoose ? uomCfg.step : 1
+  const minValue = isLoose ? (uomCfg.allowsDecimal ? uomCfg.step : 1) : 1
 
   // ── Labels ──
   const quantityUnitLabel = isLoose ? baseUnitLabel : isSimple ? baseUnitLabel : 'container(s)'
@@ -145,7 +152,7 @@ export function SimpleQuantityInput({ open, onClose, onConfirm, product, initial
       setQuantity(0)
       return
     }
-    const num = isLoose ? parseFloat(raw) : parseInt(raw)
+    const num = isLoose ? uomCfg.parseQty(raw) : parseInt(raw, 10)
     if (!isNaN(num)) {
       setQuantity(Math.max(0, num))
     }
@@ -216,7 +223,7 @@ export function SimpleQuantityInput({ open, onClose, onConfirm, product, initial
             <div className="text-sm text-center">
               {quantity > availableStock && (
                 <p className="text-orange-500 mt-1">
-                  Out-of-stock sale (+{(quantity - availableStock).toFixed(isLoose ? 1 : 0)} over limit)
+                  Out-of-stock sale (+{isLoose ? uomCfg.formatQty(quantity - availableStock) : String(quantity - availableStock)} over limit)
                 </p>
               )}
             </div>
@@ -278,20 +285,20 @@ export function SimpleQuantityInput({ open, onClose, onConfirm, product, initial
                 <div>
                   <span className="font-medium">Requested:</span>
                   <div className="text-lg font-bold text-orange-700">
-                    {isLoose ? quantity.toFixed(1) : quantity} {quantityUnitLabel}
+                    {isLoose ? uomCfg.formatQty(quantity) : quantity} {quantityUnitLabel}
                   </div>
                 </div>
                 <div>
                   <span className="font-medium">Available:</span>
                   <div className="text-lg font-bold text-green-700">
-                    {isLoose ? availableStock.toFixed(1) : availableStock} {quantityUnitLabel}
+                    {isLoose ? uomCfg.formatQty(availableStock) : availableStock} {quantityUnitLabel}
                   </div>
                 </div>
               </div>
               <div className="mt-2 pt-2 border-t border-orange-200">
                 <span className="font-medium">Shortage:</span>
                 <span className="ml-2 text-lg font-bold text-red-600">
-                  +{(quantity - availableStock).toFixed(isLoose ? 1 : 0)} over limit
+                  +{isLoose ? uomCfg.formatQty(quantity - availableStock) : String(quantity - availableStock)} over limit
                 </span>
               </div>
             </div>

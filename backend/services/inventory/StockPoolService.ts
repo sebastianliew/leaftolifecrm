@@ -1,4 +1,5 @@
 import { IProduct } from "../../models/Product.js";
+import { validateLooseQuantity } from "../../utils/uomUtils.js";
 
 export interface PoolStatus {
   looseStock: number;
@@ -46,12 +47,12 @@ export function canFulfillSealedSale(product: IProduct, bottleCount: number): bo
 export function validatePoolAllocation(
   product: IProduct,
   amount: number,
-  direction: "open" | "close"
+  direction: "open" | "close",
+  uomType?: string
 ): { valid: boolean; error?: string; delta: number } {
-  const unit = (product as any).unitName || "units";
-
-  if (amount <= 0 || !Number.isFinite(amount)) {
-    return { valid: false, error: `Amount must be a positive number in ${unit}`, delta: 0 };
+  const qtyCheck = validateLooseQuantity(amount, uomType);
+  if (!qtyCheck.valid) {
+    return { valid: false, error: qtyCheck.error, delta: 0 };
   }
 
   if (direction === "open") {

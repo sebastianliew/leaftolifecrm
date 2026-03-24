@@ -6,6 +6,7 @@ import { QueryBuilder } from '../lib/QueryBuilder.js';
 import { asyncHandler, NotFoundError, ValidationError, ReferenceConflictError } from '../middlewares/errorHandler.middleware.js';
 import { validateRefs } from '../lib/validations/referenceValidator.js';
 import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
+import { UnitOfMeasurement } from '../models/UnitOfMeasurement.js';
 import { stockAlertService } from '../services/StockAlertService.js';
 
 // ── Types ──
@@ -431,8 +432,11 @@ export const manageProductPool = asyncHandler(async (req: Request<{ id: string }
   if (!product) throw new NotFoundError("Product", req.params.id);
   if (!product.canSellLoose) throw new ValidationError("This product is not configured for loose sales. Enable canSellLoose first.");
 
+  const uom = await UnitOfMeasurement.findById(product.unitOfMeasurement).lean() as any;
+  const uomType = uom?.type as string | undefined;
+
   const { validatePoolAllocation } = await import("../services/inventory/StockPoolService.js");
-  const validation = validatePoolAllocation(product as any, amount, action);
+  const validation = validatePoolAllocation(product as any, amount, action, uomType);
   if (!validation.valid) throw new ValidationError(validation.error || "Invalid pool allocation");
 
   const authReq = req as AuthenticatedRequest;
