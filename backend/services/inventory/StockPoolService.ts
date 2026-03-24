@@ -50,6 +50,8 @@ export function validatePoolAllocation(
   direction: "open" | "close",
   uomType?: string
 ): { valid: boolean; error?: string; delta: number } {
+  const unit = (product as any).unitName || "units";
+
   const qtyCheck = validateLooseQuantity(amount, uomType);
   if (!qtyCheck.valid) {
     return { valid: false, error: qtyCheck.error, delta: 0 };
