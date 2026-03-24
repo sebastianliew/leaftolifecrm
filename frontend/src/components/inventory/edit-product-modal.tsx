@@ -40,23 +40,23 @@ const productSchema = z.object({
 
 type EditProductFormData = z.infer<typeof productSchema>
 
+/** API-ready payload — all IDs are flat strings, no nested objects. */
 export interface EditProductSubmitData {
   name: string
-  unitOfMeasurement: { id: string }
-  category: { id: string }
-  brand?: { id: string }
-  containerType?: { id: string }
+  unitOfMeasurement: string
+  category: string
+  brand?: string
   containerCapacity?: number
   canSellLoose?: boolean
   costPrice?: number
   sellingPrice?: number
   reorderPoint: number
   currentStock: number
-  totalQuantity?: number
   expiryDate?: string
   bundleInfo?: string
   bundlePrice?: number
   hasBundle: boolean
+  status: string
 }
 
 interface EditProductModalProps {
@@ -140,23 +140,22 @@ export function EditProductModal({
 
     setIsSubmitting(true)
     try {
-      // Transform data to match the expected format
-      const transformedData = {
+      // Produce a flat, API-ready payload — no re-mapping needed at the call site.
+      const transformedData: EditProductSubmitData = {
         name: data.name,
-        unitOfMeasurement: { id: data.unitOfMeasurement },
-        category: { id: data.category },
-        brand: data.brand && data.brand !== '_none' ? { id: data.brand } : undefined,
+        unitOfMeasurement: data.unitOfMeasurement,
+        category: data.category,
+        brand: data.brand && data.brand !== '_none' ? data.brand : undefined,
         containerCapacity: data.containerCapacity,
-        canSellLoose: data.canSellLoose || false,
-        // Only include cost price if user has permission
+        canSellLoose: data.canSellLoose ?? false,
         costPrice: canEditCostPrices ? data.costPrice : product.costPrice,
         sellingPrice: data.sellingPrice,
         reorderPoint: data.reorderPoint,
-        // Only update stock if user has permission
         currentStock: canManageStock ? data.currentStock : product.currentStock,
         bundleInfo: data.bundleInfo,
         bundlePrice: showBundlePrice ? data.bundlePrice : undefined,
-        hasBundle: !!showBundlePrice
+        hasBundle: !!showBundlePrice,
+        status: 'active',
       }
 
       await onSubmit(transformedData)

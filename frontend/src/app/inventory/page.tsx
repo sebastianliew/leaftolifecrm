@@ -314,20 +314,7 @@ export default function InventoryPage() {
     try {
       await updateMutation.mutateAsync({
         id: productToEdit._id,
-        data: {
-          name: data.name,
-          category: data.category.id,
-          brand: data.brand?.id,
-          unitOfMeasurement: data.unitOfMeasurement.id,
-          currentStock: data.currentStock || 0,
-          sellingPrice: data.sellingPrice || 0,
-          costPrice: data.costPrice || 0,
-          reorderPoint: data.reorderPoint || 10,
-          description: data.bundleInfo,
-          status: 'active',
-          containerCapacity: data.containerCapacity,
-          canSellLoose: data.canSellLoose ?? false,
-        },
+        data: data as unknown as Record<string, unknown>,
       })
       toast({ title: "Success", description: `Product "${data.name}" updated successfully!` })
       setShowEditModal(false)
