@@ -326,6 +326,7 @@ export default function InventoryPage() {
           description: data.bundleInfo,
           status: 'active',
           containerCapacity: data.containerCapacity,
+          canSellLoose: data.canSellLoose ?? false,
         },
       })
       toast({ title: "Success", description: `Product "${data.name}" updated successfully!` })
