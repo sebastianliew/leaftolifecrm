@@ -9,7 +9,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ArrowLeft, FileText, Printer, AlertTriangle, Download, X, Mail, CheckCircle2 } from 'lucide-react'
-import { QRCodeSVG } from 'qrcode.react'
+import Image from 'next/image'
+
 import { useTransactions as useTransactionsHook } from '@/hooks/useTransactions'
 import { formatCurrency } from '@/utils/currency'
 import type { Transaction } from '@/types/transaction'
@@ -477,7 +478,7 @@ export default function TransactionDetailPage() {
             </div>
 
             <p className="text-gray-700 mb-4">
-              Please complete your payment:
+              Kindly check the invoice and proceed with transfer once confirmed.
             </p>
 
             {/* PayNow Option */}
@@ -486,11 +487,12 @@ export default function TransactionDetailPage() {
               <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
                 {/* QR Code */}
                 <div className="bg-white p-3 rounded-lg border border-blue-300 flex-shrink-0">
-                  <QRCodeSVG
-                    value="202527780C"
-                    size={150}
-                    level="H"
-                    includeMargin={false}
+                  <Image
+                    src="/paynow-qr.jpeg"
+                    alt="PayNow QR Code - UEN 202527780C"
+                    width={150}
+                    height={150}
+                    className="rounded"
                   />
                   <p className="text-xs text-center text-gray-600 mt-2 font-medium">
                     UEN 202527780C, Leaf to Life Pte Ltd
@@ -521,7 +523,7 @@ export default function TransactionDetailPage() {
                 </div>
                 <div>
                   <p className="text-gray-600">Account Name:</p>
-                  <p className="font-medium">Leaf to Life Pte Ltd</p>
+                  <p className="font-medium">Leaf to Life Pte Ltd, eff Nov 1</p>
                 </div>
                 <div>
                   <p className="text-gray-600">Bank:</p>
@@ -534,10 +536,6 @@ export default function TransactionDetailPage() {
                 <div>
                   <p className="text-gray-600">Bank Code:</p>
                   <p className="font-medium font-mono">7171</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Branch Code:</p>
-                  <p className="font-medium font-mono">010</p>
                 </div>
                 <div className="col-span-2">
                   <p className="text-gray-600">Bank Address:</p>
@@ -558,6 +556,13 @@ export default function TransactionDetailPage() {
                 </div>
               </div>
             </div>
+
+            <p className="text-sm text-gray-700 mt-4">
+              Please share the transaction details with me once payment is made.
+            </p>
+            <p className="text-sm font-semibold text-gray-700 mt-2">
+              Note: We&apos;ll proceed to blend and arrange delivery after payment is received.
+            </p>
 
             <p className="text-sm text-gray-600 mt-4 text-center">
               For questions about this invoice, please contact us at <a href="mailto:customerservice@leaftolife.com.sg" className="text-blue-600 hover:underline">customerservice@leaftolife.com.sg</a> or <a href="tel:+6565389978" className="text-blue-600 hover:underline">+65 6538 9978</a>

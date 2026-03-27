@@ -1,6 +1,10 @@
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
-import QRCode from 'qrcode';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 interface InvoiceItem {
   name: string;
@@ -513,7 +517,7 @@ export class InvoiceGenerator {
       .font('Helvetica')
       .fillColor('#000000')
       .text(
-        'Please complete your payment:',
+        'Kindly check the invoice and proceed with transfer once confirmed.',
         boxX + 15,
         contentY,
         { width: boxWidth - 30, lineGap: 2 }
@@ -534,14 +538,10 @@ export class InvoiceGenerator {
       .fillColor('#0d6efd')
       .text('Option 1: PayNow', sectionX + 10, payNowY);
 
-    // Generate QR code
+    // Load branded PayNow QR image
     try {
-      const qrCodeBuffer = await QRCode.toBuffer('202527780C', {
-        errorCorrectionLevel: 'H',
-        type: 'png',
-        width: 80,
-        margin: 1
-      });
+      const qrImagePath = path.resolve(__dirname, '../assets/paynow-qr.jpeg');
+      const qrCodeBuffer = fs.readFileSync(qrImagePath);
 
       // Add QR code to PDF
       const qrX = sectionX + 10;
@@ -555,7 +555,7 @@ export class InvoiceGenerator {
         .fillColor('#000000')
         .text('Scan to Pay', qrX + 13, qrY + 72, { width: 70, align: 'center' });
     } catch (error) {
-      console.error('[InvoiceGenerator] Error generating QR code:', error);
+      console.error('[InvoiceGenerator] Error loading PayNow QR image:', error);
     }
 
     // Payment details next to QR code
@@ -625,7 +625,7 @@ export class InvoiceGenerator {
       .fontSize(9)
       .font('Helvetica-Bold')
       .fillColor('#000000')
-      .text('Leaf to Life Pte Ltd', rightColX, contentY + 12);
+      .text('Leaf to Life Pte Ltd, eff Nov 1', rightColX, contentY + 12);
 
     contentY += 30;
 
@@ -663,17 +663,6 @@ export class InvoiceGenerator {
       .font('Helvetica-Bold')
       .fillColor('#000000')
       .text('7171', leftColX, contentY + 12);
-
-    this.doc
-      .fontSize(8)
-      .font('Helvetica')
-      .fillColor('#666666')
-      .text('Branch Code:', rightColX, contentY);
-    this.doc
-      .fontSize(9)
-      .font('Helvetica-Bold')
-      .fillColor('#000000')
-      .text('010', rightColX, contentY + 12);
 
     contentY += 30;
 
@@ -734,7 +723,32 @@ export class InvoiceGenerator {
         { width: sectionWidth - 40, lineGap: 2 }
       );
 
-    this.yPosition = refundStartY + refundHeight + 10;
+    // Additional instruction text
+    const additionalTextY = refundStartY + refundHeight + 15;
+
+    this.doc
+      .fontSize(9)
+      .font('Helvetica')
+      .fillColor('#000000')
+      .text(
+        'Please share the transaction details with me once payment is made.',
+        boxX + 15,
+        additionalTextY,
+        { width: boxWidth - 30, lineGap: 2 }
+      );
+
+    this.doc
+      .fontSize(9)
+      .font('Helvetica-Bold')
+      .fillColor('#000000')
+      .text(
+        "Note: We'll proceed to blend and arrange delivery after payment is received.",
+        boxX + 15,
+        additionalTextY + 18,
+        { width: boxWidth - 30, lineGap: 2 }
+      );
+
+    this.yPosition = additionalTextY + 50;
   }
 
   private addFooter(data: InvoiceData): void {

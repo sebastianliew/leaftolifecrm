@@ -32,8 +32,8 @@ const defaultCompanyInfo: CompanyInfo = {
   phone: "+65 6538 9978",
   email: "customerservice@leaftolife.com.sg",
   website: "www.leaftolife.com.sg",
-  uen: "200408889Z",
-  taxId: "200408889Z",
+  uen: "202527780C",
+  taxId: "202527780C",
   logo: "/slc-logo.jpeg" // Using the public logo file
 };
 
@@ -361,7 +361,7 @@ export class InvoiceEmailTemplates {
         ${isRetry ? '<div class="retry-badge">RESENT</div>' : ''}
         ${logoHtml}
         <h1 style="font-size: 28px; margin: 10px 0; letter-spacing: 0.5px; text-transform: uppercase;">SEBASTIAN LIEW CENTRE PTE LTD</h1>
-        <p style="font-size: 16px; opacity: 0.95; margin-top: 5px; font-weight: 500;">UEN: 200408889Z</p>
+        <p style="font-size: 16px; opacity: 0.95; margin-top: 5px; font-weight: 500;">UEN: 202527780C</p>
         <p style="font-size: 14px; opacity: 0.9; margin-top: 5px;">Your Holistic Healthcare Partner</p>
       </div>
     `;
@@ -465,33 +465,33 @@ export class InvoiceEmailTemplates {
       <div class="payment-instructions">
         <h4>🔔 Payment Method</h4>
         <p><strong>Outstanding Amount:</strong> ${formatCurrency(outstandingAmount, transaction.currency)}</p>
-        <p><strong>Please complete your payment:</strong></p>
-        
+        <p><strong>Kindly check the invoice and proceed with transfer once confirmed.</strong></p>
+
         <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin: 15px 0;">
           <p style="margin: 0 0 10px 0;"><strong>Option 1: PayNow</strong></p>
-          <p style="margin: 5px 0; padding-left: 20px;">PayNow to our UEN: <strong>200408889Z</strong></p>
-          <p style="margin: 5px 0; padding-left: 20px;">Company Name: <strong>Sebastian Liew Centre Pte Ltd</strong></p>
+          <p style="margin: 5px 0; padding-left: 20px;">PayNow to our UEN: <strong>202527780C</strong></p>
+          <p style="margin: 5px 0; padding-left: 20px;">Company Name: <strong>Leaf to Life Pte Ltd</strong></p>
         </div>
-        
+
         <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin: 15px 0;">
           <p style="margin: 0 0 10px 0;"><strong>Option 2: Bank Transfer</strong></p>
           <ul style="margin: 5px 0; padding-left: 35px;">
-            <li>Account Number: <strong>0109011323</strong> (current)</li>
-            <li>Account Name: <strong>Sebastian Liew Centre Pte. Ltd.</strong></li>
+            <li>Account Number: <strong>0721361590</strong></li>
+            <li>Account Name: <strong>Leaf to Life Pte Ltd, eff Nov 1</strong></li>
             <li>Bank: <strong>DBS Bank (Singapore)</strong></li>
             <li>Swift Code: <strong>DBSSSGSG</strong></li>
             <li>Bank Code: <strong>7171</strong></li>
-            <li>Branch Code: <strong>010</strong></li>
             <li>Bank Address: 12 Marina Boulevard, DBS Asia Central, Marina Bay Financial Centre Tower 3, Singapore 018982</li>
           </ul>
         </div>
-        
+
         <div style="background: #fef2f2; padding: 12px; border-radius: 8px; margin: 15px 0; border: 1px solid #fecaca;">
           <p style="margin: 0; color: #991b1b; font-weight: bold; text-align: center;">⚠️ NO REFUND POLICY</p>
           <p style="margin: 5px 0 0 0; color: #991b1b; text-align: center; font-size: 13px;">All sales are final. No refunds will be provided once payment is processed.</p>
         </div>
-        
-        <p><em>Please process your payment at your earliest convenience to ensure continued service.</em></p>
+
+        <p>Please share the transaction details with me once payment is made.</p>
+        <p><strong>Note:</strong> <em>We'll proceed to blend and arrange delivery after payment is received.</em></p>
       </div>
     `;
   }
@@ -512,23 +512,22 @@ export class InvoiceEmailTemplates {
         
         <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin: 15px 0;">
           <p style="margin: 0 0 10px 0;"><strong>Option 1: PayNow</strong></p>
-          <p style="margin: 5px 0; padding-left: 20px;">PayNow to our UEN: <strong>200408889Z</strong></p>
-          <p style="margin: 5px 0; padding-left: 20px;">Company Name: <strong>Sebastian Liew Centre Pte Ltd</strong></p>
+          <p style="margin: 5px 0; padding-left: 20px;">PayNow to our UEN: <strong>202527780C</strong></p>
+          <p style="margin: 5px 0; padding-left: 20px;">Company Name: <strong>Leaf to Life Pte Ltd</strong></p>
         </div>
-        
+
         <div style="background: #f0f9ff; padding: 15px; border-radius: 8px; margin: 15px 0;">
           <p style="margin: 0 0 10px 0;"><strong>Option 2: Bank Transfer</strong></p>
           <ul style="margin: 5px 0; padding-left: 35px;">
-            <li>Account Number: <strong>0109011323</strong> (current)</li>
-            <li>Account Name: <strong>Sebastian Liew Centre Pte. Ltd.</strong></li>
+            <li>Account Number: <strong>0721361590</strong></li>
+            <li>Account Name: <strong>Leaf to Life Pte Ltd, eff Nov 1</strong></li>
             <li>Bank: <strong>DBS Bank (Singapore)</strong></li>
             <li>Swift Code: <strong>DBSSSGSG</strong></li>
             <li>Bank Code: <strong>7171</strong></li>
-            <li>Branch Code: <strong>010</strong></li>
             <li>Bank Address: 12 Marina Boulevard, DBS Asia Central, Marina Bay Financial Centre Tower 3, Singapore 018982</li>
           </ul>
         </div>
-        
+
         <div style="background: #fef2f2; padding: 12px; border-radius: 8px; margin: 15px 0; border: 1px solid #fecaca;">
           <p style="margin: 0; color: #991b1b; font-weight: bold; text-align: center;">⚠️ NO REFUND POLICY - All sales are final</p>
         </div>
@@ -698,25 +697,27 @@ PAYMENT REQUIRED:
 Amount Due: ${formatCurrency(calculatedTotal - transaction.paidAmount, transaction.currency)}
 ${dueDate ? `Due Date: ${dueDate}` : ''}
 
+Kindly check the invoice and proceed with transfer once confirmed.
+
 PAYMENT METHODS:
 
 Option 1: PayNow
-- PayNow to our UEN: 200408889Z
-- Company Name: Sebastian Liew Centre Pte Ltd
+- PayNow to our UEN: 202527780C
+- Company Name: Leaf to Life Pte Ltd
 
 Option 2: Bank Transfer
-- Account Number: 0109011323 (current)
-- Account Name: Sebastian Liew Centre Pte. Ltd.
+- Account Number: 0721361590
+- Account Name: Leaf to Life Pte Ltd, eff Nov 1
 - Bank: DBS Bank (Singapore)
 - Swift Code: DBSSSGSG
 - Bank Code: 7171
-- Branch Code: 010
 - Bank Address: 12 Marina Boulevard, DBS Asia Central, Marina Bay Financial Centre Tower 3, Singapore 018982
 
 *** NO REFUND POLICY ***
 All sales are final. No refunds will be provided once payment is processed.
 
-Please ensure payment is made by the due date to avoid service interruptions.
+Please share the transaction details with me once payment is made.
+Note: We'll proceed to blend and arrange delivery after payment is received.
 ` : ''}
 
 ITEMS/SERVICES:

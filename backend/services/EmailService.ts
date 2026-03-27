@@ -226,7 +226,7 @@ class EmailService {
               <!-- Payment Required Notice -->
               <div style="border-left: 3px solid #333333; padding: 12px 16px; margin-bottom: 28px;">
                 <p style="margin: 0; color: #555555; font-size: 14px; line-height: 1.5;">
-                  <strong>Payment Required:</strong> Please complete your payment. Details are included in the attached invoice.
+                  <strong>Payment Required:</strong> Kindly check the invoice and proceed with transfer once confirmed. Details are included in the attached invoice.
                 </p>
               </div>
 
@@ -253,7 +253,16 @@ class EmailService {
                   <p style="margin: 0; color: #555555; font-size: 13px; line-height: 1.6;">
                     Account: <strong>0721361590</strong><br>
                     Bank: DBS Bank (Singapore)<br>
-                    Account Name: Leaf to Life Pte Ltd
+                    Account Name: Leaf to Life Pte Ltd, eff Nov 1
+                  </p>
+                </div>
+
+                <div style="padding: 14px 16px; border: 1px solid #e5e7eb; border-radius: 4px; margin-top: 10px;">
+                  <p style="margin: 0; color: #555555; font-size: 13px; line-height: 1.6;">
+                    Please share the transaction details with me once payment is made.
+                  </p>
+                  <p style="margin: 8px 0 0 0; color: #555555; font-size: 13px; line-height: 1.6;">
+                    <strong>Note:</strong> We'll proceed to blend and arrange delivery after payment is received.
                   </p>
                 </div>
               </div>
