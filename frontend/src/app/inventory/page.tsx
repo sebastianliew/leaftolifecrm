@@ -39,7 +39,7 @@ import { useUnitsQuery } from "@/hooks/queries/use-units-query"
 import { useBrands } from "@/hooks/queries/use-common-queries"
 import { useToast } from "@/components/ui/use-toast"
 import { formatCurrency } from "@/lib/utils"
-import { useAuth } from "@/providers/auth-provider"
+
 import { usePermissions } from "@/hooks/usePermissions"
 import { AddProductModal } from "@/components/inventory/add-product-modal"
 import { EditProductModal } from "@/components/inventory/edit-product-modal"
@@ -97,7 +97,6 @@ const DebouncedSearchInput = memo(function DebouncedSearchInput({
 
 export default function InventoryPage() {
   const { toast } = useToast()
-  const { user } = useAuth()
   const { hasPermission } = usePermissions()
 
   // Permissions
