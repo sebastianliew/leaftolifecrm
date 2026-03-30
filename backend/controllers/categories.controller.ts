@@ -103,7 +103,7 @@ export const updateCategory = asyncHandler(async (req: Request<{ id: string }>, 
 });
 
 export const deleteCategory = asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
-  const productCount = await Product.countDocuments({ category: req.params.id });
+  const productCount = await Product.countDocuments({ category: req.params.id, isDeleted: { $ne: true } });
   if (productCount > 0) {
     throw new ValidationError(`Cannot delete category. ${productCount} products are using this category.`);
   }

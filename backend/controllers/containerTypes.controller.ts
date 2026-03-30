@@ -110,7 +110,7 @@ export const updateContainerType = asyncHandler(async (req: Request<{ id: string
 });
 
 export const deleteContainerType = asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
-  const productCount = await Product.countDocuments({ containerType: req.params.id });
+  const productCount = await Product.countDocuments({ containerType: req.params.id, isDeleted: { $ne: true } });
   if (productCount > 0) {
     throw new ValidationError(`Cannot delete container type. ${productCount} products are using this container type.`);
   }
