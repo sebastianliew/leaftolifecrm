@@ -66,7 +66,7 @@ export const getCategoryById = asyncHandler(async (req: Request<{ id: string }>,
 });
 
 export const createCategory = asyncHandler(async (req: Request, res: Response) => {
-  const { name: rawName, description: rawDesc, level = 1, isActive = true } = req.body;
+  const { name: rawName, description: rawDesc, level = 1, isActive = true, allowedUomTypes } = req.body;
   if (!rawName) throw new ValidationError('Category name is required');
 
   const name = sanitizeString(rawName);
@@ -74,12 +74,12 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
   if (!name) throw new ValidationError('Category name is required');
 
   await checkDuplicateName(name);
-  const category = await new Category({ name, description, level, isActive }).save();
+  const category = await new Category({ name, description, level, isActive, allowedUomTypes: allowedUomTypes ?? [] }).save();
   res.status(201).json(category);
 });
 
 export const updateCategory = asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
-  const { name: rawName, description: rawDesc, level, isActive } = req.body;
+  const { name: rawName, description: rawDesc, level, isActive, allowedUomTypes } = req.body;
   const updates: Partial<ICategory> = {};
 
   if (rawName !== undefined) {
@@ -91,6 +91,7 @@ export const updateCategory = asyncHandler(async (req: Request<{ id: string }>, 
   if (rawDesc !== undefined) updates.description = sanitizeString(rawDesc);
   if (level !== undefined) updates.level = level;
   if (isActive !== undefined) updates.isActive = isActive;
+  if (allowedUomTypes !== undefined) updates.allowedUomTypes = allowedUomTypes;
 
   const category = await Category.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
   if (!category) throw new NotFoundError('Category', req.params.id);

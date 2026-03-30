@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
       level?: number;
       isActive?: boolean;
       parent?: unknown;
+      allowedUomTypes?: string[];
       createdAt?: Date;
       updatedAt?: Date;
     }
@@ -70,8 +71,9 @@ export async function GET(request: NextRequest) {
         name: cat.name,
         description: cat.description,
         level: cat.level || 1,
-        isActive: cat.isActive !== false, // Default to true if not specified
+        isActive: cat.isActive !== false,
         parent: cat.parent ? String(cat.parent) : undefined,
+        allowedUomTypes: cat.allowedUomTypes ?? [],
         createdAt: cat.createdAt || new Date(),
         updatedAt: cat.updatedAt || new Date()
       }
@@ -95,7 +97,7 @@ export async function POST(request: NextRequest) {
     await connectDB()
 
     const body = await request.json()
-    const { name, description, parent } = body
+    const { name, description, parent, allowedUomTypes } = body
 
     if (!name) {
       return NextResponse.json(
@@ -127,7 +129,8 @@ export async function POST(request: NextRequest) {
       description,
       parent: parent || undefined,
       level,
-      isActive: true
+      isActive: true,
+      allowedUomTypes: allowedUomTypes ?? []
     })
 
     // Transform response
@@ -138,6 +141,7 @@ export async function POST(request: NextRequest) {
       level: category.level || 1,
       isActive: category.isActive !== false,
       parent: category.parent?.toString(),
+      allowedUomTypes: category.allowedUomTypes ?? [],
       createdAt: category.createdAt,
       updatedAt: category.updatedAt
     }

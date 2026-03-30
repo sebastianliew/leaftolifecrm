@@ -38,7 +38,13 @@
       "Bash(ls \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/backend/server\"*)",
       "Bash(curl:*)",
       "Bash(pkill -f \"next dev\")",
-      "Bash(pkill -f \"tsx watch\")"
+      "Bash(pkill -f \"tsx watch\")",
+      "Bash(find /Users/macbookm2pro16inch/Coding Projects/leaftolifecrm -name *container* -type f)",
+      "Bash(npm test:*)",
+      "Bash(npx tsx:*)",
+      "Bash(ls -la \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/backend/\"*.env*)",
+      "Bash(ls -la \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/backend/.env\"*)",
+      "Bash(MONGODB_URI=\"mongodb+srv://adminbem:digitalmission2126@leaftolife.tc2dczj.mongodb.net/l2l?retryWrites=true&w=majority&appName=Leaftolife\" npx tsx migrations/001-seed-container-types.ts)"
     ]
   }
 }

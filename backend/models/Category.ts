@@ -1,5 +1,7 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
+export type UomType = 'weight' | 'volume' | 'count' | 'length' | 'area' | 'temperature';
+
 export interface ICategory extends Document {
   name: string;
   level: number;
@@ -7,6 +9,7 @@ export interface ICategory extends Document {
   description?: string;
   status: 'active' | 'inactive';
   isActive?: boolean;
+  allowedUomTypes?: UomType[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,6 +32,11 @@ const CategorySchema = new Schema<ICategory>({
   isActive: {
     type: Boolean,
     default: true
+  },
+  allowedUomTypes: {
+    type: [String],
+    enum: ['weight', 'volume', 'count', 'length', 'area', 'temperature'],
+    default: []
   }
 }, {
   timestamps: true

@@ -17,6 +17,13 @@ import {
   deleteCategory
 } from '../controllers/categories.controller.js';
 import {
+  getContainerTypes,
+  getContainerTypeById,
+  createContainerType,
+  updateContainerType,
+  deleteContainerType
+} from '../controllers/containerTypes.controller.js';
+import {
   getProducts,
   getProductById,
   createProduct,
@@ -56,6 +63,13 @@ router.get('/categories/:id', requirePermission('inventory', 'canViewInventory')
 router.post('/categories', requirePermission('inventory', 'canAddProducts'), createCategory);
 router.put('/categories/:id', requirePermission('inventory', 'canEditProducts'), updateCategory);
 router.delete('/categories/:id', requirePermission('inventory', 'canDeleteProducts'), deleteCategory);
+
+// Container types routes
+router.get('/container-types', requirePermission('inventory', 'canViewInventory'), getContainerTypes);
+router.get('/container-types/:id', requirePermission('inventory', 'canViewInventory'), getContainerTypeById);
+router.post('/container-types', requirePermission('inventory', 'canAddProducts'), createContainerType);
+router.put('/container-types/:id', requirePermission('inventory', 'canEditProducts'), updateContainerType);
+router.delete('/container-types/:id', requirePermission('inventory', 'canDeleteProducts'), deleteContainerType);
 
 // Stock alerts
 router.get('/alerts', requirePermission('inventory', 'canViewInventory'), getStockAlerts);

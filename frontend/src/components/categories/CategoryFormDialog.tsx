@@ -4,7 +4,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import type { ProductCategory, CreateCategoryRequest, UpdateCategoryRequest } from "@/types/inventory/category.types"
+import type { ProductCategory, CreateCategoryRequest, UpdateCategoryRequest, UomType } from "@/types/inventory/category.types"
+
+const UOM_TYPE_OPTIONS: { value: UomType; label: string }[] = [
+  { value: 'volume', label: 'Volume (ml, L, fl oz)' },
+  { value: 'weight', label: 'Weight (g, kg, mg)' },
+  { value: 'count', label: 'Count (pcs, tab, cap, sachet)' },
+  { value: 'length', label: 'Length (cm, m, in)' },
+]
 
 interface CategoryFormDialogProps {
   open: boolean
@@ -28,6 +35,7 @@ export function CategoryFormDialog({
     description: '',
     level: 1,
     isActive: true,
+    allowedUomTypes: [] as UomType[],
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -40,6 +48,7 @@ export function CategoryFormDialog({
         description: category.description || '',
         level: category.level ?? 1,
         isActive: category.isActive ?? true,
+        allowedUomTypes: (category.allowedUomTypes ?? []) as UomType[],
       })
     } else {
       setFormData({
@@ -47,6 +56,7 @@ export function CategoryFormDialog({
         description: '',
         level: 1,
         isActive: true,
+        allowedUomTypes: [],
       })
     }
     setErrors({})
@@ -85,10 +95,8 @@ export function CategoryFormDialog({
     onSubmit(submitData)
   }
 
-  const handleInputChange = (field: string, value: string | number | boolean) => {
+  const handleInputChange = (field: string, value: string | number | boolean | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }))
-    
-    // Clear error for this field when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
     }
@@ -158,6 +166,34 @@ export function CategoryFormDialog({
             />
             {errors.level && (
               <p className="text-sm text-red-500">{errors.level}</p>
+            )}
+          </div>
+
+          {/* Allowed UOM Types */}
+          <div className="space-y-2">
+            <Label>Allowed Units of Measurement</Label>
+            <p className="text-xs text-muted-foreground">Controls which units appear when adding a product in this container type.</p>
+            <div className="grid grid-cols-2 gap-2">
+              {UOM_TYPE_OPTIONS.map(opt => (
+                <label key={opt.value} className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    checked={formData.allowedUomTypes.includes(opt.value)}
+                    onChange={(e) => {
+                      const updated = e.target.checked
+                        ? [...formData.allowedUomTypes, opt.value]
+                        : formData.allowedUomTypes.filter(t => t !== opt.value)
+                      handleInputChange('allowedUomTypes', updated)
+                    }}
+                    disabled={loading}
+                    className="rounded"
+                  />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+            {formData.allowedUomTypes.length === 0 && (
+              <p className="text-xs text-amber-600">⚠️ No types selected — all units will be shown</p>
             )}
           </div>
 

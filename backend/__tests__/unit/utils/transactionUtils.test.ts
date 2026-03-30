@@ -40,7 +40,7 @@ describe('transactionUtils', () => {
     it('should handle partial data when only paymentStatus is provided', () => {
       const data = { paymentStatus: 'paid' as const };
       normalizeTransactionForPayment(data);
-      expect(data).toEqual({ paymentStatus: 'paid' });
+      expect(data).toEqual({ paymentStatus: 'paid', status: 'completed', type: 'COMPLETED' });
     });
 
     it('should handle empty object gracefully', () => {

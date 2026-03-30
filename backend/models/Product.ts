@@ -8,6 +8,7 @@ export interface IProduct extends Document {
   name: string;
   description?: string;
   category: Schema.Types.ObjectId;
+  containerType?: Schema.Types.ObjectId;
   sku: string;
   brand?: Schema.Types.ObjectId;
   unitOfMeasurement: Schema.Types.ObjectId;
@@ -83,6 +84,7 @@ const productSchema = new mongoose.Schema<IProduct>({
   name: { type: String, required: true },
   description: String,
   category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
+  containerType: { type: mongoose.Schema.Types.ObjectId, ref: 'ContainerType' },
   sku: { type: String, required: true },
   brand: { type: mongoose.Schema.Types.ObjectId, ref: 'Brand' },
   unitOfMeasurement: { type: mongoose.Schema.Types.ObjectId, ref: 'UnitOfMeasurement', required: true },

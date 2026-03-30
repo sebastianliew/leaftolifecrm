@@ -35,6 +35,7 @@ import {
 } from "@/hooks/queries/use-inventory-queries"
 import { APIError, type ReferenceConflictDetails } from "@/lib/errors/api-error"
 import { useCategoriesQuery } from "@/hooks/queries/use-categories-query"
+import { useContainerTypesQuery } from "@/hooks/queries/use-container-types-query"
 import { useUnitsQuery } from "@/hooks/queries/use-units-query"
 import { useBrands } from "@/hooks/queries/use-common-queries"
 import { useToast } from "@/components/ui/use-toast"
@@ -154,6 +155,7 @@ export default function InventoryPage() {
   const { data: stats } = useInventoryStats()
   const { data: brands = [], isLoading: brandsLoading } = useBrands()
   const { data: categories = [], isLoading: categoriesLoading } = useCategoriesQuery()
+  const { data: containerTypes = [], isLoading: containerTypesLoading } = useContainerTypesQuery()
   const { data: units = [], isLoading: unitsLoading } = useUnitsQuery()
 
   const products = inventoryData?.products || []
@@ -265,7 +267,8 @@ export default function InventoryPage() {
     try {
       const created = await createMutation.mutateAsync({
         name: data.name,
-        category: data.category.id,
+        category: data.category?.id,
+        containerType: data.containerType.id,
         brand: data.brand?.id,
         unitOfMeasurement: data.unitOfMeasurement.id,
         currentStock: data.currentStock || 0,
@@ -700,6 +703,9 @@ export default function InventoryPage() {
         open={showAddModal}
         onOpenChange={setShowAddModal}
         onSubmit={handleAddProduct}
+        containerTypes={Array.isArray(containerTypes) ? containerTypes.filter(ct => ct && (ct.id || ct._id)).map(ct => ({
+          ...ct, id: ct._id || ct.id, name: ct.name || 'Unknown'
+        })) : []}
         categories={Array.isArray(categories) ? categories.filter(cat => cat && cat.id).map(cat => ({
           ...cat, id: cat.id, name: cat.name || 'Unknown Category'
         })) : []}
@@ -709,7 +715,7 @@ export default function InventoryPage() {
           status: brand.active ? 'active' as const : 'inactive' as const,
           isActive: brand.active, isExclusive: false
         })) : []}
-        loading={createMutation.isPending || categoriesLoading || unitsLoading || brandsLoading}
+        loading={createMutation.isPending || containerTypesLoading || categoriesLoading || unitsLoading || brandsLoading}
       />
 
       {/* Edit Product Modal */}
@@ -719,6 +725,7 @@ export default function InventoryPage() {
         onSubmit={handleEditSubmit}
         product={productToEdit ? {
           ...productToEdit,
+          containerType: productToEdit.containerType || undefined,
           brand: productToEdit.brand ? {
             id: productToEdit.brand._id || '',
             name: productToEdit.brand.name,
@@ -741,6 +748,9 @@ export default function InventoryPage() {
           createdAt: productToEdit.createdAt || new Date(),
           updatedAt: productToEdit.updatedAt || new Date()
         } : null}
+        containerTypes={Array.isArray(containerTypes) ? containerTypes.filter(ct => ct && (ct.id || ct._id)).map(ct => ({
+          ...ct, id: ct._id || ct.id, name: ct.name || 'Unknown'
+        })) : []}
         categories={Array.isArray(categories) ? categories.filter(cat => cat && cat.id).map(cat => ({
           ...cat, id: cat.id, name: cat.name || 'Unknown Category'
         })) : []}
@@ -750,7 +760,7 @@ export default function InventoryPage() {
           status: brand.active ? 'active' as const : 'inactive' as const,
           isActive: brand.active, isExclusive: false
         })) : []}
-        loading={updateMutation.isPending || categoriesLoading || unitsLoading || brandsLoading}
+        loading={updateMutation.isPending || containerTypesLoading || categoriesLoading || unitsLoading || brandsLoading}
       />
 
       {/* Delete Product Dialog */}

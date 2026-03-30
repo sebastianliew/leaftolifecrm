@@ -16,9 +16,11 @@ import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { PoolManager } from "./pool-manager"
 import type { Product, ProductCategory, UnitOfMeasurement, Brand } from "@/types/inventory"
+import type { ContainerType } from "@/types/inventory/container-type.types"
 
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
+  containerType: z.string().min(1, "Container type is required"),
   unitOfMeasurement: z.string().min(1, "Unit is required"),
   containerCapacity: z.number().min(0, "Capacity must be positive").optional(),
   canSellLoose: z.boolean().optional(),
@@ -29,7 +31,7 @@ const productSchema = z.object({
   currentStock: z.number().min(0, "Stock must be positive"),
   bundleInfo: z.string().optional(),
   bundlePrice: z.number().min(0, "Bundle price must be positive").optional(),
-  category: z.string().min(1, "Category is required"),
+  category: z.string().optional(),
 }).refine(
   (data) => !data.canSellLoose || (data.containerCapacity !== undefined && data.containerCapacity > 1),
   {
@@ -44,7 +46,8 @@ type EditProductFormData = z.infer<typeof productSchema>
 export interface EditProductSubmitData {
   name: string
   unitOfMeasurement: string
-  category: string
+  containerType: string
+  category?: string
   brand?: string
   containerCapacity?: number
   canSellLoose?: boolean
@@ -64,6 +67,7 @@ interface EditProductModalProps {
   onOpenChange: (open: boolean) => void
   onSubmit: (data: EditProductSubmitData) => Promise<void>
   product: Product | null
+  containerTypes: ContainerType[]
   categories: ProductCategory[]
   units: UnitOfMeasurement[]
   brands: Brand[]
@@ -75,6 +79,7 @@ export function EditProductModal({
   onOpenChange,
   onSubmit,
   product,
+  containerTypes,
   categories,
   units,
   brands,
@@ -84,6 +89,20 @@ export function EditProductModal({
   const { hasPermission } = usePermissions()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [stockInputMode, setStockInputMode] = useState<'units' | 'containers'>('containers')
+
+  // Auto-clear UOM when container type changes if the current UOM type is no longer allowed
+  useEffect(() => {
+    const ctVal = watch('containerType')
+    const uomVal = watch('unitOfMeasurement')
+    if (!ctVal || !uomVal) return
+    const selectedCt = containerTypes.find(c => (c._id || c.id) === ctVal)
+    const allowedTypes = selectedCt?.allowedUomTypes ?? []
+    if (allowedTypes.length === 0) return
+    const currentUnit = units.find(u => (u._id || u.id) === uomVal)
+    if (currentUnit?.type && !allowedTypes.includes(currentUnit.type as never)) {
+      setValue('unitOfMeasurement', '')
+    }
+  }) // runs on every render — container type change triggers re-render which triggers this
 
   // Check permissions
   const canEditProducts = hasPermission('inventory', 'canEditProducts')
@@ -103,8 +122,10 @@ export function EditProductModal({
 
   useEffect(() => {
     if (product && open) {
+      const ct = product.containerType as { _id?: string; id?: string } | undefined
       const formData = {
         name: product.name,
+        containerType: ct?._id || ct?.id || "",
         unitOfMeasurement: product.unitOfMeasurement._id || product.unitOfMeasurement.id || "",
         containerCapacity: product.containerCapacity || 1,
         canSellLoose: product.canSellLoose || false,
@@ -115,9 +136,9 @@ export function EditProductModal({
         currentStock: product.currentStock || 0,
         bundleInfo: product.bundleInfo?.hasBundle ? "Yes" : "",
         bundlePrice: product.bundleInfo?.bundlePrice || 0,
-        category: product.category._id || product.category.id || ""
+        category: product.category?._id || product.category?.id || ""
       }
-      
+
       reset(formData)
     }
   }, [product, open, reset])
@@ -144,7 +165,8 @@ export function EditProductModal({
       const transformedData: EditProductSubmitData = {
         name: data.name,
         unitOfMeasurement: data.unitOfMeasurement,
-        category: data.category,
+        containerType: data.containerType,
+        category: data.category || undefined,
         brand: data.brand && data.brand !== '_none' ? data.brand : undefined,
         containerCapacity: data.containerCapacity,
         canSellLoose: data.canSellLoose ?? false,
@@ -203,31 +225,31 @@ export function EditProductModal({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="category">Category *</Label>
-              <Select 
-                value={watch('category') || ''} 
-                onValueChange={(value) => setValue('category', value)}
+              <Label htmlFor="containerType">Container *</Label>
+              <Select
+                value={watch('containerType') || ''}
+                onValueChange={(value) => setValue('containerType', value)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder="Select container" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories && categories.length > 0 ? categories.map((category) => {
-                    if (!category) return null
-                    const categoryId = category._id || category.id || ''
-                    if (!categoryId) return null
+                  {containerTypes && containerTypes.length > 0 ? containerTypes.map((ct) => {
+                    if (!ct) return null
+                    const ctId = ct._id || ct.id || ''
+                    if (!ctId) return null
                     return (
-                      <SelectItem key={categoryId} value={categoryId}>
-                        {category.name || 'Unknown Category'}
+                      <SelectItem key={ctId} value={ctId}>
+                        {ct.name || 'Unknown'}
                       </SelectItem>
                     )
                   }) : (
-                    <SelectItem value="" disabled>No categories available</SelectItem>
+                    <SelectItem value="no-container-types" disabled>No container types available</SelectItem>
                   )}
                 </SelectContent>
               </Select>
-              {errors.category && (
-                <p className="text-sm text-red-500">{errors.category.message}</p>
+              {errors.containerType && (
+                <p className="text-sm text-red-500">{errors.containerType.message}</p>
               )}
             </div>
           </div>
@@ -236,28 +258,47 @@ export function EditProductModal({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="unitOfMeasurement">Unit *</Label>
-              <Select 
-                value={watch('unitOfMeasurement') || ''} 
-                onValueChange={(value) => setValue('unitOfMeasurement', value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select unit" />
-                </SelectTrigger>
-                <SelectContent>
-                  {units && units.length > 0 ? units.map((unit) => {
-                    if (!unit) return null
-                    const unitId = unit._id || unit.id || ''
-                    if (!unitId) return null
-                    return (
-                      <SelectItem key={unitId} value={unitId}>
-                        {unit.name || 'Unknown'} ({unit.abbreviation || 'N/A'})
-                      </SelectItem>
-                    )
-                  }) : (
-                    <SelectItem value="" disabled>No units available</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+              {(() => {
+                const selectedCtId = watch('containerType')
+                const selectedCt = containerTypes.find(c => (c._id || c.id) === selectedCtId)
+                const allowedTypes = selectedCt?.allowedUomTypes ?? []
+                const filteredUnits = allowedTypes.length > 0
+                  ? units.filter(u => u.type && allowedTypes.includes(u.type as never))
+                  : units
+                return (
+                  <>
+                    <Select
+                      value={watch('unitOfMeasurement') || ''}
+                      onValueChange={(value) => setValue('unitOfMeasurement', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select unit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredUnits.length > 0 ? filteredUnits.map((unit) => {
+                          if (!unit) return null
+                          const unitId = unit._id || unit.id || ''
+                          if (!unitId) return null
+                          return (
+                            <SelectItem key={unitId} value={unitId}>
+                              {unit.name || 'Unknown'} ({unit.abbreviation || 'N/A'})
+                            </SelectItem>
+                          )
+                        }) : (
+                          <SelectItem value="no-units" disabled>
+                            {selectedCtId ? 'No matching units' : 'Select a container first'}
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                    {allowedTypes.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Showing {allowedTypes.join(', ')} units for {selectedCt?.name}
+                      </p>
+                    )}
+                  </>
+                )
+              })()}
               {errors.unitOfMeasurement && (
                 <p className="text-sm text-red-500">{errors.unitOfMeasurement.message}</p>
               )}
@@ -298,6 +339,30 @@ export function EditProductModal({
             />
           </div>
 
+          {/* Stock input mode toggle — above loose manager so it's clear it applies to stock quantities */}
+          {(() => {
+            const cap = watch('containerCapacity') || 1
+            const hasContainers = cap > 1
+            const selUnit = units.find(u => (u._id || u.id) === watch('unitOfMeasurement'))
+            const unitLabel = selUnit?.abbreviation || 'units'
+            if (!hasContainers) return null
+            return (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Enter stock as:</span>
+                <button type="button"
+                  className={`px-2 py-1 rounded ${stockInputMode === 'containers' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}
+                  onClick={() => setStockInputMode('containers')}>
+                  Containers
+                </button>
+                <button type="button"
+                  className={`px-2 py-1 rounded ${stockInputMode === 'units' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}
+                  onClick={() => setStockInputMode('units')}>
+                  {unitLabel}
+                </button>
+              </div>
+            )
+          })()}
+
           {/* Pool Manager — shown immediately when loose is enabled */}
           {watch('canSellLoose') && product && (
             <PoolManager
@@ -335,37 +400,69 @@ export function EditProductModal({
           </div>
 
           {/* Pricing */}
-          <div className="grid grid-cols-2 gap-4">
-            {canEditCostPrices && (
+          {(() => {
+            const cap = watch('containerCapacity') || 1
+            const hasLoose = watch('canSellLoose') && cap > 1
+            const selUnit = units.find(u => (u._id || u.id) === watch('unitOfMeasurement'))
+            const unitLabel = selUnit?.abbreviation || 'units'
+            const costVal = watch('costPrice') || 0
+            const sellVal = watch('sellingPrice') || 0
+            return (
               <div className="space-y-2">
-                <Label htmlFor="costPrice">Cost Price</Label>
-                <Input
-                  id="costPrice"
-                  type="number"
-                  step="0.01"
-                  {...register("costPrice", { valueAsNumber: true })}
-                  placeholder="0.00"
-                />
-                {errors.costPrice && (
-                  <p className="text-sm text-red-500">{errors.costPrice.message}</p>
-                )}
-              </div>
-            )}
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Pricing</p>
+                  {hasLoose && (
+                    <p className="text-xs text-muted-foreground">Enter price for one {cap}{unitLabel} container</p>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {canEditCostPrices && (
+                    <div className="space-y-2">
+                      <Label htmlFor="costPrice">
+                        Cost Price{hasLoose ? ' (per container)' : ''}
+                      </Label>
+                      <Input
+                        id="costPrice"
+                        type="number"
+                        step="0.01"
+                        {...register("costPrice", { valueAsNumber: true })}
+                        placeholder="0.00"
+                      />
+                      {hasLoose && costVal > 0 && (
+                        <p className="text-xs text-blue-600">
+                          = ${(costVal / cap).toFixed(4)} per {unitLabel}
+                        </p>
+                      )}
+                      {errors.costPrice && (
+                        <p className="text-sm text-red-500">{errors.costPrice.message}</p>
+                      )}
+                    </div>
+                  )}
 
-            <div className="space-y-2">
-              <Label htmlFor="sellingPrice">Selling Price</Label>
-              <Input
-                id="sellingPrice"
-                type="number"
-                step="0.01"
-                {...register("sellingPrice", { valueAsNumber: true })}
-                placeholder="0.00"
-              />
-              {errors.sellingPrice && (
-                <p className="text-sm text-red-500">{errors.sellingPrice.message}</p>
-              )}
-            </div>
-          </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="sellingPrice">
+                      Selling Price{hasLoose ? ' (per container)' : ''}
+                    </Label>
+                    <Input
+                      id="sellingPrice"
+                      type="number"
+                      step="0.01"
+                      {...register("sellingPrice", { valueAsNumber: true })}
+                      placeholder="0.00"
+                    />
+                    {hasLoose && sellVal > 0 && (
+                      <p className="text-xs text-blue-600">
+                        = ${(sellVal / cap).toFixed(4)} per {unitLabel}
+                      </p>
+                    )}
+                    {errors.sellingPrice && (
+                      <p className="text-sm text-red-500">{errors.sellingPrice.message}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Stock Information */}
           {(() => {
@@ -378,12 +475,21 @@ export function EditProductModal({
             const stockVal = watch('currentStock') || 0
             const reorderVal = watch('reorderPoint') || 0
 
+            // Sanity check: warn if total base units seems unrealistically large (> 10,000)
+            const stockSanityWarning = hasContainers && stockVal > 50000
+
             return (
               <div className="space-y-3">
-                {/* Mode toggle — only shown for container products */}
+                {/* Section divider */}
+                <div className="flex items-center gap-2 pt-1">
+                  <p className="text-sm font-medium whitespace-nowrap">Stock Levels</p>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+
+                {/* Mode toggle — repeated here so stock fields have clear context */}
                 {hasContainers && (
                   <div className="flex items-center gap-2 text-xs">
-                    <span className="text-muted-foreground">Enter as:</span>
+                    <span className="text-muted-foreground">Enter stock as:</span>
                     <button type="button"
                       className={`px-2 py-1 rounded ${stockInputMode === 'containers' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}
                       onClick={() => setStockInputMode('containers')}>
@@ -394,6 +500,13 @@ export function EditProductModal({
                       onClick={() => setStockInputMode('units')}>
                       {unitLabel}
                     </button>
+                  </div>
+                )}
+
+                {/* Sanity warning for unrealistically large stock */}
+                {stockSanityWarning && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    ⚠️ That&apos;s {stockVal.toLocaleString()} {unitLabel} total — is this correct? Double-check you&apos;re not entering {unitLabel} in the containers field.
                   </div>
                 )}
 

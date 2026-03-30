@@ -28,6 +28,7 @@ export async function GET(
       level: category.level || 1,
       isActive: category.isActive !== false,
       parent: category.parent?.toString(),
+      allowedUomTypes: (category as unknown as { allowedUomTypes?: string[] }).allowedUomTypes ?? [],
       createdAt: category.createdAt || new Date(),
       updatedAt: category.updatedAt || new Date()
     }
@@ -53,7 +54,7 @@ export async function PUT(
     const { id } = await params
 
     const body = await _request.json()
-    const { name, description } = body
+    const { name, description, allowedUomTypes, isActive } = body
 
     // Check if category exists
     const existingCategory = await Category.findById(id)
@@ -85,6 +86,8 @@ export async function PUT(
       { 
         ...(name && { name }),
         ...(description !== undefined && { description }),
+        ...(isActive !== undefined && { isActive }),
+        ...(allowedUomTypes !== undefined && { allowedUomTypes }),
         updatedAt: new Date()
       },
       { new: true, lean: true }
@@ -105,6 +108,7 @@ export async function PUT(
       level: updatedCategory.level || 1,
       isActive: updatedCategory.isActive !== false,
       parent: updatedCategory.parent?.toString(),
+      allowedUomTypes: (updatedCategory as unknown as { allowedUomTypes?: string[] }).allowedUomTypes ?? [],
       createdAt: updatedCategory.createdAt,
       updatedAt: updatedCategory.updatedAt
     }

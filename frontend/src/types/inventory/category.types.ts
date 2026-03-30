@@ -1,8 +1,11 @@
+export type UomType = 'weight' | 'volume' | 'count' | 'length' | 'area' | 'temperature';
+
 // Shared types for consistent frontend/backend communication
 export interface CategoryBase {
   name: string;
   description?: string;
   level: number;
+  allowedUomTypes?: UomType[];
 }
 
 // Frontend representation of a category
@@ -22,6 +25,7 @@ export interface CreateCategoryRequest {
   level?: number;
   isActive?: boolean;
   parent?: string;
+  allowedUomTypes?: UomType[];
 }
 
 export interface UpdateCategoryRequest {
@@ -31,6 +35,7 @@ export interface UpdateCategoryRequest {
   level?: number;
   isActive?: boolean;
   parent?: string;
+  allowedUomTypes?: UomType[];
 }
 
 export type CategoryResponse = ProductCategory;

@@ -1,7 +1,2 @@
-// Stub — container tracking removed. Type kept for backward compatibility.
-export interface ContainerType {
-  id: string;
-  _id?: string;
-  name: string;
-  description?: string;
-}
+// Re-export from the canonical container type definition
+export type { ContainerType } from './inventory/container-type.types';

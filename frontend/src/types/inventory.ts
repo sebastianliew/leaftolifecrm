@@ -1,3 +1,5 @@
+export type UomType = 'weight' | 'volume' | 'count' | 'length' | 'area' | 'temperature';
+
 export interface ProductCategory {
   id: string;
   _id?: string;
@@ -5,6 +7,7 @@ export interface ProductCategory {
   description?: string;
   level: number;
   isActive: boolean;
+  allowedUomTypes?: UomType[];
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -86,11 +89,11 @@ export interface ContainerType {
   id: string;
   _id?: string;
   name: string;
-  description: string;
+  description?: string;
   isActive: boolean;
-  allowedUoms: string[];
-  createdAt: Date;
-  updatedAt: Date;
+  allowedUomTypes: UomType[];
+  createdAt: Date | string;
+  updatedAt: Date | string;
 }
 
 export interface DosageForm {

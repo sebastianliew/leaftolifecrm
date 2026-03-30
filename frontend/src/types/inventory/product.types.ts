@@ -1,5 +1,7 @@
 export type { ProductCategory } from './category.types';
+export type { ContainerType as ContainerTypeRef } from './container-type.types';
 import type { ProductCategory as PC } from './category.types';
+import type { ContainerType as CT } from './container-type.types';
 
 export interface UnitOfMeasurement {
   id: string;
@@ -27,17 +29,6 @@ export interface Brand {
   isExclusive: boolean;
 }
 
-export interface ContainerType {
-  id: string;
-  _id?: string;
-  name: string;
-  description: string;
-  isActive: boolean;
-  allowedUoms: string[];
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 export interface BundleInfo {
   hasBundle: boolean;
   bundlePrice?: number;
@@ -53,9 +44,9 @@ export interface Product {
   sku: string;
   description?: string;
   category: PC;
+  containerType?: CT;
   brand?: Brand;
   unitOfMeasurement: UnitOfMeasurement;
-  containerType?: ContainerType;
   canSellLoose?: boolean;
   looseStock?: number;
   quantity: number;
@@ -100,7 +91,7 @@ export interface ProductFormData {
   category: PC;
   brand?: Brand;
   unitOfMeasurement: UnitOfMeasurement;
-  containerType?: ContainerType;
+  containerType?: CT;
   quantity: number;
   reorderPoint: number;
   currentStock: number;

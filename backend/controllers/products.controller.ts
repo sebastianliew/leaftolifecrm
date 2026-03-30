@@ -19,6 +19,7 @@ interface AuthenticatedRequest extends Request {
 
 const PRODUCT_POPULATE = [
   { path: 'category', select: 'name' },
+  { path: 'containerType', select: 'name allowedUomTypes' },
   { path: 'brand', select: 'name' },
   { path: 'unitOfMeasurement', select: 'name abbreviation' }
 ];
@@ -144,7 +145,7 @@ export const getProductById = asyncHandler(async (req: Request<{ id: string }>, 
 export const createProduct = asyncHandler(async (req: Request, res: Response) => {
   const {
     name, sku, description, category, brand, unitOfMeasurement,
-    quantity, reorderPoint, currentStock, costPrice, sellingPrice,
+    containerType, quantity, reorderPoint, currentStock, costPrice, sellingPrice,
     status = 'active', expiryDate, canSellLoose, containerCapacity,
     bundleInfo, bundlePrice, hasBundle, discountFlags, supplierId
   } = req.body;
@@ -152,6 +153,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
   // Validate references
   await validateRefs([
     { model: 'Category', id: category },
+    { model: 'ContainerType', id: containerType, optional: true },
     { model: 'UnitOfMeasurement', id: unitOfMeasurement },
     { model: 'Brand', id: brand, optional: true }
   ]);
@@ -175,7 +177,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
   }
 
   const product = new Product({
-    name, sku, description, category, brand, unitOfMeasurement,
+    name, sku, description, category, containerType, brand, unitOfMeasurement,
     quantity: quantity || 0,
     reorderPoint: reorderPoint || 0,
     currentStock: currentStock || 0,
@@ -203,7 +205,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
 // Anything not listed here is silently dropped — prevents mass-assignment of
 // sensitive fields like isDeleted, deletedAt, reservedStock, totalQuantity, etc.
 const ALLOWED_UPDATE_FIELDS = [
-  'name', 'sku', 'description', 'category', 'brand', 'unitOfMeasurement',
+  'name', 'sku', 'description', 'category', 'containerType', 'brand', 'unitOfMeasurement',
   'reorderPoint', 'currentStock', 'costPrice', 'sellingPrice', 'status',
   'expiryDate', 'canSellLoose', 'containerCapacity', 'bundleInfo',
   'bundlePrice', 'hasBundle', 'discountFlags', 'supplierId',
@@ -217,6 +219,7 @@ export const updateProduct = asyncHandler(async (req: Request<{ id: string }>, r
   // Validate references if being updated
   await validateRefs([
     { model: 'Category', id: updates.category, optional: true },
+    { model: 'ContainerType', id: updates.containerType, optional: true },
     { model: 'UnitOfMeasurement', id: updates.unitOfMeasurement, optional: true },
     { model: 'Brand', id: updates.brand, optional: true }
   ]);
@@ -385,6 +388,7 @@ export const exportProducts = asyncHandler(async (req: Request, res: Response) =
 
   const products = await Product.find({ isDeleted: { $ne: true } })
     .populate('category', 'name')
+    .populate('containerType', 'name')
     .populate('brand', 'name')
     .populate('unitOfMeasurement', 'name')
     .sort({ name: 1 })
@@ -392,12 +396,14 @@ export const exportProducts = asyncHandler(async (req: Request, res: Response) =
 
   const rows = products.map((p: Record<string, unknown>) => {
     const cat = p.category as { name?: string } | null;
+    const ct = p.containerType as { name?: string } | null;
     const brand = p.brand as { name?: string } | null;
     const unit = p.unitOfMeasurement as { name?: string } | null;
     const row: Record<string, unknown> = {
       'Product Name': p.name || '',
       'SKU': p.sku || '',
       'Category': cat?.name || '',
+      'Container Type': ct?.name || '',
       'Brand': brand?.name || '',
       'Unit': unit?.name || '',
       'Selling Price': p.sellingPrice ?? '',
