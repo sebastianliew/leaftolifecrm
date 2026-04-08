@@ -540,7 +540,7 @@ export class InvoiceGenerator {
 
     // Load branded PayNow QR image
     try {
-      const qrImagePath = path.resolve(__dirname, '../assets/paynow-qr.jpeg');
+      const qrImagePath = path.resolve(__dirname, '../assets/paynow-qr-uen202527780c.jpeg');
       const qrCodeBuffer = fs.readFileSync(qrImagePath);
 
       // Add QR code to PDF
@@ -571,7 +571,7 @@ export class InvoiceGenerator {
     this.doc
       .fontSize(10)
       .font('Helvetica-Bold')
-      .text('202527780C', detailsX, detailsY + 15);
+      .text('UEN 202527780C', detailsX, detailsY + 15);
 
     this.doc
       .fontSize(9)
@@ -625,7 +625,7 @@ export class InvoiceGenerator {
       .fontSize(9)
       .font('Helvetica-Bold')
       .fillColor('#000000')
-      .text('Leaf to Life Pte Ltd, eff Nov 1', rightColX, contentY + 12);
+      .text('Leaf to Life Pte Ltd', rightColX, contentY + 12);
 
     contentY += 30;
 

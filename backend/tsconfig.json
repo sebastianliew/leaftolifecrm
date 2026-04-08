@@ -41,6 +41,7 @@
     "node_modules",
     "dist",
     "__tests__",
+    "migrations",
     "**/*.spec.ts",
     "**/*.test.ts"
   ],
