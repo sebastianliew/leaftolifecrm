@@ -1,10 +1,6 @@
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 interface InvoiceItem {
   name: string;
@@ -540,7 +536,7 @@ export class InvoiceGenerator {
 
     // Load branded PayNow QR image
     try {
-      const qrImagePath = path.resolve(__dirname, '../assets/paynow-qr-uen202527780c.jpeg');
+      const qrImagePath = path.resolve(process.cwd(), 'assets/paynow-qr-uen202527780c.jpeg');
       const qrCodeBuffer = fs.readFileSync(qrImagePath);
 
       // Add QR code to PDF
