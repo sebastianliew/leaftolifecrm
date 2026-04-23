@@ -48,7 +48,8 @@ class ApiClient {
     // For user-related APIs, we need to call the main Next.js app
     // For other APIs, we call the backend Express server
     this.baseURL = config.baseURL || process.env.NEXT_PUBLIC_API_URL || '/api';
-    this.timeout = config.timeout || 30000;
+    // 60s handles Render free-tier cold starts (30-50s to wake).
+    this.timeout = config.timeout || 60000;
     this.defaultHeaders = {
       'Content-Type': 'application/json',
       ...config.headers
@@ -142,10 +143,11 @@ class ApiClient {
    */
   private async request<T = unknown>(
     url: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    retriesLeft = 1
   ): Promise<ApiResponse<T>> {
     const token = this.getToken();
-    
+
     const headers: Record<string, string> = {
       ...this.defaultHeaders,
     };
@@ -160,6 +162,12 @@ class ApiClient {
         // It's already a Record<string, string>
         Object.assign(headers, options.headers);
       }
+    }
+
+    // Multipart uploads: let the browser set Content-Type with the boundary.
+    if (headers['X-Skip-Content-Type']) {
+      delete headers['Content-Type'];
+      delete headers['X-Skip-Content-Type'];
     }
 
     if (token) {
@@ -249,6 +257,11 @@ class ApiClient {
       clearTimeout(timeoutId);
       
       if (error instanceof Error && error.name === 'AbortError') {
+        // Retry once on timeout for idempotent GETs (covers Render cold-start).
+        const method = (options.method || 'GET').toUpperCase();
+        if (retriesLeft > 0 && method === 'GET') {
+          return this.request<T>(url, options, retriesLeft - 1);
+        }
         return {
           status: 408,
           ok: false,
@@ -293,6 +306,20 @@ class ApiClient {
 
   async delete<T = unknown>(url: string): Promise<ApiResponse<T>> {
     return this.request<T>(url, { method: 'DELETE' });
+  }
+
+  /**
+   * Upload multipart/form-data. Caller builds the FormData; we forward it as
+   * the request body and drop the default Content-Type so the browser can set
+   * the correct multipart boundary header automatically.
+   */
+  async upload<T = unknown>(url: string, formData: FormData): Promise<ApiResponse<T>> {
+    return this.request<T>(url, {
+      method: 'POST',
+      body: formData,
+      // Signal to request() that it must not apply the default JSON Content-Type
+      headers: { 'X-Skip-Content-Type': '1' },
+    });
   }
 
   // Auth specific methods
@@ -343,6 +370,7 @@ export const api = {
   put: apiClient.put.bind(apiClient),
   patch: apiClient.patch.bind(apiClient),
   delete: apiClient.delete.bind(apiClient),
+  upload: apiClient.upload.bind(apiClient),
   login: apiClient.login.bind(apiClient),
   logout: apiClient.logout.bind(apiClient),
   isAuthenticated: apiClient.isAuthenticated.bind(apiClient)
