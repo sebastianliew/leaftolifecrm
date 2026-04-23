@@ -29,6 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 
 import type { CustomBlendHistoryItem, BlendHistoryIngredient } from './BlendHistorySelector';
 import { usePermissions } from '@/hooks/usePermissions';
+import { perUnitCost, perUnitSellingPrice } from '@/lib/pricing';
 
 
 interface CustomBlendCreatorProps {
@@ -104,15 +105,17 @@ export function CustomBlendCreator({
           // Find the product from the products array to get current stock and price
           const currentProduct = products.find(p => p._id === ingredient.productId);
 
+          const unitCost = currentProduct ? (perUnitCost(currentProduct) ?? ingredient.costPerUnit ?? 0) : (ingredient.costPerUnit ?? 0);
+          const unitSell = currentProduct ? (perUnitSellingPrice(currentProduct) ?? 0) : 0;
           return {
             productId: ingredient.productId,
             name: ingredient.name,
             quantity: ingredient.quantity,
             unitOfMeasurementId: ingredient.unitOfMeasurementId,
             unitName: ingredient.unitName,
-            costPerUnit: currentProduct?.sellingPrice || ingredient.costPerUnit || 0,
+            costPerUnit: unitCost,
             availableStock: currentProduct?.currentStock || 0,
-            sellingPricePerUnit: currentProduct?.sellingPrice || 0,
+            sellingPricePerUnit: unitSell,
             notes: ''
           };
         }));
@@ -156,20 +159,19 @@ export function CustomBlendCreator({
     hasInitializedRef.current = true;
   }, [open, editingBlend, products]);
 
-  // Pricing calculation function (base calculation uses selling prices of ingredients)
+  // Cost-based pricing: sum ingredient cost prices, apply margin markup.
   const calculateCost = async (ingredients: BlendIngredient[], margin: number) => {
-    // Sum up selling prices of all ingredients (costPerUnit field contains selling price)
-    const totalSellingPrice = ingredients.reduce((sum, ing) => {
+    const totalCost = ingredients.reduce((sum, ing) => {
       return sum + (ing.quantity * (ing.costPerUnit || 0));
     }, 0);
 
-    const markupAmount = totalSellingPrice * (margin / 100);
-    const suggestedPrice = totalSellingPrice + markupAmount;
-    const minimumPrice = totalSellingPrice * 1.1; // 10% minimum margin
+    const markupAmount = totalCost * (margin / 100);
+    const suggestedPrice = totalCost + markupAmount;
+    const minimumPrice = totalCost * 1.1; // 10% minimum markup
 
     return {
       cost: {
-        totalCost: totalSellingPrice,
+        totalCost,
         breakdown: ingredients.map(ing => ({
           ingredientId: ing.productId,
           ingredientName: ing.name,
@@ -183,7 +185,7 @@ export function CustomBlendCreator({
         minimumPrice,
         profitMargin: margin,
         breakdown: {
-          cost: totalSellingPrice,
+          cost: totalCost,
           markup: markupAmount,
           suggestedMarkupPercent: margin
         }
@@ -337,29 +339,29 @@ export function CustomBlendCreator({
     const productUOM = product.unitOfMeasurement;
     let unitId = '';
     let unitName = '';
-    let costPerUnit = product.sellingPrice || 0;
+    let costPerUnit = perUnitCost(product) ?? 0;
     let defaultQuantity = 1;
     let availableStock = product.currentStock || 0;
 
-    // For liquid products, the selling price should already be per-ml
+    // For liquid products, the cost price should already be per-ml
     // Just need to set the correct unit of measurement to ml
-    
+
     // Check if this is a liquid product (likely measured in ml)
-    const isLiquidProduct = product.name.includes('ML') || product.name.includes('ml') || 
-                           (productUOM && typeof productUOM === 'object' && productUOM.name && 
+    const isLiquidProduct = product.name.includes('ML') || product.name.includes('ml') ||
+                           (productUOM && typeof productUOM === 'object' && productUOM.name &&
                             productUOM.name.toLowerCase().includes('ml'));
-    
+
     if (isLiquidProduct) {
       // Find ml unit of measurement
-      const mlUOM = unitOfMeasurements.find(u => 
+      const mlUOM = unitOfMeasurements.find(u =>
         u.name.toLowerCase().includes('milliliter') || u.name.toLowerCase().includes('ml')
       );
-      
+
       if (mlUOM) {
         unitId = mlUOM._id || '';
         unitName = mlUOM.name || 'ml';
-        // For liquid products, cost is already per ml
-        costPerUnit = product.sellingPrice || 0;
+        // Per-ml cost derived via shared pricing utility.
+        costPerUnit = perUnitCost(product) ?? 0;
         // Set a reasonable default quantity
         defaultQuantity = 1;
         // Available stock is already in the correct units
@@ -387,9 +389,13 @@ export function CustomBlendCreator({
       }
     }
 
+    // Final fallback: product has a plain-string `unitName` field independent of the UOM ref.
+    if (!unitName && product.unitName) {
+      unitName = product.unitName;
+    }
 
-    // Calculate selling price per unit - for now just use the product selling price
-    const sellingPricePerUnit = product.sellingPrice || 0;
+    // Per-base-unit selling price via shared pricing utility.
+    const sellingPricePerUnit = perUnitSellingPrice(product) ?? 0;
 
     const newIngredient: BlendIngredient & { sellingPricePerUnit?: number } = {
       productId: product._id,
@@ -452,9 +458,9 @@ export function CustomBlendCreator({
       return;
     }
 
-    // Use real-time calculated total price (sum of selling prices)
-    const calculatedTotalPrice = ingredients.reduce((total, ingredient) => 
-      total + (ingredient.quantity * (ingredient.costPerUnit || 0)), 0 // costPerUnit contains selling price
+    // Real-time blend cost: sum of (quantity × ingredient cost price).
+    const calculatedTotalPrice = ingredients.reduce((total, ingredient) =>
+      total + (ingredient.quantity * (ingredient.costPerUnit || 0)), 0
     );
     
     // Use pricing based on selected mode
@@ -477,7 +483,7 @@ export function CustomBlendCreator({
         unitName: ing.unitName,
         costPerUnit: Number((ing.costPerUnit ?? 0).toFixed(4))
       })),
-      totalIngredientCost: calculatedTotalPrice, // Note: field name is 'Cost' but contains sum of selling prices
+      totalIngredientCost: calculatedTotalPrice,
       preparationNotes,
       mixedBy: user?.name || user?.email || 'unknown',
       mixedAt: now,
@@ -496,13 +502,14 @@ export function CustomBlendCreator({
       isService: false,
       saleType: 'quantity',
       unitOfMeasurementId: (() => {
-        const firstIngredientUnitId = ingredients[0]?.unitOfMeasurementId;
-        if (typeof firstIngredientUnitId === 'object' && firstIngredientUnitId !== null) {
-          return firstIngredientUnitId._id || firstIngredientUnitId.id || '';
+        const match = ingredients.find(i => i.unitName);
+        const id = match?.unitOfMeasurementId;
+        if (typeof id === 'object' && id !== null) {
+          return id._id || id.id || '';
         }
-        return firstIngredientUnitId || '';
+        return id || '';
       })(),
-      baseUnit: ingredients[0]?.unitName || 'unit',
+      baseUnit: ingredients.find(i => i.unitName)?.unitName || 'blend',
       convertedQuantity: editingBlend?.quantity || 1,
       itemType: 'custom_blend',
       customBlendData: {
@@ -538,9 +545,14 @@ export function CustomBlendCreator({
     }
   };
 
-  // Calculate total ingredient price (sum of selling prices)
-  const totalIngredientPrice = ingredients.reduce((total, ingredient) => 
-    total + (ingredient.quantity * (ingredient.costPerUnit || 0)), 0 // costPerUnit contains selling price
+  // Sum of selling prices shown in the table (quantity × per-unit selling price).
+  const totalIngredientPrice = ingredients.reduce((total, ingredient) =>
+    total + (ingredient.quantity * (ingredient.sellingPricePerUnit || 0)), 0
+  );
+
+  // Cost basis used by margin-based pricing (quantity × per-unit cost).
+  const totalIngredientCost = ingredients.reduce((total, ingredient) =>
+    total + (ingredient.quantity * (ingredient.costPerUnit || 0)), 0
   );
 
   return (
@@ -927,11 +939,11 @@ export function CustomBlendCreator({
                       <div className="space-y-1 text-sm">
                         <div className="flex justify-between">
                           <span>Base Cost (Ingredients):</span>
-                          <span>${totalIngredientPrice.toFixed(2)}</span>
+                          <span>${totalIngredientCost.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Margin ({marginPercent}%):</span>
-                          <span>${(totalIngredientPrice * marginPercent / 100).toFixed(2)}</span>
+                          <span>${(totalIngredientCost * marginPercent / 100).toFixed(2)}</span>
                         </div>
                         <Separator className="my-2" />
                         <div className="flex justify-between">
@@ -967,13 +979,13 @@ export function CustomBlendCreator({
                       <div className="space-y-1 text-sm mb-4">
                         <div className="flex justify-between">
                           <span>Base Cost (Ingredients):</span>
-                          <span>${totalIngredientPrice.toFixed(2)}</span>
+                          <span>${totalIngredientCost.toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Profit:</span>
-                          <span className={parseFloat(manualPrice) > totalIngredientPrice ? 'text-green-600' : 'text-red-600'}>
-                            ${((parseFloat(manualPrice) || 0) - totalIngredientPrice).toFixed(2)}
-                            {manualPrice && ` (${(((parseFloat(manualPrice) - totalIngredientPrice) / totalIngredientPrice) * 100).toFixed(0)}%)`}
+                          <span className={parseFloat(manualPrice) > totalIngredientCost ? 'text-green-600' : 'text-red-600'}>
+                            ${((parseFloat(manualPrice) || 0) - totalIngredientCost).toFixed(2)}
+                            {manualPrice && totalIngredientCost > 0 && ` (${(((parseFloat(manualPrice) - totalIngredientCost) / totalIngredientCost) * 100).toFixed(0)}%)`}
                           </span>
                         </div>
                       </div>
@@ -995,8 +1007,8 @@ export function CustomBlendCreator({
                                 
                                 // Calculate and update margin percentage based on manual price
                                 const newPrice = parseFloat(e.target.value) || 0;
-                                if (newPrice > 0 && totalIngredientPrice > 0) {
-                                  const newMargin = Math.round(((newPrice - totalIngredientPrice) / totalIngredientPrice) * 100);
+                                if (newPrice > 0 && totalIngredientCost > 0) {
+                                  const newMargin = Math.round(((newPrice - totalIngredientCost) / totalIngredientCost) * 100);
                                   setMarginPercent(Math.max(0, newMargin));
                                 }
                                 
