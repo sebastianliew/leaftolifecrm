@@ -54,6 +54,7 @@ export interface ITransaction extends Document {
         unitOfMeasurementId: string;
         unitName: string;
         costPerUnit: number;
+        sellingPricePerUnit?: number;
       }>;
       totalIngredientCost: number;
       preparationNotes?: string;
@@ -129,7 +130,8 @@ const CustomBlendIngredientSchema = new Schema({
   quantity: { type: Number, required: true },
   unitOfMeasurementId: { type: String, required: true },
   unitName: { type: String, required: true },
-  costPerUnit: { type: Number, default: 0 }
+  costPerUnit: { type: Number, default: 0 },
+  sellingPricePerUnit: { type: Number, default: 0 }
 }, { _id: false });
 
 // Schema for custom blend data

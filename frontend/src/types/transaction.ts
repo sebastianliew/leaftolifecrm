@@ -172,6 +172,7 @@ export interface TransactionItem {
       unitOfMeasurementId: string
       unitName: string
       costPerUnit: number
+      sellingPricePerUnit?: number
       availableStock?: number
       notes?: string
       selectedContainers?: Array<{

@@ -105,8 +105,11 @@ export function CustomBlendCreator({
           // Find the product from the products array to get current stock and price
           const currentProduct = products.find(p => p._id === ingredient.productId);
 
+          const storedSell = (ingredient as { sellingPricePerUnit?: number }).sellingPricePerUnit;
           const unitCost = currentProduct ? (perUnitCost(currentProduct) ?? ingredient.costPerUnit ?? 0) : (ingredient.costPerUnit ?? 0);
-          const unitSell = currentProduct ? (perUnitSellingPrice(currentProduct) ?? 0) : 0;
+          const unitSell = currentProduct
+            ? (perUnitSellingPrice(currentProduct) ?? storedSell ?? 0)
+            : (storedSell ?? 0);
           return {
             productId: ingredient.productId,
             name: ingredient.name,
@@ -481,7 +484,8 @@ export function CustomBlendCreator({
           ? ing.unitOfMeasurementId._id || ing.unitOfMeasurementId.id || ''
           : ing.unitOfMeasurementId || '',
         unitName: ing.unitName,
-        costPerUnit: Number((ing.costPerUnit ?? 0).toFixed(4))
+        costPerUnit: Number((ing.costPerUnit ?? 0).toFixed(4)),
+        sellingPricePerUnit: Number((ing.sellingPricePerUnit ?? 0).toFixed(4))
       })),
       totalIngredientCost: calculatedTotalPrice,
       preparationNotes,
@@ -525,7 +529,8 @@ export function CustomBlendCreator({
           quantity: ingredient.quantity,
           unitOfMeasurementId: ingredient.unitOfMeasurementId as string,
           unitName: ingredient.unitName,
-          costPerUnit: ingredient.costPerUnit || 0
+          costPerUnit: ingredient.costPerUnit || 0,
+          sellingPricePerUnit: (ingredient as { sellingPricePerUnit?: number }).sellingPricePerUnit || 0
         }))
       }
     };

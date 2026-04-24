@@ -29,6 +29,7 @@ import { CustomBlendService } from '../../services/CustomBlendService.js';
 import { BlendIngredientValidator } from '../../services/blend/BlendIngredientValidator.js';
 import { CustomBlendHistory } from '../../models/CustomBlendHistory.js';
 import { BlendTemplate } from '../../models/BlendTemplate.js';
+import { Transaction } from '../../models/Transaction.js';
 
 const CONCURRENCY = 30;
 const BLEND_QTY_PER_SALE = 2;
@@ -568,5 +569,185 @@ describe('Blend stress — cost math under container-capacity scaling', () => {
     // The abundant ones at exactly required*500x will NOT trigger the "low stock" warning
     // (warning fires when availableQuantity < requiredQuantity * 2)
     expect(result.warnings).toHaveLength(0);
+  });
+});
+
+/**
+ * Guards the custom-blend edit-flow round-trip:
+ *   create → save → re-read customBlendData → re-derive display prices
+ *
+ * Before the fix, sellingPricePerUnit was dropped on save and the edit view
+ * silently fell to $0.00 when the product lookup couldn't repopulate it
+ * (e.g. product re-imported with a new _id, or product deleted).
+ */
+describe('Blend stress — custom blend edit-flow round-trip', () => {
+  beforeEach(async () => {
+    await clearCollections();
+  });
+
+  it('persists sellingPricePerUnit on customBlendData.ingredients across save/fetch', async () => {
+    const ingredients = await seedIngredients();
+
+    const item = createTestTransactionItem({
+      productId: new mongoose.Types.ObjectId().toString(),
+      name: 'Persisted Blend',
+      itemType: 'custom_blend',
+      quantity: 1,
+      convertedQuantity: 1,
+    });
+    (item as any).customBlendData = {
+      name: 'Persisted Blend',
+      ingredients: ingredients.map((ing) => ({
+        productId: String(ing.productId),
+        name: ing.name,
+        quantity: ing.perBlendQty,
+        unitOfMeasurementId: String(ing.unitId),
+        unitName: 'ml',
+        costPerUnit: ing.costPrice / ing.containerCapacity,
+        sellingPricePerUnit: (ing.costPrice * 2.5) / ing.containerCapacity,
+      })),
+      totalIngredientCost: 1,
+      mixedBy: 'stress-user',
+      mixedAt: new Date(),
+    };
+
+    const tx = await Transaction.create(createTestTransaction([item], {
+      transactionNumber: 'ROUND-TRIP-SELL',
+    }) as any);
+
+    const reloaded = await Transaction.findById(tx._id).lean();
+    const blendItem = reloaded!.items.find((i: any) => i.itemType === 'custom_blend') as any;
+    expect(blendItem).toBeDefined();
+    expect(blendItem.customBlendData.ingredients).toHaveLength(ingredients.length);
+    for (let i = 0; i < ingredients.length; i++) {
+      const ing = ingredients[i];
+      const loaded = blendItem.customBlendData.ingredients[i];
+      expect(loaded.sellingPricePerUnit).toBeCloseTo((ing.costPrice * 2.5) / ing.containerCapacity, 4);
+      expect(loaded.costPerUnit).toBeCloseTo(ing.costPrice / ing.containerCapacity, 4);
+    }
+  });
+
+  it('edit-flow fallback resolves selling price from stored snapshot when product is missing', async () => {
+    // Simulates the scenario where a product was re-imported with a new _id
+    // (or deleted): products.find() in the edit useEffect returns undefined.
+    // The frontend fix must fall back to the stored sellingPricePerUnit.
+    // This test pins that logic in isolation — it's the same expression the
+    // frontend runs inside the ingredients.map() during edit load.
+    const storedSell = 0.22; // $0.22/ml — what addIngredient captured at create time
+
+    const resolveSell = (currentProduct: any, ing: any) => {
+      const perUnit = currentProduct?.sellingPrice != null
+        ? currentProduct.sellingPrice / Math.max(currentProduct.containerCapacity || 1, 1)
+        : undefined;
+      return currentProduct
+        ? (perUnit ?? ing.sellingPricePerUnit ?? 0)
+        : (ing.sellingPricePerUnit ?? 0);
+    };
+
+    // Case 1: product is missing (lookup returned undefined)
+    expect(resolveSell(undefined, { sellingPricePerUnit: storedSell })).toBe(storedSell);
+
+    // Case 2: product exists but sellingPrice was stripped / unset
+    expect(resolveSell({ sellingPrice: null, containerCapacity: 1000 }, { sellingPricePerUnit: storedSell })).toBe(storedSell);
+
+    // Case 3: product exists with valid sellingPrice → prefer fresh value
+    expect(resolveSell({ sellingPrice: 330, containerCapacity: 1000 }, { sellingPricePerUnit: storedSell })).toBeCloseTo(0.33, 4);
+
+    // Case 4: product is missing AND no stored snapshot → 0 (unavoidable)
+    expect(resolveSell(undefined, {})).toBe(0);
+  });
+
+  it('saved transaction unitPrice is immune to product price edits after the sale', async () => {
+    // Answers the user's deeper question: does updating a product's price
+    // retroactively change old transactions? No — transaction line items are
+    // snapshots. Only the edit-time display re-derives.
+    const ingredients = await seedIngredients();
+    const [first] = ingredients;
+
+    const saleCostPerUnit = first.costPrice / first.containerCapacity;
+    const saleSellPerUnit = (first.costPrice * 2.5) / first.containerCapacity;
+
+    const item = createTestTransactionItem({
+      productId: new mongoose.Types.ObjectId().toString(),
+      name: 'Priced Blend',
+      itemType: 'custom_blend',
+      quantity: 1,
+      unitPrice: 45,
+      totalPrice: 45,
+    });
+    (item as any).customBlendData = {
+      name: 'Priced Blend',
+      ingredients: [{
+        productId: String(first.productId),
+        name: first.name,
+        quantity: first.perBlendQty,
+        unitOfMeasurementId: String(first.unitId),
+        unitName: 'ml',
+        costPerUnit: saleCostPerUnit,
+        sellingPricePerUnit: saleSellPerUnit,
+      }],
+      totalIngredientCost: first.perBlendQty * saleCostPerUnit,
+      mixedBy: 'stress-user',
+      mixedAt: new Date(),
+    };
+
+    const tx = await Transaction.create(createTestTransaction([item], {
+      transactionNumber: 'PRICE-SNAPSHOT',
+    }) as any);
+
+    // Admin later doubles the product's selling price and halves costPrice
+    await Product.updateOne(
+      { _id: first.productId },
+      { $set: { sellingPrice: first.costPrice * 5, costPrice: first.costPrice / 2 } },
+    );
+
+    const reloaded = await Transaction.findById(tx._id).lean();
+    const blendItem = reloaded!.items.find((i: any) => i.itemType === 'custom_blend') as any;
+    expect(blendItem.unitPrice).toBe(45);
+    expect(blendItem.totalPrice).toBe(45);
+    expect(blendItem.customBlendData.ingredients[0].costPerUnit).toBeCloseTo(saleCostPerUnit, 4);
+    expect(blendItem.customBlendData.ingredients[0].sellingPricePerUnit).toBeCloseTo(saleSellPerUnit, 4);
+  });
+
+  it(`survives ${CONCURRENCY} concurrent blend saves — all ingredients keep sellingPricePerUnit`, async () => {
+    const ingredients = await seedIngredients();
+
+    const buildTx = (i: number) => {
+      const item = createTestTransactionItem({
+        productId: new mongoose.Types.ObjectId().toString(),
+        name: `Concurrent Blend ${i}`,
+        itemType: 'custom_blend',
+        quantity: 1,
+      });
+      (item as any).customBlendData = {
+        name: `Concurrent Blend ${i}`,
+        ingredients: ingredients.map((ing) => ({
+          productId: String(ing.productId),
+          name: ing.name,
+          quantity: ing.perBlendQty,
+          unitOfMeasurementId: String(ing.unitId),
+          unitName: 'ml',
+          costPerUnit: ing.costPrice / ing.containerCapacity,
+          sellingPricePerUnit: (ing.costPrice * 2.5) / ing.containerCapacity,
+        })),
+        totalIngredientCost: 1,
+        mixedBy: 'stress-user',
+        mixedAt: new Date(),
+      };
+      return Transaction.create(createTestTransaction([item], {
+        transactionNumber: `CONCURRENT-SELL-${i}`,
+      }) as any);
+    };
+
+    await Promise.all(Array.from({ length: CONCURRENCY }, (_, i) => buildTx(i)));
+
+    const saved = await Transaction.find({ transactionNumber: { $regex: /^CONCURRENT-SELL-/ } }).lean();
+    expect(saved).toHaveLength(CONCURRENCY);
+    for (const tx of saved) {
+      const blendItem = tx.items.find((i: any) => i.itemType === 'custom_blend') as any;
+      for (const ing of blendItem.customBlendData.ingredients) {
+        expect(ing.sellingPricePerUnit).toBeGreaterThan(0);
+      }
+    }
   });
 });

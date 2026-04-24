@@ -39,6 +39,7 @@ export interface BlendIngredient {
   unitOfMeasurementId: string | { _id?: string; id?: string };
   unitName: string;
   costPerUnit?: number;
+  sellingPricePerUnit?: number;
   notes?: string;
   availableStock?: number;
   selectedContainers?: SelectedContainer[];
