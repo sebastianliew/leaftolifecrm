@@ -6,39 +6,9 @@
 export interface StockInfo {
   currentStock: number;
   reservedStock: number;
-  reorderPoint: number;
-  autoReorderEnabled: boolean;
   lastRestockDate?: Date;
-  restockFrequency: number;
   averageRestockQuantity: number;
   restockCount: number;
-}
-
-/** Check if product needs restocking */
-export function needsRestock(product: StockInfo, threshold = 1.0): boolean {
-  return product.currentStock <= product.reorderPoint * threshold;
-}
-
-/** Check if product needs urgent restocking (oversold or critically low) */
-export function needsUrgentRestock(product: StockInfo): boolean {
-  return product.currentStock <= 0 || product.currentStock <= product.reorderPoint * 0.5;
-}
-
-/** Get suggested restock quantity */
-export function getSuggestedRestockQuantity(product: StockInfo): number {
-  if (product.averageRestockQuantity > 0) {
-    return Math.max(product.averageRestockQuantity, product.reorderPoint - product.currentStock);
-  }
-  return Math.max(product.reorderPoint, product.reorderPoint - product.currentStock);
-}
-
-/** Check if auto-reorder is due */
-export function isAutoReorderDue(product: StockInfo): boolean {
-  if (!product.autoReorderEnabled || !product.lastRestockDate) return false;
-  const daysSinceLastRestock = Math.floor(
-    (Date.now() - product.lastRestockDate.getTime()) / (1000 * 60 * 60 * 24)
-  );
-  return daysSinceLastRestock >= product.restockFrequency;
 }
 
 /** Get backorder quantity (negative stock amount) */

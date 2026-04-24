@@ -40,8 +40,11 @@ export function formatNumber(num: number): string {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
-export function formatDate(dateString: string): string {
-  // Use UK date format (DD/MM/YYYY) for consistency with Singapore standards
+export function formatDate(dateString?: string | null): string {
+  // Use UK date format (DD/MM/YYYY) for consistency with Singapore standards.
+  // Returns an em-dash for missing/invalid dates so callers can pass
+  // optional DOB-style fields without extra null checks (issue #15).
+  if (!dateString) return '—'
   const date = new Date(dateString)
   if (isNaN(date.getTime())) return dateString // Return original if invalid
 

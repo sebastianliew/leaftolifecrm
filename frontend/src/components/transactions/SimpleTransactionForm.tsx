@@ -27,9 +27,7 @@ import { PatientSelector } from "./PatientSelector"
 import { ConsultationSelector } from "./ConsultationSelector"
 import { MiscellaneousSelector } from "./MiscellaneousSelector"
 import { useUnits } from "@/hooks/useUnits"
-import { computeUnitPrice, detectPriceMismatch, getDisplayQuantity } from "@/lib/pricing"
-// TODO: Purchase history — needs backend endpoint /api/customers/:id/purchase-history to enable ReorderSuggestions
-// import { ReorderSuggestions } from "./ReorderSuggestions"
+import { computeUnitPrice, detectPriceMismatch, getDisplayQuantity, perUnitCost } from "@/lib/pricing"
 import { DiscountService } from "@/services/DiscountService"
 import { formatCurrency } from "@/utils/currency"
 import { useToast } from "@/hooks/use-toast"
@@ -843,7 +841,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     for (const ingredient of item.customBlendData.ingredients) {
       const currentProduct = products.find(p => p._id === ingredient.productId);
       const originalCost = ingredient.costPerUnit || 0;
-      const currentCost = currentProduct?.sellingPrice || originalCost;
+      const currentCost = currentProduct ? (perUnitCost(currentProduct) ?? originalCost) : originalCost;
       const ingredientTotal = ingredient.quantity * currentCost;
       newTotalIngredientCost += ingredientTotal;
 
@@ -933,12 +931,13 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
           return item;
         }
 
-        // Update each ingredient's costPerUnit to current price
+        // Update each ingredient's costPerUnit to current per-base-unit cost via shared utility.
         const updatedIngredients = item.customBlendData.ingredients.map(ingredient => {
           const currentProduct = products.find(p => p._id === ingredient.productId);
+          const derivedCost = currentProduct ? perUnitCost(currentProduct) : undefined;
           return {
             ...ingredient,
-            costPerUnit: currentProduct?.sellingPrice ?? ingredient.costPerUnit
+            costPerUnit: derivedCost ?? ingredient.costPerUnit
           };
         });
 
@@ -1320,9 +1319,6 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
           )}
         </CardContent>
       </Card>
-
-      {/* Reorder Suggestions */}
-      {/* TODO: ReorderSuggestions — needs /api/customers/:id/purchase-history endpoint */}
 
       {/* Cart Items */}
       <Card>

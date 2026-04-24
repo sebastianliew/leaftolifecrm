@@ -9,8 +9,9 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { usePatients } from "@/hooks/usePatients"
 import { PatientForm } from "@/components/patients/patient-form"
+import { PatientInvoicesTab } from "@/components/patients/PatientInvoicesTab"
 import type { Patient, PatientFormData } from "@/types/patient"
-import { HiPencilAlt, HiTrash, HiArrowLeft, HiUser, HiClipboardList, HiDocumentText } from "react-icons/hi"
+import { HiPencilAlt, HiTrash, HiArrowLeft, HiUser, HiClipboardList, HiDocumentText, HiReceiptTax } from "react-icons/hi"
 import { formatDate } from "@/lib/utils"
 
 export default function PatientDetailPage() {
@@ -179,6 +180,10 @@ export default function PatientDetailPage() {
               <HiUser className="w-4 h-4 mr-2" />
               Patient Details
             </TabsTrigger>
+            <TabsTrigger value="invoices">
+              <HiReceiptTax className="w-4 h-4 mr-2" />
+              Invoices
+            </TabsTrigger>
             <TabsTrigger value="prescriptions">
               <HiClipboardList className="w-4 h-4 mr-2" />
               Prescriptions
@@ -328,6 +333,10 @@ export default function PatientDetailPage() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="invoices">
+            <PatientInvoicesTab patientId={patient.id} patientName={patientName} />
           </TabsContent>
 
           <TabsContent value="prescriptions">

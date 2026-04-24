@@ -9,7 +9,6 @@ export interface IProduct extends Document {
   containerType?: Schema.Types.ObjectId;
   unitOfMeasurement: Schema.Types.ObjectId;
   quantity: number;
-  reorderPoint: number;
   currentStock: number;
   totalQuantity: number;
   availableStock: number;
@@ -19,9 +18,7 @@ export interface IProduct extends Document {
   status: 'active' | 'inactive' | 'discontinued' | 'pending_approval';
   isActive: boolean;
   expiryDate?: Date;
-  autoReorderEnabled: boolean;
   lastRestockDate?: Date;
-  restockFrequency: number;
   averageRestockQuantity: number;
   restockCount: number;
   containerCapacity: number;

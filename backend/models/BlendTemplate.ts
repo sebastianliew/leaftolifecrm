@@ -147,12 +147,29 @@ const BlendTemplateSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
-BlendTemplateSchema.index({ name: 1 });
 BlendTemplateSchema.index({ category: 1 });
 BlendTemplateSchema.index({ isActive: 1 });
 BlendTemplateSchema.index({ createdBy: 1 });
 BlendTemplateSchema.index({ usageCount: -1 });
 BlendTemplateSchema.index({ lastUsed: -1 });
+
+// Unique name among active, non-deleted templates. Partial-filter form is
+// required so inactive/soft-deleted rows can share names with active ones
+// (e.g. creating a replacement template after deleting its predecessor).
+// MongoDB partial-filter syntax only supports $eq-style operators — that's
+// why this is `isDeleted: false` rather than `$ne: true`. Legacy rows with
+// isDeleted unset fall outside the index; a backfill migration can set the
+// field to false on historical docs if stricter enforcement is needed.
+// If this index build fails at deploy time there are duplicates in prod that
+// need to be reconciled — do NOT remove this index to mask the problem.
+BlendTemplateSchema.index(
+  { name: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { isActive: true, isDeleted: false },
+    name: 'unique_active_name',
+  },
+);
 
 // Soft delete indexes
 BlendTemplateSchema.index({ isDeleted: 1 });
@@ -308,19 +325,4 @@ BlendTemplateSchema.statics.getByCategory = function(category: string) {
 };
 
 
-// Force model recreation in development to pick up schema changes
-if (process.env.NODE_ENV === 'development') {
-  delete mongoose.models.BlendTemplate;
-  // Use type assertion to allow deletion in development
-  delete (mongoose.connection.models as Record<string, mongoose.Model<unknown>>).BlendTemplate;
-}
-
 export const BlendTemplate = mongoose.models.BlendTemplate || mongoose.model('BlendTemplate', BlendTemplateSchema);
-
-// Log schema paths in development to verify sellingPrice is included
-if (process.env.NODE_ENV === 'development' && BlendTemplate.schema) {
-  const paths = Object.keys(BlendTemplate.schema.paths);
-  if (!paths.includes('sellingPrice')) {
-    console.warn('WARNING: sellingPrice field not found in BlendTemplate schema paths!');
-  }
-} 

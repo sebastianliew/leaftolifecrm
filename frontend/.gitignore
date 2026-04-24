@@ -55,3 +55,6 @@ Thumbs.db
 /scripts/test-*
 /scripts/check-*
 /scripts/verify-*
+
+# Graphify knowledge graph caches (auto-generated)
+/src/graphify-out/

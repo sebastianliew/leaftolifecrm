@@ -90,14 +90,6 @@ export const getInventoryStats = asyncHandler(async (req: Request, res: Response
         totalProducts: { $sum: 1 },
         activeProducts: { $sum: { $cond: ['$isActive', 1, 0] } },
         outOfStock: { $sum: { $cond: [{ $lte: ['$currentStock', 0] }, 1, 0] } },
-        lowStock: {
-          $sum: {
-            $cond: [
-              { $and: [{ $gt: ['$currentStock', 0] }, { $lte: ['$currentStock', '$reorderPoint'] }] },
-              1, 0
-            ]
-          }
-        },
         expired: {
           $sum: {
             $cond: [
@@ -129,7 +121,7 @@ export const getInventoryStats = asyncHandler(async (req: Request, res: Response
 
   res.json(stats || {
     totalProducts: 0, activeProducts: 0, outOfStock: 0,
-    lowStock: 0, expired: 0, expiringSoon: 0, totalValue: 0
+    expired: 0, expiringSoon: 0, totalValue: 0
   });
 });
 
@@ -145,7 +137,7 @@ export const getProductById = asyncHandler(async (req: Request<{ id: string }>, 
 export const createProduct = asyncHandler(async (req: Request, res: Response) => {
   const {
     name, sku, description, category, brand, unitOfMeasurement,
-    containerType, quantity, reorderPoint, currentStock, costPrice, sellingPrice,
+    containerType, quantity, currentStock, costPrice, sellingPrice,
     status = 'active', expiryDate, canSellLoose, containerCapacity,
     bundleInfo, bundlePrice, hasBundle, discountFlags, supplierId
   } = req.body;
@@ -179,7 +171,6 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
   const product = new Product({
     name, sku, description, category, containerType, brand, unitOfMeasurement,
     quantity: quantity || 0,
-    reorderPoint: reorderPoint || 0,
     currentStock: currentStock || 0,
     totalQuantity: currentStock || 0,
     availableStock: currentStock || 0,
@@ -206,7 +197,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
 // sensitive fields like isDeleted, deletedAt, reservedStock, totalQuantity, etc.
 const ALLOWED_UPDATE_FIELDS = [
   'name', 'sku', 'description', 'category', 'containerType', 'brand', 'unitOfMeasurement',
-  'reorderPoint', 'currentStock', 'costPrice', 'sellingPrice', 'status',
+  'currentStock', 'costPrice', 'sellingPrice', 'status',
   'expiryDate', 'canSellLoose', 'containerCapacity', 'bundleInfo',
   'bundlePrice', 'hasBundle', 'discountFlags', 'supplierId',
 ];
@@ -408,7 +399,6 @@ export const exportProducts = asyncHandler(async (req: Request, res: Response) =
       'Unit': unit?.name || '',
       'Selling Price': p.sellingPrice ?? '',
       'Current Stock': p.currentStock ?? 0,
-      'Reorder Point': p.reorderPoint ?? '',
       'Status': p.isActive ? 'Active' : 'Inactive',
     };
     if (isAdmin) {

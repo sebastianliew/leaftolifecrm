@@ -43,4 +43,35 @@ export class PatientsController {
   getPatientStats = asyncHandler(async (req: Request, res: Response) => {
     res.json(await patientService.getPatientStats());
   });
+
+  getPatientPhotos = asyncHandler(async (req: Request, res: Response) => {
+    res.json(await patientService.getPatientPhotos(req.params.id));
+  });
+
+  addPatientPhoto = asyncHandler(async (req: Request, res: Response) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const file = (req as any).file as
+      | { originalname: string; mimetype: string; size: number; buffer: Buffer }
+      | undefined;
+    if (!file) {
+      res.status(400).json({ error: 'No file uploaded. Send as multipart/form-data with field "file".' });
+      return;
+    }
+    const result = await patientService.addPatientPhoto(req.params.id, {
+      buffer: file.buffer,
+      originalName: file.originalname,
+      contentType: file.mimetype,
+      size: file.size,
+    });
+    res.status(201).json(result);
+  });
+
+  deletePatientPhoto = asyncHandler(async (req: Request, res: Response) => {
+    const photoId = (req.query.photoId as string) || (req.params.photoId as string);
+    if (!photoId) {
+      res.status(400).json({ error: 'photoId query parameter is required' });
+      return;
+    }
+    res.json(await patientService.deletePatientPhoto(req.params.id, photoId));
+  });
 }

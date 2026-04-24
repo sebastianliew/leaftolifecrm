@@ -1,8 +1,9 @@
 import { Product } from '../models/Product.js';
 import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 import { connectDB } from '../lib/mongoose.js';
-import mongoose from 'mongoose';
+import mongoose, { ClientSession } from 'mongoose';
 import { BlendIngredientValidator } from './blend/BlendIngredientValidator.js';
+import { perUnitCost } from '../utils/pricingUtils.js';
 import type { 
   BlendIngredient,
   ValidationResult,
@@ -72,7 +73,7 @@ export class CustomBlendService {
           throw new Error(`Product not found: ${ingredient.name}`);
         }
         
-        const unitCost = ingredient.costPerUnit || product.sellingPrice || 0;
+        const unitCost = perUnitCost(product) ?? ingredient.costPerUnit ?? 0;
         const ingredientTotalCost = ingredient.quantity * unitCost;
         
         totalCost += ingredientTotalCost;
@@ -143,27 +144,28 @@ export class CustomBlendService {
     ingredients: BlendIngredient[],
     transactionId: string,
     transactionNumber: string,
-    mixedBy: string
+    mixedBy: string,
+    session?: ClientSession
   ): Promise<InstanceType<typeof InventoryMovement>[]> {
     await connectDB();
-    
+
     const movements = [];
-    
+
     try {
       for (const ingredient of ingredients) {
-        const product = await Product.findById(ingredient.productId);
-        
+        const product = await Product.findById(ingredient.productId).session(session || null);
+
         if (!product) {
           throw new Error(`Product not found: ${ingredient.name}`);
         }
-        
+
         const movement = new InventoryMovement({
           productId: new mongoose.Types.ObjectId(ingredient.productId),
           movementType: 'custom_blend',
           quantity: ingredient.quantity,
           unitOfMeasurementId: new mongoose.Types.ObjectId(
-            typeof ingredient.unitOfMeasurementId === 'string' 
-              ? ingredient.unitOfMeasurementId 
+            typeof ingredient.unitOfMeasurementId === 'string'
+              ? ingredient.unitOfMeasurementId
               : ingredient.unitOfMeasurementId._id || ingredient.unitOfMeasurementId.id
           ),
           baseUnit: ingredient.unitName || 'unit',
@@ -171,23 +173,30 @@ export class CustomBlendService {
           reference: transactionNumber,
           notes: `Custom blend ingredient: ${ingredient.name}`,
           createdBy: mixedBy,
-          pool: 'any',
+          pool: 'loose',
         });
-        
-        await movement.save();
-        await movement.updateProductStock();
+
+        if (session) {
+          await movement.save({ session });
+        } else {
+          await movement.save();
+        }
+        await movement.updateProductStock(session);
         movements.push(movement);
       }
-      
+
       return movements;
     } catch (error) {
       console.error('Error deducting custom blend ingredients:', error);
-      // Clean up any successful movements if an error occurs
-      for (const movement of movements) {
-        try {
-          await InventoryMovement.findByIdAndDelete(movement._id);
-        } catch (cleanupError) {
-          console.error('Error cleaning up inventory movement:', cleanupError);
+      // If we're in a transaction, the caller will abort — skip manual cleanup
+      // to avoid operating on half-committed state. Without a session, best-effort delete.
+      if (!session) {
+        for (const movement of movements) {
+          try {
+            await InventoryMovement.findByIdAndDelete(movement._id);
+          } catch (cleanupError) {
+            console.error('Error cleaning up inventory movement:', cleanupError);
+          }
         }
       }
       throw error;

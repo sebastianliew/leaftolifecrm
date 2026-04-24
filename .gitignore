@@ -104,5 +104,13 @@ venv/
 # Uncomment if you don't want to track lock files
 # package-lock.json
 # pnpm-lock.yaml
-# yarn.lockbackend/
-frontend/
+# yarn.lock
+
+# Graphify knowledge graph caches (auto-generated; keep wiki/ and raw/ only)
+graphify-out/
+backend/graphify-out/
+frontend/src/graphify-out/
+
+# Obsidian vault (local user settings)
+.obsidian/
+

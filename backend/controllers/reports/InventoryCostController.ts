@@ -52,7 +52,6 @@ export class InventoryCostController {
           totalProducts: analysisData.summary.totalProducts,
           totalInventoryValue: analysisData.summary.totalInventoryValue,
           averageCostPerItem: analysisData.summary.averageCostPerItem,
-          lowStockItems: analysisData.summary.lowStockItems,
         },
         metadata
       })

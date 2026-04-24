@@ -3,6 +3,7 @@ import { PatientsController } from '../controllers/patients.controller.js';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
 import { requirePermission } from '../middlewares/permission.middleware.js';
 import { bulkOperationRateLimit } from '../middlewares/rateLimiting.middleware.js';
+import { patientPhotoUpload } from '../middlewares/upload.middleware.js';
 
 const router: IRouter = express.Router();
 const patientsController = new PatientsController();
@@ -24,6 +25,11 @@ router.post('/bulk-delete', bulkOperationRateLimit, requirePermission('patients'
 
 // GET /api/patients/:id/summary - Lightweight patient data for selectors
 router.get('/:id/summary', requirePermission('patients', 'canAccessAllPatients'), patientsController.getPatientSummary.bind(patientsController));
+
+// Medical photos — list, upload, delete
+router.get('/:id/photos', requirePermission('patients', 'canAccessAllPatients'), patientsController.getPatientPhotos.bind(patientsController));
+router.post('/:id/photos', requirePermission('patients', 'canEditPatients'), patientPhotoUpload.single('file'), patientsController.addPatientPhoto.bind(patientsController));
+router.delete('/:id/photos', requirePermission('patients', 'canEditPatients'), patientsController.deletePatientPhoto.bind(patientsController));
 
 // GET /api/patients/:id - Get patient by ID (full document)
 router.get('/:id', requirePermission('patients', 'canAccessAllPatients'), patientsController.getPatientById.bind(patientsController));

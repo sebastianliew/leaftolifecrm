@@ -54,7 +54,11 @@ export function TransactionDeleteDialog({
               </div>
               
               <p className="font-medium">
-                <strong>This action cannot be undone.</strong> {isDraft ? 'The draft' : 'All transaction data'} will be permanently removed from the system.
+                {isDraft ? (
+                  <><strong>This action cannot be undone.</strong> The draft will be permanently removed.</>
+                ) : (
+                  <>The transaction will be <strong>archived</strong> — it stays in the database for audit but is hidden from default queries. An administrator can restore it if needed.</>
+                )}
               </p>
               
               {!isDraft && transaction.paymentStatus === 'paid' && (

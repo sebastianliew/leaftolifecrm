@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import UnitConversionService from '@/lib/unit-conversion';
+import { perUnitCost } from '@/lib/pricing';
 
 /**
  * Determines the content unit based on container type.
@@ -218,10 +219,10 @@ export default function QuickBlendCreator({
       // Product is tracked in containers but we want to use content units
       // Determine the content unit (usually ml for bottles, g for boxes)
       const contentUnit = getContentUnit(product.containerType);
-      
+
       defaultUnit = contentUnit;
       defaultQuantity = Math.min(50, product.containerCapacity / 4); // Suggest 1/4 of container or 50 units
-      costPerUnit = product.costPrice / product.containerCapacity; // Cost per content unit
+      costPerUnit = perUnitCost(product) ?? 0; // Per content-unit cost via shared utility
     }
 
     const newIngredient: BlendIngredient = {
@@ -249,9 +250,9 @@ export default function QuickBlendCreator({
       
       if (isContainerBased && ingredient.product.containerCapacity) {
         const contentUnit = getContentUnit(ingredient.product.containerType);
-        
-        // Calculate cost per unit for the new unit
-        let newCostPerUnit = ingredient.product.costPrice / ingredient.product.containerCapacity;
+
+        // Calculate cost per content unit via shared utility (handles missing/zero capacity safely)
+        let newCostPerUnit = perUnitCost(ingredient.product) ?? 0;
         
         // If the new unit is different from content unit, convert the cost
         if (value !== contentUnit) {

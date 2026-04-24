@@ -183,6 +183,9 @@ const corsOptions: cors.CorsOptions = {
       process.env.FRONTEND_URL,
       'https://crm.leaftolife.com.sg',
       'https://leaftolife.com.sg',
+      'https://crm.leaftolife.com',
+      'https://leaftolife.com',
+      'https://www.leaftolife.com',
     ].filter((origin): origin is string => Boolean(origin));
     
     // Allow requests with no origin (like mobile apps or Postman)

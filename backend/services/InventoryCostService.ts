@@ -57,13 +57,12 @@ export class InventoryCostService {
           unit: { $ifNull: ['$unitName', 'units'] },
           supplier: { $ifNull: ['$supplierName', ''] },
           brand: { $ifNull: ['$brandName', ''] },
-          last_updated: { 
+          last_updated: {
             $ifNull: [
               '$updatedAt',
               { $ifNull: ['$createdAt', new Date()] }
             ]
-          },
-          reorder_point: { $ifNull: ['$reorderPoint', 10] }
+          }
         }
       },
       {
@@ -72,28 +71,7 @@ export class InventoryCostService {
             $multiply: ['$total_stock', '$cost_price']
           },
           stock_status: {
-            $switch: {
-              branches: [
-                { 
-                  case: { $lte: ['$total_stock', 0] }, 
-                  then: 'out' 
-                },
-                { 
-                  case: { $lte: ['$total_stock', '$reorder_point'] }, 
-                  then: 'low' 
-                },
-                { 
-                  case: { 
-                    $gte: [
-                      '$total_stock', 
-                      { $multiply: ['$reorder_point', 5] }
-                    ] 
-                  }, 
-                  then: 'overstock' 
-                }
-              ],
-              default: 'optimal'
-            }
+            $cond: [{ $lte: ['$total_stock', 0] }, 'out', 'optimal']
           }
         }
       },
@@ -210,7 +188,6 @@ export class InventoryCostService {
     const averageCostPerItem = totalProducts > 0 ? totalInventoryValue / totalProducts : 0
     
     // Count stock status items
-    const lowStockItems = data.filter(item => item.stock_status === 'low').length
     const outOfStockItems = data.filter(item => item.stock_status === 'out').length
     
     // Calculate category breakdown
@@ -237,7 +214,6 @@ export class InventoryCostService {
       totalProducts,
       totalInventoryValue,
       averageCostPerItem,
-      lowStockItems,
       outOfStockItems,
       categoryBreakdown
     }

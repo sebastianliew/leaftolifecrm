@@ -15,7 +15,6 @@ interface DashboardStats {
   productGrowth?: number;
   activePatients?: number;
   patientGrowth?: number;
-  lowStockAlerts?: number;
   expiredProducts?: number;
   expiringSoonProducts?: number;
   totalValue?: number;
@@ -165,10 +164,9 @@ export default function DashboardPage() {
           </Card>
 
           <Card className={`cursor-pointer transition-all hover:shadow-md ${
-            (stats?.lowStockAlerts && stats.lowStockAlerts > 0) || 
-            (stats?.expiredProducts && stats.expiredProducts > 0) || 
-            (stats?.expiringSoonProducts && stats.expiringSoonProducts > 0) 
-              ? "bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50 border-red-200" 
+            (stats?.expiredProducts && stats.expiredProducts > 0) ||
+            (stats?.expiringSoonProducts && stats.expiringSoonProducts > 0)
+              ? "bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50 border-red-200"
               : ""
           }`}>
             <CardContent className="p-6">
@@ -176,13 +174,13 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-medium">Stock Alerts</h3>
                   <div className="text-xs text-muted-foreground">
-                    {loading ? "Loading..." : 
-                      ((stats?.lowStockAlerts || 0) + (stats?.expiredProducts || 0) + (stats?.expiringSoonProducts || 0)) > 0 
-                        ? "Requires attention" 
+                    {loading ? "Loading..." :
+                      ((stats?.expiredProducts || 0) + (stats?.expiringSoonProducts || 0)) > 0
+                        ? "Requires attention"
                         : "All good"}
                   </div>
                 </div>
-                
+
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">Expired</span>
@@ -190,18 +188,11 @@ export default function DashboardPage() {
                       {loading ? "..." : stats?.expiredProducts || "0"}
                     </span>
                   </div>
-                  
+
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground">Expiring Soon</span>
                     <span className={`text-sm font-bold ${stats?.expiringSoonProducts && stats.expiringSoonProducts > 0 ? 'text-orange-600' : 'text-gray-500'}`}>
                       {loading ? "..." : stats?.expiringSoonProducts || "0"}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Low Stock</span>
-                    <span className={`text-sm font-bold ${stats?.lowStockAlerts && stats.lowStockAlerts > 0 ? 'text-yellow-600' : 'text-gray-500'}`}>
-                      {loading ? "..." : stats?.lowStockAlerts || "0"}
                     </span>
                   </div>
                 </div>

@@ -26,46 +26,12 @@ export interface BulkRestockResult {
   };
 }
 
-export interface RestockSuggestion {
-  product: {
-    _id: string;
-    name: string;
-    currentStock: number;
-    reorderPoint: number;
-    unitAbbreviation?: string;
-    containerCapacity?: number;
-  };
-  currentStock: number;
-  reorderPoint: number;
-  suggestedQuantity: number;
-  daysUntilStockout?: number;
-  priority: 'high' | 'medium' | 'low';
-}
-
 export interface UseRestockReturn {
   restockProduct: (operation: RestockOperation) => Promise<RestockResult>;
   bulkRestock: (request: BulkRestockRequest) => Promise<BulkRestockResult>;
   isLoading: boolean;
   error: string | null;
   clearError: () => void;
-}
-
-export interface UseRestockSuggestionsReturn {
-  suggestions: RestockSuggestion[];
-  summary: {
-    total: number;
-    high: number;
-    medium: number;
-    low: number;
-  } | null;
-  isLoading: boolean;
-  error: string | null;
-  fetchSuggestions: (options?: {
-    threshold?: number;
-    category?: string;
-    supplier?: string;
-  }) => Promise<void>;
-  refreshSuggestions: () => Promise<void>;
 }
 
 export function useRestock(): UseRestockReturn {
@@ -128,67 +94,6 @@ export function useRestock(): UseRestockReturn {
     isLoading,
     error,
     clearError,
-  };
-}
-
-export function useRestockSuggestions(): UseRestockSuggestionsReturn {
-  const [suggestions, setSuggestions] = useState<RestockSuggestion[]>([]);
-  const [summary, setSummary] = useState<{
-    total: number;
-    high: number;
-    medium: number;
-    low: number;
-  } | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchSuggestions = useCallback(async (options: {
-    threshold?: number;
-    category?: string;
-    supplier?: string;
-  } = {}) => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const params: Record<string, string | number> = {};
-      if (options.threshold !== undefined) params.threshold = options.threshold;
-      if (options.category) params.category = options.category;
-      if (options.supplier) params.supplier = options.supplier;
-
-      const response = await api.get('/inventory/restock/suggestions', params);
-
-      if (!response.ok) {
-        throw new Error(response.error || 'Failed to fetch suggestions');
-      }
-
-      // Backend returns { success: true, data: { suggestions, summary } }
-      // API client wraps it as { data: {...}, ok: true, ... }
-      const responseData = response.data as { data?: { suggestions: RestockSuggestion[]; summary: { total: number; high: number; medium: number; low: number } } } | { suggestions: RestockSuggestion[]; summary: { total: number; high: number; medium: number; low: number } };
-      const finalData = (responseData as { data: { suggestions: RestockSuggestion[]; summary: { total: number; high: number; medium: number; low: number } } }).data || (responseData as { suggestions: RestockSuggestion[]; summary: { total: number; high: number; medium: number; low: number } });
-      setSuggestions(finalData.suggestions || []);
-      setSummary(finalData.summary || null);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
-      setError(errorMessage);
-      setSuggestions([]);
-      setSummary(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  const refreshSuggestions = useCallback(async () => {
-    await fetchSuggestions();
-  }, [fetchSuggestions]);
-
-  return {
-    suggestions,
-    summary,
-    isLoading,
-    error,
-    fetchSuggestions,
-    refreshSuggestions,
   };
 }
 

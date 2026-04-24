@@ -1,13 +1,4 @@
 export class RestockValidator {
-  static validateRestockSuggestionQuery(data: {
-    threshold: number;
-    category?: string;
-    supplier?: string;
-    includeInactive?: boolean;
-  }) {
-    return { success: true, data, errors: undefined };
-  }
-  
   static validateRestockOperation(data: {
     productId: string;
     quantity: number;

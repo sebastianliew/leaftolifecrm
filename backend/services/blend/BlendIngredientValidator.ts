@@ -1,7 +1,8 @@
 import { connectDB } from '../../lib/mongoose.js';
 import { Product, IProduct } from '../../models/Product.js';
 import { UnitOfMeasurement } from '../../models/UnitOfMeasurement.js';
-import type { 
+import { perUnitCost, safeContainerCapacity } from '../../utils/pricingUtils.js';
+import type {
   ValidationResult,
   ValidationError,
   ValidationWarning,
@@ -102,16 +103,6 @@ export class BlendIngredientValidator {
       };
     }
     
-    if (availableQuantity < requiredQuantity * 2) {
-      return {
-        warning: {
-          ingredientId: ingredient.productId,
-          ingredientName: ingredient.name,
-          warning: 'Low stock - consider reordering soon'
-        }
-      };
-    }
-
     // Check expiry
     if (product.expiryDate) {
       const daysUntilExpiry = Math.ceil(
@@ -160,9 +151,7 @@ export class BlendIngredientValidator {
     };
   }
 
-  /**
-   * Validates data consistency and warns about common issues
-   */
+  /** Warns on common inconsistencies during ingredient enrichment. */
   private validateDataConsistency(
     ingredient: Omit<BlendIngredient, 'availableStock'>,
     product: {
@@ -170,61 +159,57 @@ export class BlendIngredientValidator {
       name: string;
       costPrice?: number;
       sellingPrice?: number;
+      containerCapacity?: number;
       currentStock?: number;
     }
   ): void {
-    // Check if ingredient is using cost price instead of selling price (THE MAIN ISSUE!)
-    if (ingredient.costPerUnit === product.costPrice && product.sellingPrice) {
-      console.warn(`🚨 PRICING ISSUE: Ingredient "${ingredient.name}" is using cost price (${ingredient.costPerUnit}) instead of selling price (${product.sellingPrice})`);
-      console.warn(`💡 Should use SELLING PRICE for all transactions - cost price is only for reference!`);
+    const expectedUnitCost = perUnitCost(product);
+
+    if (
+      expectedUnitCost != null &&
+      ingredient.costPerUnit != null &&
+      Math.abs(ingredient.costPerUnit - expectedUnitCost) > 0.0001
+    ) {
+      console.warn(`🚨 PRICING ISSUE: Ingredient "${ingredient.name}" unit cost (${ingredient.costPerUnit}) doesn't match per-unit cost derived from product (${expectedUnitCost} = costPrice ${product.costPrice} / containerCapacity ${safeContainerCapacity(product.containerCapacity)})`);
     }
 
-    // Check if ingredient price doesn't match selling price
-    if (ingredient.costPerUnit !== product.sellingPrice && product.sellingPrice) {
-      console.warn(`🚨 PRICING ISSUE: Ingredient "${ingredient.name}" price (${ingredient.costPerUnit}) doesn't match product selling price (${product.sellingPrice})`);
-    }
-
-    // Check name consistency
     if (ingredient.name !== product.name) {
       console.warn(`📝 NAME MISMATCH: Ingredient name "${ingredient.name}" differs from product name "${product.name}"`);
     }
 
-    // Check unit consistency
     if ((product as unknown as IProduct).unitName && ingredient.unitName !== (product as unknown as IProduct).unitName) {
       console.warn(`📏 UNIT MISMATCH: Ingredient unit "${ingredient.unitName}" differs from product unit "${(product as unknown as IProduct).unitName}"`);
     }
 
-    // Check for missing price
-    if (!ingredient.costPerUnit && !product.sellingPrice) {
-      console.warn(`💰 MISSING PRICE: Ingredient "${ingredient.name}" has no price set`);
+    if (!ingredient.costPerUnit && product.costPrice == null) {
+      console.warn(`💰 MISSING COST: Ingredient "${ingredient.name}" has no cost price set on the product`);
     }
   }
 
   /**
-   * Gets the correct price - should ALWAYS be selling price for all transactions
+   * Derives the ingredient's per-base-unit cost from the product via the shared
+   * pricing utility. This is intentional refresh-on-save: editing a template
+   * re-stamps costPerUnit from current product data so blend margins track
+   * product cost updates. If costPrice is unset, the existing value is preserved
+   * (and never replaced with sellingPrice — that was the original bug).
    */
   private getCorrectCostPrice(
     ingredient: Omit<BlendIngredient, 'availableStock'>,
     product: {
       costPrice?: number;
       sellingPrice?: number;
+      containerCapacity?: number;
       name: string;
     }
   ): number {
-    // ALWAYS use selling price for all transactions - cost price is only for reference
-    if (ingredient.costPerUnit === product.costPrice && product.sellingPrice) {
-      console.log(`🔧 AUTO-CORRECTING: Using product selling price (${product.sellingPrice}) instead of cost price (${ingredient.costPerUnit}) for ingredient "${ingredient.name}"`);
-      return product.sellingPrice;
+    const unitCost = perUnitCost(product);
+    if (unitCost != null) {
+      if (ingredient.costPerUnit != null && Math.abs(ingredient.costPerUnit - unitCost) > 0.0001) {
+        console.log(`🔧 Refreshing ingredient "${ingredient.name}" cost ${ingredient.costPerUnit} → ${unitCost} from product (costPrice ${product.costPrice} / containerCapacity ${safeContainerCapacity(product.containerCapacity)})`);
+      }
+      return unitCost;
     }
-
-    // If ingredient price doesn't match selling price, use selling price
-    if (ingredient.costPerUnit !== product.sellingPrice && product.sellingPrice) {
-      console.log(`🔧 AUTO-CORRECTING: Setting ingredient "${ingredient.name}" to use selling price (${product.sellingPrice})`);
-      return product.sellingPrice;
-    }
-
-    // Use ingredient cost if it matches selling price, otherwise use product selling price
-    return ingredient.costPerUnit || product.sellingPrice || 0;
+    return ingredient.costPerUnit || 0;
   }
 
   /**

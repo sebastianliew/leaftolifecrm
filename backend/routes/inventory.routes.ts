@@ -37,7 +37,6 @@ import {
   manageProductPool
 } from '../controllers/products.controller.js';
 import {
-  getRestockSuggestions,
   restockProduct,
   bulkRestockProducts,
   getRestockHistory,
@@ -87,7 +86,6 @@ router.post('/products/:id/pool', requirePermission('inventory', 'canEditProduct
 router.delete('/products/:id', requirePermission('inventory', 'canDeleteProducts'), deleteProduct);
 
 // Restock routes
-router.get('/restock/suggestions', requirePermission('inventory', 'canCreateRestockOrders'), getRestockSuggestions);
 router.post('/restock', requirePermission('inventory', 'canCreateRestockOrders'), restockProduct);
 router.get('/restock', requirePermission('inventory', 'canViewInventory'), getRestockHistory);
 router.post('/restock/bulk', bulkOperationRateLimit, requirePermission('inventory', 'canCreateRestockOrders'), bulkRestockProducts);

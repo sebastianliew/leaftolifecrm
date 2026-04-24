@@ -271,21 +271,6 @@ export function useStockAlerts() {
     const newAlerts: StockAlert[] = []
 
     products.forEach((product) => {
-      // Low stock alert
-      if (product.currentStock <= product.reorderPoint && product.currentStock > 0) {
-        newAlerts.push({
-          id: `alert_${product._id}_low`,
-          productId: product._id,
-          alertType: "low_stock",
-          currentLevel: product.currentStock,
-          threshold: product.reorderPoint,
-          message: `${product.name} is running low (${product.currentStock} remaining)`,
-          priority: "medium",
-          isActive: true,
-          createdAt: new Date().toISOString(),
-        })
-      }
-
       // Out of stock alert
       if (product.currentStock === 0) {
         newAlerts.push({

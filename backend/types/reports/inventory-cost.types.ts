@@ -8,7 +8,7 @@ export interface InventoryCostData {
   supplier?: string
   brand?: string
   last_updated?: string
-  stock_status?: 'optimal' | 'low' | 'overstock' | 'out'
+  stock_status?: 'optimal' | 'out'
 }
 
 export interface InventoryCostResponse {
@@ -18,7 +18,6 @@ export interface InventoryCostResponse {
     totalProducts: number
     totalInventoryValue: number
     averageCostPerItem: number
-    lowStockItems: number
   }
   metadata?: {
     totalItems: number
@@ -38,7 +37,7 @@ export interface InventoryCostFilters {
   categoryId?: string
   minStock?: string
   maxStock?: string
-  stockStatus?: 'optimal' | 'low' | 'overstock' | 'out'
+  stockStatus?: 'optimal' | 'out'
   sortBy?: keyof InventoryCostData
   sortOrder?: 'asc' | 'desc'
 }
@@ -61,7 +60,6 @@ export interface InventoryCostSummary {
   totalProducts: number
   totalInventoryValue: number
   averageCostPerItem: number
-  lowStockItems: number
   outOfStockItems: number
   categoryBreakdown: {
     category: string

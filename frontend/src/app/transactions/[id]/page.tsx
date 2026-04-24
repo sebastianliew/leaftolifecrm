@@ -407,26 +407,82 @@ export default function TransactionDetailPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {(transaction.items || []).map((item, index) => (
-              <div key={index} className="flex justify-between items-start pb-4 border-b last:border-0">
-                <div className="flex-1">
-                  <p className="font-medium">{item.name}</p>
-                  {item.sku && <p className="text-sm text-gray-500">SKU: {item.sku}</p>}
-                  <p className="text-sm text-gray-600">
-                    Quantity: {item.quantity ?? 0} × {formatCurrency(item.unitPrice ?? 0)}
-                  </p>
-                  {item.discountAmount && item.discountAmount > 0 && (
-                    <p className="text-sm text-green-600">
-                      Member Discount: -{formatCurrency(item.discountAmount)}
+            {(transaction.items || []).map((item, index) => {
+              const isCustomBlend = item.itemType === 'custom_blend'
+              const isFixedBlend = item.itemType === 'fixed_blend'
+              const isBundle = item.itemType === 'bundle'
+              const blendIngredients = isCustomBlend ? item.customBlendData?.ingredients : null
+              const bundleProducts = isBundle ? item.bundleData?.bundleProducts : null
+              return (
+                <div key={index} className="flex justify-between items-start pb-4 border-b last:border-0">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium">
+                        {(isCustomBlend || isFixedBlend) && <span className="mr-1">🧪</span>}
+                        {isBundle && <span className="mr-1">📦</span>}
+                        {item.name}
+                      </p>
+                      {isCustomBlend && <Badge variant="secondary">Custom Blend</Badge>}
+                      {isFixedBlend && <Badge variant="secondary">Fixed Blend</Badge>}
+                      {isBundle && <Badge>Bundle</Badge>}
+                    </div>
+                    {item.sku && <p className="text-sm text-gray-500">SKU: {item.sku}</p>}
+                    <p className="text-sm text-gray-600">
+                      Quantity: {item.quantity ?? 0} × {formatCurrency(item.unitPrice ?? 0)}
                     </p>
-                  )}
+                    {blendIngredients && blendIngredients.length > 0 && (
+                      <div className="mt-2 pl-3 border-l-2 border-emerald-200 bg-emerald-50/50 rounded-r py-2">
+                        <p className="text-xs font-semibold text-emerald-900 mb-1">Ingredients</p>
+                        <ul className="space-y-0.5">
+                          {blendIngredients.map((ing, i) => (
+                            <li key={i} className="text-xs text-gray-700">
+                              • {ing.name} — {ing.quantity} {ing.unitName}
+                            </li>
+                          ))}
+                        </ul>
+                        {item.customBlendData?.preparationNotes && (
+                          <p className="text-xs text-gray-600 italic mt-1">
+                            Notes: {item.customBlendData.preparationNotes}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {bundleProducts && bundleProducts.length > 0 && (
+                      <div className="mt-2 pl-3 border-l-2 border-blue-200 bg-blue-50/50 rounded-r py-2">
+                        <p className="text-xs font-semibold text-blue-900 mb-1">Bundle contents</p>
+                        <ul className="space-y-0.5">
+                          {bundleProducts.map((bp, i) => (
+                            <li key={i} className="text-xs text-gray-700">
+                              • {bp.name} × {bp.quantity}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {item.discountAmount && item.discountAmount > 0 && (
+                      <p className="text-sm text-green-600 mt-1">
+                        Member Discount: -{formatCurrency(item.discountAmount)}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold">{formatCurrency(item.totalPrice)}</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-semibold">{formatCurrency(item.totalPrice)}</p>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
+          {(transaction.items || []).some(i => i.itemType === 'custom_blend' || i.itemType === 'fixed_blend') && (
+            <div className="mt-4 pt-4 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/transactions?edit=${transaction._id}`)}
+              >
+                Edit transaction (modify blends)
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -488,7 +544,7 @@ export default function TransactionDetailPage() {
                 {/* QR Code */}
                 <div className="bg-white p-3 rounded-lg border border-blue-300 flex-shrink-0">
                   <Image
-                    src="/paynow-qr.jpeg"
+                    src="/paynow-qr-uen202527780c.jpeg"
                     alt="PayNow QR Code - UEN 202527780C"
                     width={150}
                     height={150}
@@ -523,7 +579,7 @@ export default function TransactionDetailPage() {
                 </div>
                 <div>
                   <p className="text-gray-600">Account Name:</p>
-                  <p className="font-medium">Leaf to Life Pte Ltd, eff Nov 1</p>
+                  <p className="font-medium">Leaf to Life Pte Ltd</p>
                 </div>
                 <div>
                   <p className="text-gray-600">Bank:</p>

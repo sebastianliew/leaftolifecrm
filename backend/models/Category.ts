@@ -7,9 +7,10 @@ export interface ICategory extends Document {
   level: number;
   parent?: Schema.Types.ObjectId;
   description?: string;
-  status: 'active' | 'inactive';
-  isActive?: boolean;
+  isActive: boolean;
   allowedUomTypes?: UomType[];
+  defaultUom?: Schema.Types.ObjectId;
+  defaultCanSellLoose?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,11 +25,6 @@ const CategorySchema = new Schema<ICategory>({
   level: { type: Number, required: true, default: 1, min: [1, 'Level must be at least 1'] },
   parent: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
   description: String,
-  status: {
-    type: String,
-    enum: ['active', 'inactive'],
-    default: 'active'
-  },
   isActive: {
     type: Boolean,
     default: true
@@ -37,13 +33,22 @@ const CategorySchema = new Schema<ICategory>({
     type: [String],
     enum: ['weight', 'volume', 'count', 'length', 'area', 'temperature'],
     default: []
-  }
+  },
+  // Pre-populate UOM when a new product is created under this category so
+  // staff don't have to re-pick a unit for every product (issue #20).
+  defaultUom: { type: mongoose.Schema.Types.ObjectId, ref: 'UnitOfMeasurement' },
+  // Pre-check "sell loose" when a new product under this category supports
+  // loose sales (tablets/capsules/liquids) — issue #21.
+  defaultCanSellLoose: { type: Boolean, default: false }
 }, {
   timestamps: true
 });
 
-// Add indexes
-CategorySchema.index({ name: 1 });
+// Case-insensitive unique name (prevents duplicate-key race past the controller check)
+CategorySchema.index(
+  { name: 1 },
+  { unique: true, collation: { locale: 'en', strength: 2 } }
+);
 CategorySchema.index({ level: 1 });
 CategorySchema.index({ parent: 1 });
 

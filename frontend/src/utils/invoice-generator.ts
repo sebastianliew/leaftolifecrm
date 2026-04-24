@@ -6,7 +6,7 @@ import { formatInvoiceFilename } from "./invoice-filename"
 
 // Company information
 const defaultCompanyInfo = {
-  name: "Sebastian Liew Centre Pte Ltd.",
+  name: "Leaf to Life Pte Ltd",
   address: {
     street: "320 Serangoon Road, Centrium square, #11-10",
     city: "Singapore",
@@ -15,7 +15,7 @@ const defaultCompanyInfo = {
   },
   phone: "+65 6538 9978",
   email: "customerservice@leaftolife.com.sg",
-  website: "www.leaftolife.com.sg"
+  website: "www.leaftolife.com"
 }
 
 // Generate and download invoice PDF directly in browser
@@ -45,7 +45,7 @@ export function generateInvoicePDF(transaction: Transaction): void {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(...darkGray);
-    doc.text("by Sebastian Liew Centre Pte Ltd", margin, yPos);
+    doc.text(`by ${defaultCompanyInfo.name}`, margin, yPos);
 
     yPos += 6;
     doc.setFont("helvetica", "normal");

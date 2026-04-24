@@ -153,19 +153,18 @@ export function CSVManager({ onImportComplete }: CSVManagerProps) {
   const downloadTemplate = () => {
     const headers = [
       'Product Name',
-      'Category / Container type / Unit of Measurement', 
+      'Category / Container type / Unit of Measurement',
       'Usually sold as',
       'Per Container Capacity',
       'Brand/Supplier',
       'Cost',
       'Selling price',
-      'Reorder point',
       'Current Stock',
       'key-in stock by',
       'Bundle?',
       'Bundle price'
     ]
-    
+
     const sampleRow = [
       'Sample Product',
       'ml',
@@ -174,7 +173,6 @@ export function CSVManager({ onImportComplete }: CSVManagerProps) {
       'Sample Brand',
       '10.50',
       '25.00',
-      '5',
       '20',
       'ml',
       '-',

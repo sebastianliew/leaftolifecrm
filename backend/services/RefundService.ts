@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 import { Refund, IRefund } from '../models/Refund.js';
 import { Transaction } from '../models/Transaction.js';
 import { Product } from '../models/Product.js';
+import { BlendTemplate } from '../models/BlendTemplate.js';
+import { Bundle } from '../models/Bundle.js';
 import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 import { createAuditLog } from '../models/AuditLog.js';
 
@@ -358,9 +360,43 @@ export class RefundService {
         throw new Error('Refund must be approved before processing');
       }
 
-      // Restore inventory via InventoryMovement (same pattern as sales/restocks)
-      // Look up original transaction to determine pool for each item
+      // Restore inventory via InventoryMovement (same pattern as sales/restocks).
+      // Dispatches based on what the item's productId actually resolves to:
+      //   - Product       → direct stock restoration
+      //   - BlendTemplate → restore each ingredient scaled by refundQuantity
+      //   - Bundle        → restore each component; nested blends fan out too
       const originalTxn = await Transaction.findById(refund.transactionId);
+      const reference = `REFUND-${refund.refundNumber || refundId}`;
+
+      const restoreBlendIngredients = async (
+        templateId: string,
+        multiplier: number,
+        label: string,
+      ) => {
+        const template = await BlendTemplate.findById(templateId);
+        if (!template) {
+          console.warn(`[RefundService] BlendTemplate not found for refund line: ${templateId}`);
+          return;
+        }
+        for (const ing of template.ingredients) {
+          const scaled = ing.quantity * multiplier;
+          const movement = new InventoryMovement({
+            productId: ing.productId,
+            movementType: 'return',
+            quantity: scaled,
+            convertedQuantity: scaled,
+            unitOfMeasurementId: ing.unitOfMeasurementId,
+            baseUnit: ing.unitName || 'unit',
+            reference,
+            notes: `${label}: ${ing.name} restored for ${template.name} x ${multiplier}`,
+            createdBy: userId,
+            productName: ing.name,
+            pool: 'loose', // blend ingredients came from the loose pool
+          });
+          await movement.save();
+          await movement.updateProductStock();
+        }
+      };
 
       for (const item of refund.items) {
         const product = await Product.findById(item.productId);
@@ -382,7 +418,7 @@ export class RefundService {
             convertedQuantity: restoreConverted,
             unitOfMeasurementId: product.unitOfMeasurement,
             baseUnit: 'unit',
-            reference: `REFUND-${refund.refundNumber || refundId}`,
+            reference,
             notes: `Refund: ${item.productName || product.name} x ${item.refundQuantity} (${pool})`,
             createdBy: userId,
             productName: item.productName || product.name,
@@ -390,7 +426,93 @@ export class RefundService {
           });
           await movement.save();
           await movement.updateProductStock(); // Atomic $inc on currentStock
+          continue;
         }
+
+        // Not a Product — try BlendTemplate (fixed_blend refund)
+        const blend = await BlendTemplate.findById(item.productId);
+        if (blend) {
+          await restoreBlendIngredients(
+            String(item.productId),
+            item.refundQuantity,
+            'Fixed blend refund',
+          );
+          continue;
+        }
+
+        // Not a Product or BlendTemplate — try Bundle
+        const bundle = await Bundle.findById(item.productId);
+        if (bundle) {
+          for (const bp of bundle.bundleProducts) {
+            const totalQty = bp.quantity * item.refundQuantity;
+            if (bp.productType === 'fixed_blend' && bp.blendTemplateId) {
+              await restoreBlendIngredients(
+                String(bp.blendTemplateId),
+                totalQty,
+                'Bundle blend refund',
+              );
+              continue;
+            }
+            const component = await Product.findById(bp.productId);
+            if (!component) {
+              console.warn(`[RefundService] Bundle component product not found: ${bp.productId}`);
+              continue;
+            }
+            const movement = new InventoryMovement({
+              productId: bp.productId,
+              movementType: 'return',
+              quantity: totalQty,
+              convertedQuantity: totalQty,
+              unitOfMeasurementId: bp.unitOfMeasurementId || component.unitOfMeasurement,
+              baseUnit: bp.unitName || 'unit',
+              reference,
+              notes: `Bundle component refund: ${bp.name} from ${bundle.name} x ${item.refundQuantity}`,
+              createdBy: userId,
+              productName: bp.name,
+              pool: 'loose',
+            });
+            await movement.save();
+            await movement.updateProductStock();
+          }
+          continue;
+        }
+
+        // Handle custom_blend: the original transaction line carries the recipe
+        const originalItem = originalTxn?.items?.find(
+          (ti: { productId?: string }) => ti.productId === item.productId,
+        );
+        const customBlendData = (originalItem as { customBlendData?: {
+          ingredients?: Array<{
+            productId: string;
+            name: string;
+            quantity: number;
+            unitOfMeasurementId: string;
+            unitName: string;
+          }>;
+        }})?.customBlendData;
+        if (customBlendData?.ingredients?.length) {
+          for (const ing of customBlendData.ingredients) {
+            const scaled = ing.quantity * item.refundQuantity;
+            const movement = new InventoryMovement({
+              productId: new mongoose.Types.ObjectId(ing.productId),
+              movementType: 'return',
+              quantity: scaled,
+              convertedQuantity: scaled,
+              unitOfMeasurementId: new mongoose.Types.ObjectId(ing.unitOfMeasurementId),
+              baseUnit: ing.unitName || 'unit',
+              reference,
+              notes: `Custom blend refund: ${ing.name} x ${item.refundQuantity}`,
+              createdBy: userId,
+              productName: ing.name,
+              pool: 'loose',
+            });
+            await movement.save();
+            await movement.updateProductStock();
+          }
+          continue;
+        }
+
+        console.warn(`[RefundService] Refund line productId ${item.productId} is not a Product, BlendTemplate, Bundle, or custom_blend — no stock restored`);
       }
 
       refund.status = 'processing';

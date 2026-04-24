@@ -16,7 +16,7 @@
  */
 
 import mongoose from 'mongoose';
-import { ValidationError } from '../../middlewares/errorHandler.middleware.js';
+import { ValidationError, ConflictError } from '../../middlewares/errorHandler.middleware.js';
 
 interface RefCheck {
   model: string;
@@ -84,6 +84,6 @@ export async function validateUnique(
 
   const existing = await model.findOne(query);
   if (existing) {
-    throw new ValidationError(`${label || modelName} with this ${field} already exists`);
+    throw new ConflictError(`${label || modelName} with this ${field} already exists`);
   }
 }

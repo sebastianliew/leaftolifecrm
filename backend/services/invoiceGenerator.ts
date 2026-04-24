@@ -100,7 +100,7 @@ export class InvoiceGenerator {
     this.doc
       .fontSize(10)
       .font('Helvetica')
-      .text('by Sebastian Liew Centre Pte Ltd', this.margin, this.yPosition);
+      .text('by Leaf to Life Pte Ltd', this.margin, this.yPosition);
 
     this.yPosition += 18;
 

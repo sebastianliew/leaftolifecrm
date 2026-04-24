@@ -25,7 +25,8 @@ const supplierSchema = new mongoose.Schema({
     trim: true,
     validate: {
       validator: function(v: string) {
-        return !v || /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
+        // Accept any TLD of 2+ chars (covers .io, .museum, .photography, etc.)
+        return !v || /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.[a-zA-Z]{2,})+$/.test(v);
       },
       message: 'Please enter a valid email address'
     }
@@ -216,14 +217,27 @@ supplierSchema.index({ lastOrderDate: 1 });
 supplierSchema.index({ legacyId: 1, 'migrationData.source': 1 });
 supplierSchema.index({ 'migrationData.importedAt': 1 });
 
-// Pre-save middleware to generate supplier code
+// Pre-save middleware to generate supplier code.
+// Uses the highest existing suffix (not count) so deletions don't cause collisions.
+// True concurrent creates are backstopped by the `code` unique index.
 supplierSchema.pre('save', async function(next) {
-  if (!this.code) {
-    // Generate code from name (first 3 letters) + sequential number
-    const prefix = this.name.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, '') || 'SUP';
-    const count = await (this.constructor as mongoose.Model<unknown>).countDocuments({ code: { $regex: `^${prefix}` } });
-    this.code = `${prefix}${(count + 1).toString().padStart(4, '0')}`;
+  if (this.code) return next();
+
+  const prefix = this.name.substring(0, 3).toUpperCase().replace(/[^A-Z]/g, '') || 'SUP';
+  const Model = this.constructor as mongoose.Model<unknown>;
+
+  const latest = await Model.findOne({ code: { $regex: `^${prefix}\\d+$` } })
+    .sort({ code: -1 })
+    .select('code')
+    .lean() as { code?: string } | null;
+
+  let seq = 1;
+  if (latest?.code) {
+    const match = latest.code.match(/(\d+)$/);
+    if (match) seq = parseInt(match[1], 10) + 1;
   }
+
+  this.code = `${prefix}${seq.toString().padStart(4, '0')}`;
   next();
 });
 

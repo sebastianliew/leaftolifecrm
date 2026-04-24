@@ -50,7 +50,6 @@ export interface Product {
   canSellLoose?: boolean;
   looseStock?: number;
   quantity: number;
-  reorderPoint: number;
   currentStock: number;
   totalQuantity?: number;
   availableStock: number;
@@ -79,10 +78,8 @@ export interface Product {
   };
   averageRestockQuantity?: number;
   restockCount?: number;
-  restockFrequency?: number;
   // Methods that may exist on Mongoose document
   updateRestockAnalytics?: (quantity: number) => Promise<void>;
-  getSuggestedRestockQuantity?: () => number;
 }
 
 export interface ContainerType {
@@ -123,7 +120,6 @@ export interface ProductFormData {
   unitOfMeasurement: UnitOfMeasurement;
   containerType?: ContainerType;
   quantity: number;
-  reorderPoint: number;
   currentStock: number;
   totalQuantity?: number;
   costPrice: number;
@@ -145,7 +141,7 @@ export interface InventoryMovement {
 export interface StockAlert {
   id: string;
   productId: string;
-  alertType: 'low_stock' | 'out_of_stock' | 'expired' | 'expiring_soon';
+  alertType: 'out_of_stock' | 'expired' | 'expiring_soon';
   currentLevel: number;
   threshold: number;
   message: string;

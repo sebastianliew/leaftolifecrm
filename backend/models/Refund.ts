@@ -185,8 +185,12 @@ RefundSchema.index({ requestDate: -1 });
 RefundSchema.index({ customerName: 1 });
 RefundSchema.index({ createdBy: 1 });
 
-// Pre-save middleware to generate refund number
-RefundSchema.pre('save', async function(next) {
+// Generate refund number BEFORE validation. Mongoose 8 runs pre('validate')
+// before pre('save'), so putting this on 'save' meant required-field validation
+// fired on an unset refundNumber and every createRefund rejected. The daily
+// counter is best-effort — two refunds created in the same millisecond can
+// still collide on the unique index; the caller is expected to retry.
+RefundSchema.pre('validate', async function(next) {
   if (this.isNew && !this.refundNumber) {
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');

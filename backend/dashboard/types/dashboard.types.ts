@@ -1,7 +1,6 @@
 export interface DashboardStats {
   totalProducts: number;
   activePatients: number;
-  lowStockAlerts: number;
   oversoldProducts: number;
   expiredProducts: number;
   expiringSoonProducts: number;

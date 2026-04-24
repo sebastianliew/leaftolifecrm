@@ -13,7 +13,6 @@ export interface IProduct extends Document {
   brand?: Schema.Types.ObjectId;
   unitOfMeasurement: Schema.Types.ObjectId;
   quantity: number;
-  reorderPoint: number;
   currentStock: number;
   totalQuantity: number;
   availableStock: number;
@@ -23,9 +22,7 @@ export interface IProduct extends Document {
   status: 'active' | 'inactive' | 'discontinued' | 'pending_approval';
   isActive: boolean;
   expiryDate?: Date;
-  autoReorderEnabled: boolean;
   lastRestockDate?: Date;
-  restockFrequency: number;
   averageRestockQuantity: number;
   restockCount: number;
   supplierId?: Schema.Types.ObjectId;
@@ -65,13 +62,9 @@ export interface IProduct extends Document {
 
   // Instance methods
   updateRestockAnalytics(quantity: number): Promise<void>;
-  needsRestock(threshold?: number): boolean;
-  getSuggestedRestockQuantity(): number;
-  isAutoReorderDue(): boolean;
   getBackorderQuantity(): number;
   isOversold(): boolean;
   getAvailableStock(): number;
-  needsUrgentRestock(): boolean;
   populateReferences(): Promise<IProduct>;
   convertUnit(fromValue: number, fromUnit: string, toUnit: string): number;
   addUnitConversion(fromUnit: string, toUnit: string, factor: number): Promise<void>;
@@ -89,19 +82,16 @@ const productSchema = new mongoose.Schema<IProduct>({
   brand: { type: mongoose.Schema.Types.ObjectId, ref: 'Brand' },
   unitOfMeasurement: { type: mongoose.Schema.Types.ObjectId, ref: 'UnitOfMeasurement', required: true },
   quantity: { type: Number, required: true, default: 0 },
-  reorderPoint: { type: Number, required: true, default: 10 },
-  currentStock: { type: Number, required: true, default: 0 },
+  currentStock: { type: Number, required: true, default: 0, min: 0 },
   totalQuantity: { type: Number, default: 0 },
-  availableStock: { type: Number, default: 0 },
+  availableStock: { type: Number, default: 0, min: 0 },
   reservedStock: { type: Number, default: 0 },
   costPrice: Number,
   sellingPrice: Number,
   status: { type: String, enum: ['active', 'inactive', 'discontinued', 'pending_approval'], default: 'active' },
   isActive: { type: Boolean, default: true },
   expiryDate: { type: Date },
-  autoReorderEnabled: { type: Boolean, default: false },
   lastRestockDate: { type: Date },
-  restockFrequency: { type: Number, default: 30 },
   averageRestockQuantity: { type: Number, default: 0 },
   restockCount: { type: Number, default: 0 },
   categoryName: String,
@@ -150,8 +140,7 @@ productSchema.pre('save', function(next) {
 
 productSchema.index({ status: 1 });
 productSchema.index({ category: 1 });
-productSchema.index({ currentStock: 1, reorderPoint: 1 });
-productSchema.index({ autoReorderEnabled: 1, lastRestockDate: 1 });
+productSchema.index({ currentStock: 1 });
 productSchema.index({ legacyId: 1, 'migrationData.source': 1 });
 productSchema.index({ 'migrationData.importedAt': 1 });
 productSchema.index({ isDeleted: 1 });
@@ -163,22 +152,34 @@ productSchema.index({ name: 'text', sku: 'text', description: 'text' });
 // ── Methods ──
 
 productSchema.methods.updateRestockAnalytics = async function (quantity: number) {
-  const self = this as unknown as IProduct;
-  const analytics = StockService.calculateRestockAnalytics(self, quantity);
-  Object.assign(this, analytics);
-  await this.save();
-};
-
-productSchema.methods.needsRestock = function (threshold?: number) {
-  return StockService.needsRestock(this as unknown as IProduct, threshold);
-};
-
-productSchema.methods.getSuggestedRestockQuantity = function () {
-  return StockService.getSuggestedRestockQuantity(this as unknown as IProduct);
-};
-
-productSchema.methods.isAutoReorderDue = function () {
-  return StockService.isAutoReorderDue(this as unknown as IProduct);
+  // Atomic pipeline update. The previous read-modify-write + save() lost updates
+  // under concurrent restocks (same MAJOR-4 pattern that bit blend usageCount).
+  // averageRestockQuantity = (oldAvg × oldCount + quantity) / (oldCount + 1).
+  await Product.updateOne(
+    { _id: this._id },
+    [{
+      $set: {
+        lastRestockDate: new Date(),
+        restockCount: { $add: [{ $ifNull: ['$restockCount', 0] }, 1] },
+        averageRestockQuantity: {
+          $divide: [
+            {
+              $add: [
+                {
+                  $multiply: [
+                    { $ifNull: ['$averageRestockQuantity', 0] },
+                    { $ifNull: ['$restockCount', 0] },
+                  ],
+                },
+                quantity,
+              ],
+            },
+            { $add: [{ $ifNull: ['$restockCount', 0] }, 1] },
+          ],
+        },
+      },
+    }],
+  );
 };
 
 productSchema.methods.getBackorderQuantity = function () {
@@ -191,10 +192,6 @@ productSchema.methods.isOversold = function () {
 
 productSchema.methods.getAvailableStock = function () {
   return StockService.getAvailableStock(this as unknown as IProduct);
-};
-
-productSchema.methods.needsUrgentRestock = function () {
-  return StockService.needsUrgentRestock(this as unknown as IProduct);
 };
 
 productSchema.methods.populateReferences = async function () {

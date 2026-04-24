@@ -1,0 +1,35 @@
+# VPS deployment for l2l-backend.
+# Lives at /opt/l2l-backend/docker-compose.yml on the BEM VPS.
+# Env values come from /opt/l2l-backend/.env (never committed).
+# Joins the existing `nginx-proxy` network so the shared reverse proxy
+# and acme-companion provision an HTTPS cert for api.sebastianliew.com.
+
+services:
+  l2l-backend:
+    image: ghcr.io/sebastianliew/l2l-backend:latest
+    container_name: l2l-backend
+    restart: unless-stopped
+    expose:
+      - "5000"
+    env_file:
+      - .env
+    environment:
+      # nginx-proxy routing
+      VIRTUAL_HOST: api.sebastianliew.com
+      VIRTUAL_PORT: "5000"
+      LETSENCRYPT_HOST: api.sebastianliew.com
+      NODE_ENV: production
+      BACKEND_PORT: "5000"
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  proxy:
+    name: nginx-proxy
+    external: true

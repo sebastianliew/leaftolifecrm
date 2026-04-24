@@ -93,3 +93,52 @@ The project follows a monorepo structure with separate `backend/` and `frontend/
 
 ### Database
 MongoDB Atlas with collections: users, patients, products, transactions, appointments, blendtemplates, categories, brands, suppliers, supplierCategories, refunds, adminActivityLogs, userAuditLogs, customBlendHistories, bundles, unitOfMeasurements, containerTypes, patientEnrichments
+
+## graphify
+
+This project has a graphify knowledge graph at `graphify-out/`. Scope: `backend/` + `frontend/src` (invoice PDFs and build artifacts excluded). Karpathy-style layered on top: `raw/` for unstructured context, `wiki/` for hand-curated articles.
+
+### Reading order (before answering architecture questions)
+
+1. **`graphify-out/INDEX.md`** — start here. One-line navigation of all communities + god nodes. Don't skip this; it's the map.
+2. **`wiki/<topic>.md`** — if a hand-curated article exists for the area you're working on, read it. These capture decisions and gotchas that aren't in the code.
+3. **`graphify-out/GRAPH_REPORT.md`** — only if INDEX + wiki didn't answer it. Full audit, longer.
+4. **Raw files** — last resort. Prefer `graphify query "<question>"` or `graphify explain "<node>"` for targeted lookups.
+
+### Maintenance rules
+
+- **After editing code:** run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to rebuild the graph.
+- **After any graph rebuild,** regenerate the Obsidian vault + INDEX.md:
+  ```bash
+  $(cat graphify-out/.graphify_python) -c "
+  import json
+  from pathlib import Path
+  from networkx.readwrite import json_graph
+  from graphify.export import to_obsidian, to_canvas
+  from graphify.cluster import score_all
+  data = json.loads(Path('graphify-out/graph.json').read_text())
+  G = json_graph.node_link_graph(data, edges='links')
+  communities = {}
+  for nid, d in G.nodes(data=True):
+      communities.setdefault(int(d.get('community', 0)), []).append(nid)
+  cohesion = score_all(G, communities)
+  labels = {cid: (G.nodes[nodes[0]].get('label', f'Community {cid}')[:30] if nodes else f'Community {cid}') for cid, nodes in communities.items()}
+  to_obsidian(G, communities, 'graphify-out/obsidian', community_labels=labels, cohesion=cohesion)
+  to_canvas(G, communities, 'graphify-out/obsidian/graph.canvas', community_labels=labels)
+  "
+  $(cat graphify-out/.graphify_python) graphify-out/.gen_index.py
+  ```
+- **Git commit hook** handles this automatically for code changes — manual rebuild only needed for uncommitted code or when docs/PDFs change.
+
+### Feedback loop (important)
+
+When you answer a non-trivial architecture question that wasn't already obvious from the graph:
+
+1. **Save the answer back to the graph** so future queries benefit:
+   ```
+   $(cat graphify-out/.graphify_python) -m graphify save-result --question "Q" --answer "A" --type query --nodes Node1 Node2
+   ```
+2. **If the answer is wiki-worthy** (multi-step flow, trade-off explanation, cross-cutting concern), also add it as a new file in `wiki/<topic>.md` following the style of `wiki/transaction-flow.md`. Link to node notes in `graphify-out/obsidian/` using `[[wikilinks]]`.
+3. **If the context behind a decision came from somewhere outside the code** (a Slack thread, a bug report, a design doc), paste it into `raw/` as markdown. Run `/graphify raw --update` to pull it into the graph.
+
+This is the Karpathy pattern: every good answer becomes a persistent artifact, so the knowledge base compounds.

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useMemo, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useTransactions, useDeleteTransaction, useUpdateTransaction, useDuplicateTransaction } from '@/hooks/queries/use-transaction-queries'
 import { TransactionTable } from './TransactionTable'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -17,6 +17,16 @@ import { useTransactions as useTransactionsHook } from '@/hooks/useTransactions'
 import { usePermissions } from '@/hooks/usePermissions'
 import type { Transaction, TransactionFormData } from '@/types/transaction'
 import type { TransactionFilterValues } from './TransactionFilters'
+import { APIError } from '@/lib/errors/api-error'
+
+function formatInsufficientStock(err: APIError): string {
+  if (!err.isInsufficientStock()) return err.message
+  return err.details.items.map((i) => {
+    if (i.reason === 'product_not_found') return `• ${i.productName}: product not found`
+    const poolLabel = i.pool === 'loose' ? ' (loose)' : i.pool === 'sealed' ? ' (sealed)' : ''
+    return `• ${i.productName}: need ${i.requested}, ${i.available} available${poolLabel}`
+  }).join('\n')
+}
 
 interface InvoiceGenerationResult {
   success: boolean;
@@ -34,6 +44,7 @@ const DEFAULT_FILTERS: TransactionFilterValues = {
 
 export function TransactionList() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [searchInput, setSearchInput] = useState('')  // For immediate UI updates
   const [searchTerm, setSearchTerm] = useState('')   // For actual API calls
   const [filters, setFilters] = useState<TransactionFilterValues>(DEFAULT_FILTERS)
@@ -147,6 +158,24 @@ export function TransactionList() {
     if (!editingTransactionId) return null
     return transactions.find(t => t._id === editingTransactionId) || null
   }, [editingTransactionId, transactions])
+
+  // Open edit dialog from ?edit=<id> query (deep link from transaction detail
+  // page). Strip the param after consuming so closing the dialog doesn't
+  // immediately re-open it (and doesn't trigger an infinite re-set loop).
+  const handledEditParamRef = useRef<string | null>(null)
+  useEffect(() => {
+    const editId = searchParams?.get('edit')
+    if (!editId) return
+    if (handledEditParamRef.current === editId) return
+    handledEditParamRef.current = editId
+    setEditingTransactionId(editId)
+    // Remove the query param from the URL without adding a new history entry.
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('edit')
+      window.history.replaceState(null, '', url.toString())
+    }
+  }, [searchParams])
 
   const handleEdit = (transaction: Transaction) => {
     setEditingTransactionId(transaction._id)
@@ -357,11 +386,19 @@ export function TransactionList() {
       // React Query will automatically invalidate and refetch
     } catch (error) {
       console.error('Failed to update transaction:', error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update transaction",
-        variant: "destructive",
-      })
+      if (error instanceof APIError && error.isInsufficientStock()) {
+        toast({
+          title: 'Insufficient stock',
+          description: formatInsufficientStock(error),
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to update transaction',
+          variant: 'destructive',
+        })
+      }
     } finally {
       isSubmittingRef.current = false
     }
@@ -402,11 +439,19 @@ export function TransactionList() {
       // Don't call manual refetch - React Query will handle it automatically
     } catch (error) {
       console.error('Failed to update draft:', error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update draft",
-        variant: "destructive",
-      })
+      if (error instanceof APIError && error.isInsufficientStock()) {
+        toast({
+          title: 'Insufficient stock',
+          description: formatInsufficientStock(error),
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to update draft',
+          variant: 'destructive',
+        })
+      }
     } finally {
       isSubmittingRef.current = false
     }

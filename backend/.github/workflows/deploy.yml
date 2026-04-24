@@ -1,0 +1,135 @@
+name: Build & Deploy to BEM VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/l2l-backend
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Normalize SSH key (restore newlines if paste collapsed them)
+        id: sshkey
+        env:
+          RAW_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          # GitHub secret paste sometimes strips newlines. If the key is on a
+          # single line, rebuild proper PEM formatting (header \n base64/64 \n footer).
+          python3 <<'PY' > key.pem
+          import os
+          raw = os.environ["RAW_KEY"].strip()
+          if "\n" in raw:
+              print(raw)
+          else:
+              header = "-----BEGIN OPENSSH PRIVATE KEY-----"
+              footer = "-----END OPENSSH PRIVATE KEY-----"
+              assert raw.startswith(header) and raw.endswith(footer), "key missing header/footer"
+              body = raw[len(header):-len(footer)].strip()
+              print(header)
+              for i in range(0, len(body), 70):
+                  print(body[i:i+70])
+              print(footer)
+          PY
+          chmod 600 key.pem
+          echo "normalized_line_count=$(wc -l < key.pem)" | tee -a "$GITHUB_OUTPUT"
+          echo "key_path=$PWD/key.pem" >> "$GITHUB_OUTPUT"
+          # Derive the pubkey from the private key. If the private key's base64
+          # payload is corrupted, this fails loudly.
+          EXPECTED_PUBKEY_FINGERPRINT="SHA256:Ysh1l9tBj1jl6K1cBdQAn8QZSUcpITturfIXrBvmivM"
+          ACTUAL=$(ssh-keygen -lf key.pem 2>&1 | awk '{print $2}')
+          echo "expected fingerprint: $EXPECTED_PUBKEY_FINGERPRINT"
+          echo "actual fingerprint:   $ACTUAL"
+          if [ "$ACTUAL" != "$EXPECTED_PUBKEY_FINGERPRINT" ]; then
+            echo "::error::Private key fingerprint mismatch — the secret's base64 payload is corrupted (paste lost characters)."
+            exit 1
+          fi
+
+      - name: Hex-check key file for hidden chars
+        env:
+          KEY_PATH: ${{ steps.sshkey.outputs.key_path }}
+        run: |
+          echo "--- byte counts ---"
+          echo "total bytes: $(wc -c < "$KEY_PATH")"
+          echo "CR count:    $(tr -cd '\r' < "$KEY_PATH" | wc -c)"
+          echo "--- first 80 bytes (hex) ---"
+          head -c 80 "$KEY_PATH" | xxd
+          echo "--- last 80 bytes (hex) ---"
+          tail -c 80 "$KEY_PATH" | xxd
+          echo "--- permissions ---"
+          ls -la "$KEY_PATH"
+
+      - name: Deploy to VPS (direct ssh)
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: root
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+          KEY_PATH: ${{ steps.sshkey.outputs.key_path }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "VPS_USER='$VPS_USER' (length ${#VPS_USER})"
+          echo "VPS_HOST length: ${#VPS_HOST}"
+          echo "VPS_PORT: $VPS_PORT"
+          # Accept the host key on first run (alternative: pre-seed known_hosts).
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          # Verify key works before the real deploy command.
+          ssh -i "$KEY_PATH" -p "$VPS_PORT" -o BatchMode=yes "$VPS_USER@$VPS_HOST" "echo ssh-ok && whoami"
+          # Deploy.
+          ssh -i "$KEY_PATH" -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" bash -s <<EOF
+          set -euo pipefail
+          cd /opt/l2l-backend
+          if [ -n "${GHCR_TOKEN}" ]; then
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u ${GHCR_USER} --password-stdin
+          fi
+          docker compose pull
+          docker compose up -d --remove-orphans
+          docker image prune -f
+          docker compose ps
+          EOF

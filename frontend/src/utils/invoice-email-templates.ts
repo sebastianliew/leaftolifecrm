@@ -22,7 +22,7 @@ interface CompanyInfo extends BaseCompanyInfo {
 }
 
 const defaultCompanyInfo: CompanyInfo = {
-  name: "SEBASTIAN LIEW CENTRE PTE LTD",
+  name: "LEAF TO LIFE PTE LTD",
   address: {
     street: "320 Serangoon Road, Centrium square, #11-10",
     city: "Singapore",
@@ -31,10 +31,10 @@ const defaultCompanyInfo: CompanyInfo = {
   },
   phone: "+65 6538 9978",
   email: "customerservice@leaftolife.com.sg",
-  website: "www.leaftolife.com.sg",
+  website: "www.leaftolife.com",
   uen: "202527780C",
   taxId: "202527780C",
-  logo: "/slc-logo.jpeg" // Using the public logo file
+  logo: "/slc-logo.jpeg"
 };
 
 export class InvoiceEmailTemplates {
@@ -360,7 +360,7 @@ export class InvoiceEmailTemplates {
       <div class="header">
         ${isRetry ? '<div class="retry-badge">RESENT</div>' : ''}
         ${logoHtml}
-        <h1 style="font-size: 28px; margin: 10px 0; letter-spacing: 0.5px; text-transform: uppercase;">SEBASTIAN LIEW CENTRE PTE LTD</h1>
+        <h1 style="font-size: 28px; margin: 10px 0; letter-spacing: 0.5px; text-transform: uppercase;">${defaultCompanyInfo.name}</h1>
         <p style="font-size: 16px; opacity: 0.95; margin-top: 5px; font-weight: 500;">UEN: 202527780C</p>
         <p style="font-size: 14px; opacity: 0.9; margin-top: 5px;">Your Holistic Healthcare Partner</p>
       </div>
@@ -371,9 +371,9 @@ export class InvoiceEmailTemplates {
    * Generate greeting section
    */
   private static generateGreeting(customerName: string, isRetry?: boolean): string {
-    const greeting = isRetry ? 
+    const greeting = isRetry ?
       `We're resending your invoice as requested.` :
-      `Thank you for choosing Sebastian Liew Centre for your holistic health needs.`;
+      `Thank you for choosing Leaf to Life for your holistic health needs.`;
     
     return `
       <div class="greeting">
@@ -638,7 +638,7 @@ export class InvoiceEmailTemplates {
         
         <div class="signature">
           <p>Best regards,<br>
-          <strong>The Sebastian Liew Centre Team</strong><br>
+          <strong>The Leaf to Life Team</strong><br>
           ${defaultCompanyInfo.name}${defaultCompanyInfo.uen ? ` (UEN ${defaultCompanyInfo.uen})` : ''}</p>
         </div>
       </div>
@@ -681,7 +681,7 @@ ${options.isRetry ? '[RESENT] ' : ''}
 
 Dear ${options.customerName},
 
-${options.isRetry ? 'We\'re resending your invoice as requested.' : 'Thank you for choosing Sebastian Liew Centre for your holistic health needs.'} Your invoice/receipt is ready.
+${options.isRetry ? 'We\'re resending your invoice as requested.' : 'Thank you for choosing Leaf to Life for your holistic health needs.'} Your invoice/receipt is ready.
 
 INVOICE SUMMARY:
 - Invoice Number: ${transaction.invoiceNumber}
@@ -733,7 +733,7 @@ Website: ${defaultCompanyInfo.website}
 Thank you for trusting us with your healthcare journey.
 
 Best regards,
-The Sebastian Liew Centre Team
+The Leaf to Life Team
 ${defaultCompanyInfo.name}${defaultCompanyInfo.uen ? ` (UEN ${defaultCompanyInfo.uen})` : ''}
 
 *** NO REFUND POLICY - All sales are final ***

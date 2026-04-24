@@ -13,7 +13,7 @@ interface Patient {
   firstName: string
   lastName: string
   nric?: string
-  dateOfBirth: string
+  dateOfBirth?: string
   gender: string
   email: string
   phone: string
@@ -62,9 +62,12 @@ const formatDisplayName = (patient: Patient) => {
   return patient.firstName
 }
 
-const formatDate = (dateString: string) => {
+const formatDate = (dateString?: string) => {
+  if (!dateString) return '—'
   try {
-    return new Date(dateString).toLocaleDateString('en-GB')
+    const d = new Date(dateString)
+    if (isNaN(d.getTime())) return '—'
+    return d.toLocaleDateString('en-GB')
   } catch {
     return dateString
   }

@@ -254,7 +254,6 @@ async function run() {
 
     // Stock
     const currentStock = parseFloat((row['Current Stock'] || '0').toString()) || 0;
-    const reorderPoint = parseFloat((row['Reorder Point'] || '10').toString()) || 10;
 
     // Loose stock: one open container, clamped to currentStock
     const looseStock = canSellLoose
@@ -325,12 +324,9 @@ async function run() {
       totalQuantity: Math.max(0, currentStock),
       availableStock: Math.max(0, currentStock),
       reservedStock: 0,
-      reorderPoint,
       status,
       isActive,
       isDeleted: false,
-      autoReorderEnabled: false,
-      restockFrequency: 30,
       averageRestockQuantity: 0,
       restockCount: 0,
       baseUnitSize: 1,

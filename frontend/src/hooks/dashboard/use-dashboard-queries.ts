@@ -30,7 +30,6 @@ interface DashboardStats {
   totalPatients: number;
   totalRevenue: number;
   totalTransactions: number;
-  lowStockItems: number;
   recentTransactions: RecentTransaction[];
   topSellingProducts: TopSellingProduct[];
   patientGrowth: PatientGrowthData[];

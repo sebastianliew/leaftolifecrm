@@ -6,6 +6,8 @@ export interface CategoryBase {
   description?: string;
   level: number;
   allowedUomTypes?: UomType[];
+  defaultUom?: string; // UnitOfMeasurement id pre-selected on product create
+  defaultCanSellLoose?: boolean; // Pre-checks "sell loose" on product create
 }
 
 // Frontend representation of a category
@@ -26,6 +28,8 @@ export interface CreateCategoryRequest {
   isActive?: boolean;
   parent?: string;
   allowedUomTypes?: UomType[];
+  defaultUom?: string;
+  defaultCanSellLoose?: boolean;
 }
 
 export interface UpdateCategoryRequest {
@@ -36,6 +40,8 @@ export interface UpdateCategoryRequest {
   isActive?: boolean;
   parent?: string;
   allowedUomTypes?: UomType[];
+  defaultUom?: string;
+  defaultCanSellLoose?: boolean;
 }
 
 export type CategoryResponse = ProductCategory;

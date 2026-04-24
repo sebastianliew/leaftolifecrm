@@ -66,6 +66,16 @@ const consentHistorySchema = new mongoose.Schema({
   }
 }, { _id: false });
 
+// Medical photo subdocument schema (medical images uploaded for a patient)
+const medicalPhotoSchema = new mongoose.Schema({
+  storageKey: { type: String, required: true },     // object key in Wasabi / S3
+  originalName: { type: String, required: true },   // name the user uploaded
+  url: { type: String, required: true },            // public URL returned by storage driver
+  contentType: { type: String, required: true },    // image/jpeg, image/png, ...
+  size: { type: Number, required: true },           // bytes
+  uploadedAt: { type: Date, default: Date.now }
+});
+
 // Medical history subdocument schema
 const medicalHistorySchema = new mongoose.Schema({
   appointments: [appointmentSchema],
@@ -93,7 +103,7 @@ const patientSchema = new mongoose.Schema({
   middleName: { type: String },
   lastName: { type: String, required: true },
   nric: { type: String },
-  dateOfBirth: { type: Date, required: true },
+  dateOfBirth: { type: Date },
   gender: { 
     type: String, 
     enum: ['male', 'female', 'other', 'prefer-not-to-say'],
@@ -136,6 +146,9 @@ const patientSchema = new mongoose.Schema({
   
   // Medical history
   medicalHistory: medicalHistorySchema,
+
+  // Medical photos (images uploaded during consultation / prescription)
+  medicalPhotos: { type: [medicalPhotoSchema], default: [] },
   
   // Consent history
   consentHistory: [consentHistorySchema],
@@ -153,7 +166,12 @@ addEnrichmentFields(patientSchema);
 // Add indexes for better query performance
 patientSchema.index({ lastName: 1, firstName: 1 });
 patientSchema.index({ status: 1 });
-patientSchema.index({ nric: 1 }, { unique: true, sparse: true });
+// partialFilterExpression (unlike sparse) excludes null values from the unique
+// constraint — needed so multiple patients can have null NRIC after blank-normalisation.
+patientSchema.index(
+  { nric: 1 },
+  { unique: true, partialFilterExpression: { nric: { $type: 'string' } } }
+);
 patientSchema.index({ legacyCustomerNo: 1 }, { unique: true, sparse: true });
 patientSchema.index({ 'migrationInfo.sourceSystem': 1 });
 

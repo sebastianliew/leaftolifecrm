@@ -26,13 +26,18 @@ export const patientFormSchema = z.object({
     .optional()
     .or(z.literal('')),
 
+  // DOB optional: many legacy patients lack DOB in migrated records,
+  // and staff should not be blocked from creating a patient record without it.
   dateOfBirth: z.string()
-    .min(1, 'Date of birth is required')
+    .optional()
+    .or(z.literal(''))
     .refine((date) => {
+      if (!date) return true;
       const birthDate = new Date(date);
       return !isNaN(birthDate.getTime()) && birthDate <= new Date();
     }, 'Date of birth cannot be in the future')
     .refine((date) => {
+      if (!date) return true;
       const birthDate = new Date(date);
       const age = new Date().getFullYear() - birthDate.getFullYear();
       return age <= 150;

@@ -2,81 +2,6 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 
-interface ReorderSuggestion {
-  itemId: string
-  itemName: string
-  itemType: string
-  lastPurchaseDate: string
-  suggestedQuantity?: number
-  isFavorite: boolean
-  urgency: 'high' | 'medium' | 'low'
-  isOverdue: boolean
-  daysOverdue?: number
-  daysUntilDue?: number
-  itemDetails?: {
-    inventory?: { currentStock: number }
-    pricing?: { sellingPrice: number }
-  }
-}
-
-interface ReorderSuggestionsResponse {
-  suggestions: ReorderSuggestion[]
-  summary?: {
-    total: number
-  }
-}
-
-interface CustomerFavorites {
-  products?: Array<{ 
-    _id: string
-    name: string
-    purchaseCount?: number
-    lastPurchaseDate?: string
-    itemType?: string
-  }>
-  blends?: Array<{
-    _id: string
-    name: string
-    purchaseCount?: number
-    lastPurchaseDate?: string
-    itemType?: string
-  }>
-  customBlends?: Array<{
-    _id: string
-    blendName: string
-    purchaseCount?: number
-    lastPurchaseDate?: string
-    itemType?: string
-  }>
-  bundles?: Array<{
-    _id: string
-    name: string
-    purchaseCount?: number
-    lastPurchaseDate?: string
-    itemType?: string
-  }>
-}
-
-const fetchReorderSuggestions = async (customerId: string, limit: number = 10): Promise<ReorderSuggestionsResponse> => {
-  const response = await fetch(`/api/customers/${customerId}/reorder-suggestions?limit=${limit}`)
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch reorder suggestions')
-  }
-  
-  return response.json()
-}
-
-const fetchCustomerFavorites = async (customerId: string): Promise<CustomerFavorites> => {
-  const response = await fetch(`/api/customers/${customerId}/favorites`)
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch customer favorites')
-  }
-  
-  return response.json()
-}
-
 // Additional types for purchase history
 interface PurchasePattern {
   _id: string
@@ -165,22 +90,6 @@ const createQuickReorder = async (transactionId: string, customerId: string, cre
 }
 
 // Query hooks
-export function useReorderSuggestionsQuery(customerId: string | null, limit?: number) {
-  return useQuery({
-    queryKey: ['customers', customerId, 'reorder-suggestions', limit],
-    queryFn: () => fetchReorderSuggestions(customerId!, limit),
-    enabled: !!customerId,
-  })
-}
-
-export function useCustomerFavoritesQuery(customerId: string | null) {
-  return useQuery({
-    queryKey: ['customers', customerId, 'favorites'],
-    queryFn: () => fetchCustomerFavorites(customerId!),
-    enabled: !!customerId,
-  })
-}
-
 export function usePurchaseHistoryQuery(customerId: string | null, includeInsights?: boolean) {
   return useQuery({
     queryKey: ['customers', customerId, 'purchase-history', includeInsights],

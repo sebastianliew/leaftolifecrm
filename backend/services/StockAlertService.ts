@@ -1,8 +1,10 @@
 /**
  * StockAlertService — Server-side stock alert generation.
  *
- * Generates alerts for low stock, out of stock, and expired products.
- * Replaces the frontend `useStockAlerts.generateAlerts()` logic.
+ * Generates alerts for out-of-stock and expired products. Low-stock / reorder
+ * threshold alerts were removed when the reorder system was retired; the
+ * sale path now blocks transactions that would take stock to zero or below,
+ * which supersedes the proactive "low stock" heads-up.
  */
 
 import { Product } from '../models/Product.js';
@@ -11,7 +13,7 @@ export interface StockAlert {
   id: string;
   productId: string;
   productName: string;
-  alertType: 'low_stock' | 'out_of_stock' | 'expired';
+  alertType: 'out_of_stock' | 'expired';
   currentLevel: number;
   threshold: number;
   message: string;
@@ -26,12 +28,11 @@ class StockAlertService {
       isDeleted: { $ne: true },
       isActive: { $ne: false },
     })
-      .select('_id name currentStock reorderPoint expiryDate')
+      .select('_id name currentStock expiryDate')
       .lean() as unknown as Array<{
         _id: unknown;
         name: string;
         currentStock: number;
-        reorderPoint: number;
         expiryDate?: Date;
       }>;
 
@@ -41,7 +42,6 @@ class StockAlertService {
     for (const product of products) {
       const productId = String(product._id);
 
-      // Out of stock
       if (product.currentStock === 0) {
         alerts.push({
           id: `alert_${productId}_out`,
@@ -56,23 +56,7 @@ class StockAlertService {
           createdAt: now.toISOString(),
         });
       }
-      // Low stock
-      else if (product.currentStock <= product.reorderPoint && product.currentStock > 0) {
-        alerts.push({
-          id: `alert_${productId}_low`,
-          productId,
-          productName: product.name,
-          alertType: 'low_stock',
-          currentLevel: product.currentStock,
-          threshold: product.reorderPoint,
-          message: `${product.name} is running low (${product.currentStock} remaining)`,
-          priority: 'medium',
-          isActive: true,
-          createdAt: now.toISOString(),
-        });
-      }
 
-      // Expired stock
       if (product.expiryDate) {
         const expiryDate = new Date(product.expiryDate);
         const daysUntilExpiry = Math.ceil(

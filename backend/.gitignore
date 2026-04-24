@@ -62,3 +62,10 @@ Thumbs.db
 /scripts/test-*
 /scripts/check-*
 /scripts/verify-*
+
+# Migration artifacts (prod dumps + diff reports — keep local, do not commit)
+/migrations/inventory-sync/dump/
+/migrations/inventory-sync/*.json
+
+# Graphify knowledge graph caches (auto-generated)
+/graphify-out/

@@ -148,13 +148,15 @@ export function PatientForm({ patient, onSubmit, onCancel, loading }: PatientFor
               </p>
             </div>
             <div className="space-y-2">
-              <Label>Date of Birth *</Label>
+              <Label>Date of Birth</Label>
               <DateInput
                 value={dateOfBirth}
                 onChange={(date) => setDateOfBirth(date)}
                 placeholder="DD/MM/YYYY"
-                required
               />
+              <p className="text-xs text-gray-500">
+                Optional for legacy patients
+              </p>
             </div>
           </div>
 

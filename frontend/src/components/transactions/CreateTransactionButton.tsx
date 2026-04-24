@@ -9,6 +9,7 @@ import { useCreateTransaction } from '@/hooks/queries/use-transaction-queries'
 import { useToast } from '@/hooks/use-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { fetchAPI, queryKeys } from '@/lib/query-client'
+import { APIError } from '@/lib/errors/api-error'
 import type { TransactionFormData } from '@/types/transaction'
 
 export function CreateTransactionButton() {
@@ -53,11 +54,25 @@ export function CreateTransactionButton() {
       // React Query will automatically invalidate and refetch the transaction list
     } catch (error) {
       console.error('Failed to create transaction:', error)
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create transaction",
-        variant: "destructive",
-      })
+      if (error instanceof APIError && error.isInsufficientStock()) {
+        const lines = error.details.items.map((i) => {
+          if (i.reason === 'product_not_found') return `• ${i.productName}: product not found`
+          const poolLabel = i.pool === 'loose' ? 'loose' : i.pool === 'sealed' ? 'sealed' : ''
+          const suffix = poolLabel ? ` (${poolLabel})` : ''
+          return `• ${i.productName}: need ${i.requested}, ${i.available} available${suffix}`
+        })
+        toast({
+          title: 'Insufficient stock',
+          description: lines.join('\n'),
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to create transaction',
+          variant: 'destructive',
+        })
+      }
     } finally {
       isSubmittingRef.current = false
     }

@@ -6,12 +6,33 @@ import { FiUpload, FiX, FiMaximize2, FiLoader } from 'react-icons/fi'
 import { format } from 'date-fns'
 import Image from 'next/image'
 import { useToast } from '@/components/ui/use-toast'
+import { api } from '@/lib/api-client'
 
 export interface MedicalPhoto {
   id: string
   url: string
   name: string
   uploadedAt: string
+}
+
+// Backend photo shape — `url` is an absolute Wasabi (S3-compatible) URL.
+interface BackendPhoto {
+  _id: string
+  storageKey: string
+  originalName: string
+  url: string
+  contentType: string
+  size: number
+  uploadedAt: string
+}
+
+function toMedicalPhoto(p: BackendPhoto): MedicalPhoto {
+  return {
+    id: p._id,
+    url: p.url,
+    name: p.originalName,
+    uploadedAt: p.uploadedAt,
+  }
 }
 
 interface MedicalPhotosProps {
@@ -41,25 +62,24 @@ export function MedicalPhotos({
     if (!files || files.length === 0) return
 
     setUploading(true)
-    
+
     try {
       for (const file of Array.from(files)) {
         const formData = new FormData()
         formData.append('file', file)
-        
-        const response = await fetch(`/api/patients/${patientId}/photos`, {
-          method: 'POST',
-          body: formData
-        })
-        
-        if (!response.ok) {
-          throw new Error('Failed to upload photo')
+
+        const response = await api.upload<{ photo: BackendPhoto }>(
+          `/patients/${patientId}/photos`,
+          formData
+        )
+
+        if (!response.ok || !response.data?.photo) {
+          throw new Error(response.error || 'Failed to upload photo')
         }
-        
-        const data = await response.json()
-        onPhotoAdd(data.photo)
+
+        onPhotoAdd(toMedicalPhoto(response.data.photo))
       }
-      
+
       toast({
         title: 'Success',
         description: `${files.length} photo(s) uploaded successfully`
@@ -68,7 +88,7 @@ export function MedicalPhotos({
       console.error('Error uploading photos:', error)
       toast({
         title: 'Error',
-        description: 'Failed to upload photos',
+        description: error instanceof Error ? error.message : 'Failed to upload photos',
         variant: 'destructive'
       })
     } finally {
@@ -77,21 +97,21 @@ export function MedicalPhotos({
       e.target.value = ''
     }
   }
-  
+
   const handleDeletePhoto = async (photoId: string) => {
     setDeleting(photoId)
-    
+
     try {
-      const response = await fetch(`/api/patients/${patientId}/photos?photoId=${encodeURIComponent(photoId)}`, {
-        method: 'DELETE'
-      })
-      
+      const response = await api.delete(
+        `/patients/${patientId}/photos?photoId=${encodeURIComponent(photoId)}`
+      )
+
       if (!response.ok) {
-        throw new Error('Failed to delete photo')
+        throw new Error(response.error || 'Failed to delete photo')
       }
-      
+
       onPhotoDelete(photoId)
-      
+
       toast({
         title: 'Success',
         description: 'Photo deleted successfully'
@@ -100,7 +120,7 @@ export function MedicalPhotos({
       console.error('Error deleting photo:', error)
       toast({
         title: 'Error',
-        description: 'Failed to delete photo',
+        description: error instanceof Error ? error.message : 'Failed to delete photo',
         variant: 'destructive'
       })
     } finally {

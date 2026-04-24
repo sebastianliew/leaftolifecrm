@@ -59,6 +59,28 @@ export class ReferenceConflictError extends AppError {
   }
 }
 
+export interface InsufficientStockDetail {
+  productId: string;
+  productName: string;
+  requested: number;
+  available: number;
+  pool: 'loose' | 'sealed' | 'any';
+  reason?: 'insufficient_stock' | 'product_not_found';
+}
+
+export class InsufficientStockError extends AppError {
+  public items: InsufficientStockDetail[];
+  constructor(items: InsufficientStockDetail[] | InsufficientStockDetail) {
+    const arr = Array.isArray(items) ? items : [items];
+    const summary = arr
+      .map((i) => `${i.productName} (need ${i.requested}, have ${i.available})`)
+      .join('; ');
+    super(400, `Insufficient stock: ${summary}`, 'INSUFFICIENT_STOCK', { items: arr });
+    this.name = 'InsufficientStockError';
+    this.items = arr;
+  }
+}
+
 // ── asyncHandler ──
 // Wraps async route handlers so thrown errors go to the error middleware
 // instead of crashing with unhandled promise rejection.
@@ -114,9 +136,17 @@ export function errorHandler(
     return;
   }
 
+  // Ad-hoc errors with statusCode/status attached (service layer throws this shape)
+  const adhocStatus = (err as { statusCode?: number; status?: number }).statusCode
+    ?? (err as { status?: number }).status;
+  if (adhocStatus && adhocStatus >= 400 && adhocStatus < 600) {
+    res.status(adhocStatus).json({ error: err.message || 'Error' });
+    return;
+  }
+
   // Unknown errors
   console.error('[ErrorHandler] Unhandled error:', err);
-  res.status((err as { status?: number }).status || 500).json({
+  res.status(500).json({
     error: err.message || 'Internal server error',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
   });

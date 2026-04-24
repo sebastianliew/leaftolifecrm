@@ -6,7 +6,6 @@ export const stockValidationSchema = z.object({
   currentStock: z.number().int('Current stock must be a whole number'), // Allows negative
   availableStock: commonSchemas.nonNegativeNumber.int().optional(), // Always positive
   reservedStock: commonSchemas.nonNegativeNumber.int().default(0),
-  reorderPoint: commonSchemas.nonNegativeNumber.int().default(10),
   totalQuantity: z.number().optional() // Can be negative for substances
 })
 

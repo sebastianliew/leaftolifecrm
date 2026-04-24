@@ -28,8 +28,6 @@ const getStatusColor = (status: string) => {
       return "bg-orange-100 text-orange-800"
     case "out-of-stock":
       return "bg-red-100 text-red-800"
-    case "low-stock":
-      return "bg-yellow-100 text-yellow-800"
     default:
       return "bg-gray-100 text-gray-800"
   }
@@ -38,7 +36,6 @@ const getStatusColor = (status: string) => {
 const getStockStatus = (product: Product) => {
   if (product.currentStock < 0) return "oversold"
   if (product.currentStock === 0) return "out-of-stock"
-  if (product.currentStock <= product.reorderPoint) return "low-stock"
   return "in-stock"
 }
 
@@ -70,10 +67,10 @@ export const ProductTableRow = React.memo(({
       <TableCell>
         <div className="flex items-center gap-2">
           <span className={
-            product.currentStock < 0 
-              ? "text-orange-600 font-medium" 
-              : product.currentStock <= product.reorderPoint 
-                ? "text-red-600 font-medium" 
+            product.currentStock < 0
+              ? "text-orange-600 font-medium"
+              : product.currentStock === 0
+                ? "text-red-600 font-medium"
                 : ""
           }>
             {product.currentStock}
@@ -94,7 +91,6 @@ export const ProductTableRow = React.memo(({
           )}
         </div>
       </TableCell>
-      <TableCell>{product.reorderPoint}</TableCell>
       <TableCell>{formatCurrency(product.sellingPrice)}</TableCell>
       <TableCell>
         <Badge className={getStatusColor(stockStatus)}>

@@ -12,7 +12,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
 import { HiExclamationTriangle, HiLockClosed } from "react-icons/hi2"
 import { usePermissions } from "@/hooks/usePermissions"
 
@@ -20,6 +19,8 @@ interface InventoryItem {
   id: string
   name: string
   category: string
+  brand?: string
+  supplier?: string
   current_stock: number
   min_stock: number
   max_stock: number
@@ -56,7 +57,7 @@ export default function InventoryReport() {
   const canViewInventoryReports = hasPermission('reports', 'canViewInventoryReports')
 
   const [inventoryData, setInventoryData] = useState<InventoryItem[]>([])
-  const [serverSummary, setServerSummary] = useState<{ totalItems: number; totalValue: number; lowStockItems: number; avgTurnover: number } | null>(null)
+  const [serverSummary, setServerSummary] = useState<{ totalItems: number; totalValue: number; outOfStockItems: number; avgTurnover: number } | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -72,7 +73,7 @@ export default function InventoryReport() {
         
         // The API client wraps the backend response in response.data
         // The backend returns { data: InventoryAnalysisData, success: true }
-        const responseData = response.data as { data: InventoryAnalysisData & { summary?: { totalItems: number; totalValue: number; lowStockItems: number; avgTurnover: number } } } | (InventoryAnalysisData & { summary?: { totalItems: number; totalValue: number; lowStockItems: number; avgTurnover: number } })
+        const responseData = response.data as { data: InventoryAnalysisData & { summary?: { totalItems: number; totalValue: number; outOfStockItems: number; avgTurnover: number } } } | (InventoryAnalysisData & { summary?: { totalItems: number; totalValue: number; outOfStockItems: number; avgTurnover: number } })
         const backendData = 'data' in responseData ? responseData.data : responseData
         setInventoryData(backendData.inventoryData || [])
         if (backendData.summary) setServerSummary(backendData.summary)
@@ -89,7 +90,7 @@ export default function InventoryReport() {
   // Use server-computed summary (fallback to local calculation)
   const totalItems = serverSummary?.totalItems ?? inventoryData.length
   const totalValue = serverSummary?.totalValue ?? inventoryData.reduce((sum, item) => sum + item.total_value, 0)
-  const lowStockItems = serverSummary?.lowStockItems ?? inventoryData.filter(item => item.status === 'low' || item.status === 'out').length
+  const outOfStockItems = serverSummary?.outOfStockItems ?? inventoryData.filter(item => item.status === 'out').length
   const avgTurnover = serverSummary?.avgTurnover ?? (inventoryData.reduce((sum, item) => sum + item.turnover_rate, 0) / inventoryData.length || 0)
 
 
@@ -124,18 +125,18 @@ export default function InventoryReport() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Alert for low stock */}
-        {lowStockItems > 0 && (
-          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-2">
-            <HiExclamationTriangle className="h-5 w-5 text-yellow-600" />
-            <p className="text-yellow-800">
-              <strong>{lowStockItems} items</strong> require immediate attention (low or out of stock)
+        {/* Alert for out-of-stock items */}
+        {outOfStockItems > 0 && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2">
+            <HiExclamationTriangle className="h-5 w-5 text-red-600" />
+            <p className="text-red-800">
+              <strong>{outOfStockItems} items</strong> are out of stock
             </p>
           </div>
         )}
 
         {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Items</CardTitle>
@@ -154,14 +155,6 @@ export default function InventoryReport() {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Low/Out Stock Items</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">{lowStockItems}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Avg Turnover Rate</CardTitle>
             </CardHeader>
             <CardContent>
@@ -171,10 +164,10 @@ export default function InventoryReport() {
         </div>
 
 
-        {/* Top 10 Low Stock Items */}
+        {/* Out-of-stock Items */}
         <Card className="mb-8">
           <CardHeader>
-            <CardTitle>Critical Stock Items - Immediate Attention Required</CardTitle>
+            <CardTitle>Out of Stock</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -182,11 +175,11 @@ export default function InventoryReport() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Item Name</TableHead>
+                    <TableHead>Brand</TableHead>
+                    <TableHead>Supplier</TableHead>
                     <TableHead>Category</TableHead>
                     <TableHead className="text-right">Current Stock</TableHead>
-                    <TableHead className="text-right">Min Required</TableHead>
                     <TableHead className="text-right">Days Supply</TableHead>
-                    <TableHead>Action Required</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -198,32 +191,24 @@ export default function InventoryReport() {
                     </TableRow>
                   ) : (
                     inventoryData
-                      .filter(item => item.status === 'low' || item.status === 'out')
+                      .filter(item => item.status === 'out')
                       .sort((a, b) => a.days_supply - b.days_supply)
                       .slice(0, 10)
                       .map((item) => (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">{item.name}</TableCell>
+                          <TableCell>{item.brand || '—'}</TableCell>
+                          <TableCell>{item.supplier || '—'}</TableCell>
                           <TableCell>{item.category}</TableCell>
                           <TableCell className="text-right">
-                            <span className={item.status === 'out' ? 'text-red-600 font-bold' : 'text-yellow-600'}>
+                            <span className="text-red-600 font-bold">
                               {item.current_stock} {item.unit}
                             </span>
                           </TableCell>
-                          <TableCell className="text-right">{item.min_stock} {item.unit}</TableCell>
                           <TableCell className="text-right">
                             <span className={item.days_supply <= 7 ? 'text-red-600 font-bold' : ''}>
                               {item.days_supply} days
                             </span>
-                          </TableCell>
-                          <TableCell>
-                            {item.status === 'out' ? (
-                              <Badge className="bg-red-100 text-red-800">Order Immediately</Badge>
-                            ) : item.days_supply <= 7 ? (
-                              <Badge className="bg-orange-100 text-orange-800">Order Soon</Badge>
-                            ) : (
-                              <Badge className="bg-yellow-100 text-yellow-800">Monitor</Badge>
-                            )}
                           </TableCell>
                         </TableRow>
                       ))

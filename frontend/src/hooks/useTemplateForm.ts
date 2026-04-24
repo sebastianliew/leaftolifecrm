@@ -4,6 +4,7 @@ import type { Product, UnitOfMeasurement } from '@/types/inventory';
 import { extractUnitId, getDefaultUnit } from '@/utils/unit-helpers';
 // Container helpers removed — container tracking no longer exists
 import { DEFAULT_INGREDIENT_QUANTITY } from '@/constants/blend-templates';
+import { perUnitCost } from '@/lib/pricing';
 
 interface FormData {
   name: string;
@@ -113,7 +114,7 @@ export function useTemplateForm(template?: BlendTemplate, units: UnitOfMeasureme
     const productUOM = product.unitOfMeasurement;
     let unitId = '';
     let unitName = '';
-    const costPerUnit = product.sellingPrice || 0;
+    const costPerUnit = perUnitCost(product) ?? 0;
     const defaultQuantity = DEFAULT_INGREDIENT_QUANTITY;
     const availableStock = product.currentStock || 0;
 

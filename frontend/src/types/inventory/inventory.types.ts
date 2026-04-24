@@ -11,7 +11,7 @@ export interface InventoryMovement {
 export interface StockAlert {
   id: string;
   productId: string;
-  alertType: 'low_stock' | 'out_of_stock' | 'expired' | 'expiring_soon';
+  alertType: 'out_of_stock' | 'expired' | 'expiring_soon';
   currentLevel: number;
   threshold: number;
   message: string;

@@ -13,11 +13,6 @@ export async function GET() {
     // Get active patients count
     const activePatients = await Patient.countDocuments();
 
-    // Get low stock alerts (products with currentStock <= reorderPoint or negative)
-    const lowStockCount = await Product.countDocuments({
-      $expr: { $lte: ['$currentStock', '$reorderPoint'] }
-    });
-    
     // Get oversold products count (negative stock)
     const oversoldCount = await Product.countDocuments({
       currentStock: { $lt: 0 }
@@ -86,7 +81,6 @@ export async function GET() {
     const stats = {
       totalProducts,
       activePatients,
-      lowStockAlerts: lowStockCount,
       oversoldProducts: oversoldCount,
       expiredProducts: expiredProductsCount,
       expiringSoonProducts: expiringSoonProductsCount,

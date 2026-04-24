@@ -10,7 +10,7 @@
  */
 
 import { Product } from '../models/Product.js';
-import { computeUnitPrice, safeContainerCapacity } from '../utils/pricingUtils.js';
+import { computeUnitPrice, safeContainerCapacity, perUnitCost } from '../utils/pricingUtils.js';
 
 // Item types eligible for membership discounts
 const DISCOUNT_ELIGIBLE_ITEM_TYPES = new Set(['product', 'fixed_blend']);
@@ -183,9 +183,9 @@ class TransactionCalculationService {
 
       let totalIngredientCost = 0;
       for (const ing of item.customBlendData.ingredients) {
-        const product = ingredientMap.get(ing.productId) as { sellingPrice?: number } | undefined;
+        const product = ingredientMap.get(ing.productId) as { costPrice?: number; containerCapacity?: number } | undefined;
         if (product) {
-          ing.costPerUnit = product.sellingPrice ?? 0;
+          ing.costPerUnit = perUnitCost(product) ?? 0;
           totalIngredientCost += ing.quantity * ing.costPerUnit;
         }
       }

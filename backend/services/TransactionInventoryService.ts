@@ -3,9 +3,11 @@ import { Product } from '../models/Product.js';
 import { Bundle } from '../models/Bundle.js';
 import { BlendTemplate } from '../models/BlendTemplate.js';
 import { InventoryMovement, IInventoryMovement } from '../models/inventory/InventoryMovement.js';
+import { CustomBlendHistory } from '../models/CustomBlendHistory.js';
 import { CustomBlendService } from './CustomBlendService.js';
 import { ITransaction } from '../models/Transaction.js';
 import { InventoryDeductionResult, InventoryReversalResult, TransactionItem } from '../types/transaction-inventory.types.js';
+import { InsufficientStockError, type InsufficientStockDetail } from '../middlewares/errorHandler.middleware.js';
 
 // ── Helpers ──
 
@@ -62,7 +64,10 @@ async function deductBlendIngredients(
       reference: transactionRef,
       notes: `${contextLabel}: ${ing.name} for ${template.name} x ${quantity}`,
       createdBy: userId, productName: ing.name,
-      pool: 'any',
+      // Blend ingredients are dispensed from open (loose) bottles.
+      // pool='loose' decrements looseStock + currentStock together so subsequent
+      // volume/loose validations see accurate pool availability.
+      pool: 'loose',
     }, session));
   }
   return movements;
@@ -91,13 +96,13 @@ const processProduct: ItemProcessor = async (item, ref, userId, session) => {
 const processFixedBlend: ItemProcessor = async (item, ref, userId, session) => {
   const movements = await deductBlendIngredients(item.productId, item.quantity, ref, userId, 'Fixed blend ingredient', session);
 
-  // Update usage stats
-  const template = await BlendTemplate.findById(item.productId).session(session || null);
-  if (template) {
-    template.usageCount = (template.usageCount || 0) + item.quantity;
-    template.lastUsed = new Date();
-    await saveDoc(template, session);
-  }
+  // Atomic usage-stat update. Read-modify-write loses counter updates under
+  // concurrent sales of the same template — $inc is the only safe form.
+  await BlendTemplate.updateOne(
+    { _id: item.productId },
+    { $inc: { usageCount: item.quantity }, $set: { lastUsed: new Date() } },
+    session ? { session } : {},
+  );
 
   return movements;
 };
@@ -133,7 +138,11 @@ const processBundle: ItemProcessor = async (item, ref, userId, session) => {
         baseUnit: bp.unitName || 'unit',
         reference: ref,
         notes: `Bundle sale: ${bp.name} from ${bundle.name} x ${item.quantity}`,
-        createdBy: userId, productName: bp.name
+        createdBy: userId, productName: bp.name,
+        // Bundle components are typically dispensed from open (loose) stock just
+        // like blend ingredients. pool='loose' keeps looseStock in sync with
+        // currentStock; the 'any' default was leaving looseStock stale.
+        pool: 'loose',
       }, session));
     }
   }
@@ -150,8 +159,161 @@ const ITEM_PROCESSORS: Record<string, ItemProcessor> = {
 
 // ── Main Service ──
 
+type Requirement = { loose: number; sealed: number; any: number; name: string };
+const ID_RE = /^[a-fA-F0-9]{24}$/;
+
 export class TransactionInventoryService {
   private customBlendService = new CustomBlendService();
+
+  /**
+   * Expand a transaction's items into per-product pool requirements.
+   *
+   * Strict pool enforcement (loose vs sealed) applies only to direct
+   * product sales — volume sales must be satisfied by loose stock, sealed
+   * sales by sealed stock. Blend ingredients (fixed, bundle-blend,
+   * custom) and bundle components use `any` because they draw from total
+   * stock: the pharmacist may open a sealed bottle mid-blend, which is
+   * semantically a pool transfer rather than a hard availability wall.
+   *
+   * Non-inventory item types (service/consultation/miscellaneous) and
+   * non-ObjectId productIds are skipped — they do not reach stock.
+   */
+  private async computeRequirements(
+    transaction: ITransaction,
+    session?: ClientSession,
+  ): Promise<Map<string, Requirement>> {
+    const reqs = new Map<string, Requirement>();
+    const bump = (productId: string, pool: 'loose' | 'sealed' | 'any', qty: number, name: string) => {
+      if (!productId || qty <= 0) return;
+      const cur = reqs.get(productId) || { loose: 0, sealed: 0, any: 0, name };
+      cur[pool] += qty;
+      if (!cur.name) cur.name = name;
+      reqs.set(productId, cur);
+    };
+
+    for (const item of transaction.items) {
+      const tx = item as TransactionItem;
+      const itemType = tx.itemType || 'product';
+      if (NO_INVENTORY_TYPES.has(itemType)) continue;
+
+      if (itemType === 'product') {
+        if (!tx.productId || !ID_RE.test(tx.productId)) continue;
+        const pool = tx.saleType === 'volume' ? 'loose' : 'sealed';
+        bump(tx.productId, pool, Number(tx.convertedQuantity ?? 0), tx.name);
+      } else if (itemType === 'fixed_blend') {
+        if (!tx.productId || !ID_RE.test(tx.productId)) continue;
+        const template = await BlendTemplate.findById(tx.productId).session(session || null).lean() as
+          | { ingredients: Array<{ productId: unknown; quantity: number; name: string }> }
+          | null;
+        if (!template) continue;
+        for (const ing of template.ingredients) {
+          const scaled = Number(ing.quantity) * Number(tx.quantity ?? 1);
+          bump(String(ing.productId), 'any', scaled, ing.name);
+        }
+      } else if (itemType === 'bundle') {
+        if (!tx.productId || !ID_RE.test(tx.productId)) continue;
+        const bundle = await Bundle.findById(tx.productId).session(session || null).lean() as
+          | { bundleProducts: Array<{ productId: unknown; productType?: string; blendTemplateId?: unknown; quantity: number; name: string }> }
+          | null;
+        if (!bundle) continue;
+        for (const bp of bundle.bundleProducts) {
+          const totalQty = Number(bp.quantity) * Number(tx.quantity ?? 1);
+          if (bp.productType === 'fixed_blend' && bp.blendTemplateId) {
+            const template = await BlendTemplate.findById(bp.blendTemplateId).session(session || null).lean() as
+              | { ingredients: Array<{ productId: unknown; quantity: number; name: string }> }
+              | null;
+            if (!template) continue;
+            for (const ing of template.ingredients) {
+              bump(String(ing.productId), 'any', Number(ing.quantity) * totalQty, ing.name);
+            }
+          } else {
+            bump(String(bp.productId), 'any', totalQty, bp.name);
+          }
+        }
+      } else if (itemType === 'custom_blend') {
+        const blendData = tx.customBlendData;
+        if (!blendData?.ingredients) continue;
+        // Matches CustomBlendService.deductCustomBlendIngredients: ingredient
+        // quantities are absolute per this blend, not scaled by item.quantity.
+        for (const ing of blendData.ingredients) {
+          if (!ing.productId || !ID_RE.test(String(ing.productId))) continue;
+          bump(String(ing.productId), 'any', Number(ing.quantity ?? 0), ing.name || '');
+        }
+      }
+    }
+    return reqs;
+  }
+
+  /**
+   * Check whether the transaction can be fulfilled against current stock.
+   * Throws InsufficientStockError with the full list of shortages if not.
+   * Safe to call before processTransactionInventory as a fast-fail guard.
+   *
+   * NOTE: This is best-effort. The atomic per-movement guard in
+   * InventoryMovement.updateProductStock is the source of truth under
+   * concurrent writes.
+   */
+  async checkAvailability(transaction: ITransaction, session?: ClientSession): Promise<void> {
+    const reqs = await this.computeRequirements(transaction, session);
+    if (reqs.size === 0) return;
+
+    const ids = Array.from(reqs.keys())
+      .filter((id) => ID_RE.test(id))
+      .map((id) => new mongoose.Types.ObjectId(id));
+    if (ids.length === 0) return;
+
+    const products = (await Product.find({ _id: { $in: ids } })
+      .select('_id name currentStock looseStock')
+      .session(session || null)
+      .lean()) as unknown as Array<{ _id: mongoose.Types.ObjectId; name: string; currentStock: number; looseStock?: number }>;
+
+    const map = new Map(products.map((p) => [String(p._id), p]));
+
+    const shortages: InsufficientStockDetail[] = [];
+    for (const [productId, req] of reqs.entries()) {
+      const p = map.get(productId);
+      if (!p) {
+        shortages.push({
+          productId,
+          productName: req.name || 'unknown',
+          requested: req.loose + req.sealed + req.any,
+          available: 0,
+          pool: 'any',
+          reason: 'product_not_found',
+        });
+        continue;
+      }
+      const currentStock = Number(p.currentStock ?? 0);
+      const looseStock = Number(p.looseStock ?? 0);
+      const sealedStock = currentStock - looseStock;
+
+      if (req.loose > looseStock) {
+        shortages.push({
+          productId, productName: p.name,
+          requested: req.loose, available: Math.max(0, looseStock),
+          pool: 'loose', reason: 'insufficient_stock',
+        });
+      }
+      if (req.sealed > sealedStock) {
+        shortages.push({
+          productId, productName: p.name,
+          requested: req.sealed, available: Math.max(0, sealedStock),
+          pool: 'sealed', reason: 'insufficient_stock',
+        });
+      }
+      // For 'any'-pool demand, ensure total demand doesn't exceed total stock.
+      const totalDemand = req.any + req.loose + req.sealed;
+      if (req.any > 0 && totalDemand > currentStock) {
+        shortages.push({
+          productId, productName: p.name,
+          requested: req.any, available: Math.max(0, currentStock - req.loose - req.sealed),
+          pool: 'any', reason: 'insufficient_stock',
+        });
+      }
+    }
+
+    if (shortages.length > 0) throw new InsufficientStockError(shortages);
+  }
 
   async processTransactionInventory(
     transaction: ITransaction,
@@ -183,6 +345,11 @@ export class TransactionInventoryService {
       }
     }
 
+    // Pre-check: fail fast with a single consolidated shortage response
+    // before any writes. Defense-in-depth is provided by the atomic guard
+    // inside InventoryMovement.updateProductStock (handles TOCTOU races).
+    await this.checkAvailability(transaction, session);
+
     for (const item of transaction.items) {
       try {
         const txItem = item as TransactionItem;
@@ -191,7 +358,13 @@ export class TransactionInventoryService {
         if (NO_INVENTORY_TYPES.has(itemType)) continue;
 
         if (itemType === 'custom_blend') {
-          // Handled separately by CustomBlendService during transaction creation
+          const movements = await this.processCustomBlend(
+            txItem,
+            transaction,
+            userId,
+            session,
+          );
+          for (const m of movements) result.movements.push(m);
           continue;
         }
 
@@ -206,6 +379,9 @@ export class TransactionInventoryService {
           }
         }
       } catch (error) {
+        // InsufficientStockError must propagate so the HTTP layer returns
+        // a structured 400 rather than a 200 with a silent error list.
+        if (error instanceof InsufficientStockError) throw error;
         result.errors.push(`Failed to process ${item.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
@@ -267,6 +443,67 @@ export class TransactionInventoryService {
     }
 
     return result;
+  }
+
+  /**
+   * Deduct ingredient stock for a custom_blend item and record a
+   * CustomBlendHistory entry. Runs inside the outer mongoose session so
+   * movements, stock, and the history record commit atomically with the
+   * parent transaction.
+   */
+  private async processCustomBlend(
+    item: TransactionItem,
+    transaction: ITransaction,
+    userId: string,
+    session?: ClientSession,
+  ): Promise<IInventoryMovement[]> {
+    const blendData = item.customBlendData;
+    if (!blendData || !blendData.ingredients || blendData.ingredients.length === 0) {
+      return [];
+    }
+
+    const unitPrice = (item as unknown as { unitPrice?: number }).unitPrice ?? 0;
+    const totalIngredientCost = blendData.totalIngredientCost || 0;
+    const mixedBy = blendData.mixedBy || userId;
+    const transactionId = (transaction as unknown as { _id: unknown })._id;
+
+    const movements = await this.customBlendService.deductCustomBlendIngredients(
+      blendData.ingredients as unknown as Parameters<
+        typeof this.customBlendService.deductCustomBlendIngredients
+      >[0],
+      String(transactionId),
+      transaction.transactionNumber,
+      mixedBy,
+      session,
+    );
+
+    // Capture a per-sale recipe snapshot. Pre-save middleware computes signatureHash.
+    const history = new CustomBlendHistory({
+      blendName: blendData.name || item.name,
+      customerId: transaction.customerId,
+      customerName: transaction.customerName || 'Walk-in Customer',
+      customerEmail: transaction.customerEmail,
+      customerPhone: transaction.customerPhone,
+      ingredients: blendData.ingredients,
+      totalIngredientCost,
+      sellingPrice: unitPrice,
+      marginPercent: unitPrice > 0
+        ? ((unitPrice - totalIngredientCost) / unitPrice) * 100
+        : 0,
+      preparationNotes: blendData.preparationNotes,
+      mixedBy,
+      transactionId,
+      transactionNumber: transaction.transactionNumber,
+      createdBy: userId,
+    });
+
+    if (session) {
+      await history.save({ session });
+    } else {
+      await history.save();
+    }
+
+    return movements;
   }
 }
 

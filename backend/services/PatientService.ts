@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+import path from 'path';
 import { Patient } from '../models/Patient.js';
 import type { PatientFormData, Patient as PatientType } from '../types/patient.js';
 import {
@@ -9,6 +11,14 @@ import {
   toDotNotation,
   isPastOrToday
 } from '../lib/validations/sanitize.js';
+import { getStorageDriver } from '../lib/storage/index.js';
+
+export interface PhotoInput {
+  buffer: Buffer;
+  originalName: string;
+  contentType: string;
+  size: number;
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -30,7 +40,7 @@ const NESTED_KEYS = ['memberBenefits', 'marketingPreferences', 'financialSummary
 const SORTABLE_FIELDS = new Set(['createdAt', 'updatedAt', 'firstName', 'lastName', 'email', 'status']);
 
 /** Select projection for list / selector views (omit heavy medical data). */
-const LIST_PROJECTION = '-medicalHistory -enhancedMedicalData -consentHistory -migrationInfo';
+const LIST_PROJECTION = '-medicalHistory -enhancedMedicalData -consentHistory -migrationInfo -medicalPhotos';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -199,6 +209,82 @@ export class PatientService {
   /** Recent patients (lightweight). */
   async getRecentPatients(limit = 10) {
     return Patient.find().select(LIST_PROJECTION).sort({ updatedAt: -1 }).limit(clampLimit(limit)).lean();
+  }
+
+  /** List medical photos for a patient. */
+  async getPatientPhotos(id: string) {
+    requireObjectId(id, 'patient ID');
+    const patient = await Patient.findById(id).select('medicalPhotos').lean();
+    if (!patient) throw Object.assign(new Error('Patient not found'), { statusCode: 404 });
+    return { photos: (patient as { medicalPhotos?: unknown[] }).medicalPhotos ?? [] };
+  }
+
+  /**
+   * Verify the patient exists, upload the photo buffer to object storage, and
+   * record its metadata on the patient doc. If either the upload or DB write
+   * fails after the object is in storage, the object is deleted.
+   */
+  async addPatientPhoto(id: string, photo: PhotoInput) {
+    requireObjectId(id, 'patient ID');
+
+    // Fail fast if the patient doesn't exist — avoids orphan objects.
+    const exists = await Patient.findById(id).select('_id').lean();
+    if (!exists) throw Object.assign(new Error('Patient not found'), { statusCode: 404 });
+
+    const ext = path.extname(photo.originalName).toLowerCase().slice(0, 10) || '';
+    const storageKey = `patient-photos/${id}/${crypto.randomUUID()}${ext}`;
+
+    const storage = getStorageDriver();
+    const url = await storage.upload(storageKey, photo.buffer, photo.contentType);
+
+    try {
+      const patient = await Patient.findByIdAndUpdate(
+        id,
+        {
+          $push: {
+            medicalPhotos: {
+              storageKey,
+              originalName: photo.originalName,
+              url,
+              contentType: photo.contentType,
+              size: photo.size,
+            },
+          },
+        },
+        { new: true, runValidators: false }
+      ).select('medicalPhotos').lean();
+
+      if (!patient) {
+        await storage.delete(storageKey).catch(() => {});
+        throw Object.assign(new Error('Patient not found'), { statusCode: 404 });
+      }
+
+      const photos = (patient as unknown as { medicalPhotos: Array<{ _id: unknown }> }).medicalPhotos;
+      return { photo: photos[photos.length - 1] };
+    } catch (err) {
+      await storage.delete(storageKey).catch(() => {});
+      throw err;
+    }
+  }
+
+  /** Remove a photo by subdoc _id and delete the object from storage. */
+  async deletePatientPhoto(id: string, photoId: string) {
+    requireObjectId(id, 'patient ID');
+    requireObjectId(photoId, 'photo ID');
+
+    const patient = await Patient.findById(id).select('medicalPhotos');
+    if (!patient) throw Object.assign(new Error('Patient not found'), { statusCode: 404 });
+
+    const photos = (patient as unknown as { medicalPhotos: Array<{ _id: { toString(): string }; storageKey: string }> }).medicalPhotos;
+    const target = photos.find(p => p._id.toString() === photoId);
+    if (!target) throw Object.assign(new Error('Photo not found'), { statusCode: 404 });
+
+    await Patient.updateOne({ _id: id }, { $pull: { medicalPhotos: { _id: photoId } } });
+
+    // Best-effort object cleanup — don't fail the request if storage delete fails
+    await getStorageDriver().delete(target.storageKey).catch(() => {});
+
+    return { message: 'Photo deleted successfully' };
   }
 
   /** Aggregate stats for dashboard. */

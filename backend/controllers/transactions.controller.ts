@@ -13,7 +13,8 @@ import { PermissionService } from '../lib/permissions/PermissionService.js';
 import type { FeaturePermissions } from '../lib/permissions/types.js';
 import { createAuditLog } from '../models/AuditLog.js';
 import { transactionInventoryService } from '../services/TransactionInventoryService.js';
-import { computeUnitPrice, safeContainerCapacity } from '../utils/pricingUtils.js';
+import { AppError, InsufficientStockError, type InsufficientStockDetail } from '../middlewares/errorHandler.middleware.js';
+import { computeUnitPrice, safeContainerCapacity, perUnitCost } from '../utils/pricingUtils.js';
 import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 import { normalizeTransactionForPayment, formatInvoiceFilename } from '../utils/transactionUtils.js';
 
@@ -190,7 +191,8 @@ export const getTransactions = async (req: AuthenticatedRequest, res: Response):
       paymentStatus,
       status,
       dateFrom,
-      dateTo
+      dateTo,
+      customerId
     } = req.query;
 
     const pageNumber = Math.max(1, parseInt(page as string, 10));
@@ -210,9 +212,23 @@ export const getTransactions = async (req: AuthenticatedRequest, res: Response):
         $gte?: Date;
         $lte?: Date;
       };
+      customerId?: string;
+      isDeleted?: { $ne: boolean };
     }
 
     const filter: TransactionFilter = {};
+
+    // Default to excluding soft-deleted records (issue #26). Admin tooling
+    // can pass ?includeDeleted=true to see archived transactions.
+    if (req.query.includeDeleted !== 'true') {
+      filter.isDeleted = { $ne: true };
+    }
+
+    // Filter to a single patient when requested (used by the patient detail
+    // page invoice tab — issue #23).
+    if (customerId && typeof customerId === 'string') {
+      filter.customerId = customerId;
+    }
 
     // Payment status filter
     if (paymentStatus && typeof paymentStatus === 'string') {
@@ -516,47 +532,18 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
 
     // ========================================================================
     // SERVER-SIDE STOCK VALIDATION
-    // Warn on insufficient stock (don't block — clinic workflow allows negative)
+    // Reject non-draft transactions that would take stock to/below zero.
+    // The atomic guard in InventoryMovement.updateProductStock is the
+    // authoritative check under concurrent writes; this pre-check exists so
+    // the user gets a single consolidated 400 with per-item detail before
+    // any DB work happens. Drafts are exempt — staff can stage a cart
+    // against a product that's currently out.
     // ========================================================================
     if (transactionData.status !== 'draft') {
-      const stockCheckProductIds = transactionData.items
-        .filter((item: { productId?: string; itemType?: string }) =>
-          item.productId && /^[a-fA-F0-9]{24}$/.test(item.productId) &&
-          item.itemType !== 'custom_blend' && item.itemType !== 'bundle' &&
-          item.itemType !== 'miscellaneous' && item.itemType !== 'service' && item.itemType !== 'consultation'
-        )
-        .map((item: { productId: string }) => item.productId);
-
-      if (stockCheckProductIds.length > 0) {
-        const stockProducts = await Product.find({ _id: { $in: stockCheckProductIds } }).select('_id name currentStock looseStock containerCapacity').lean() as unknown as Array<{ _id: unknown; name: string; currentStock: number; looseStock?: number; containerCapacity?: number }>;
-        const stockMap = new Map(stockProducts.map((p) => [String(p._id), p]));
-
-        const stockWarnings: string[] = [];
-        for (const item of transactionData.items) {
-          if (!item.productId) continue;
-          const prod = stockMap.get(item.productId);
-          if (!prod) continue;
-
-          if (item.saleType === 'volume') {
-            // Volume/loose sale — warn if convertedQty exceeds looseStock
-            const looseAvail = prod.looseStock ?? 0;
-            if (item.convertedQuantity > looseAvail) {
-              stockWarnings.push(`${prod.name}: selling ${item.convertedQuantity} loose but only ${looseAvail} in loose pool`);
-            }
-          } else {
-            // Sealed sale — warn if insufficient sealed stock
-            const sealedStock = Math.max(0, prod.currentStock - (prod.looseStock ?? 0));
-            if (item.convertedQuantity > sealedStock) {
-              stockWarnings.push(`${prod.name}: selling ${item.convertedQuantity} sealed but only ${sealedStock} in sealed pool`);
-            }
-          }
-        }
-
-        if (stockWarnings.length > 0) {
-          console.warn('[Transaction] Low stock warnings:', stockWarnings);
-          // Attach warnings to response later (don't block transaction)
-        }
-      }
+      await transactionInventoryService.checkAvailability({
+        items: transactionData.items,
+        transactionNumber: transactionData.transactionNumber || 'pending',
+      } as unknown as Parameters<typeof transactionInventoryService.checkAvailability>[0]);
     }
 
     // ========================================================================
@@ -579,17 +566,19 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
           for (const ing of item.customBlendData.ingredients) {
             const product = ingredientMap.get(ing.productId);
             if (product) {
-              const ingSellingPrice = (product as { sellingPrice?: number }).sellingPrice ?? 0;
-              ing.costPerUnit = ingSellingPrice;
-              totalIngredientCost += ing.quantity * ingSellingPrice;
+              // Per-base-unit cost from product.costPrice ÷ containerCapacity.
+              // Falls back to 0 rather than sellingPrice — see pricingUtils docstring.
+              const unitCost = perUnitCost(product as Parameters<typeof perUnitCost>[0]) ?? 0;
+              ing.costPerUnit = unitCost;
+              totalIngredientCost += ing.quantity * unitCost;
             }
           }
 
-          item.customBlendData.totalIngredientCost = totalIngredientCost;
+          item.customBlendData.totalIngredientCost = Math.round(totalIngredientCost * 100) / 100;
 
           // Warn if selling price is below ingredient cost (don't block — staff may intentionally discount)
-          if (item.unitPrice < totalIngredientCost) {
-            console.warn(`[Transaction] Custom blend "${item.name}" priced below ingredient cost: $${item.unitPrice} < $${totalIngredientCost}`);
+          if (item.unitPrice < item.customBlendData.totalIngredientCost) {
+            console.warn(`[Transaction] Custom blend "${item.name}" priced below ingredient cost: $${item.unitPrice} < $${item.customBlendData.totalIngredientCost}`);
           }
         }
       }
@@ -837,6 +826,14 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
       duration: Date.now() - startTime
     });
 
+    if (error instanceof AppError) {
+      const body: Record<string, unknown> = { error: error.message };
+      if (error.code) body.code = error.code;
+      if (error.details) body.details = error.details;
+      res.status(error.statusCode).json(body);
+      return;
+    }
+
     res.status(500).json({
       error: 'Failed to create transaction',
       message: error instanceof Error ? error.message : 'Unknown error'
@@ -1078,6 +1075,57 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
       }
     }
 
+    // ========================================================================
+    // SERVER-SIDE STOCK VALIDATION (pre-persistence)
+    // Two paths require a stock check before we persist the update:
+    //
+    //   1. Draft → completed: full availability check on the final items.
+    //   2. Completed-txn item edit: only POSITIVE deltas represent new
+    //      demand; negative deltas are restorations which always succeed.
+    //
+    // We throw InsufficientStockError so the outer catch returns 400 with
+    // per-item detail. Persisting the update before the check would leave
+    // the transaction in an inconsistent state (marked completed with no
+    // inventory movements).
+    // ========================================================================
+    if (needsInventoryDeduction && Array.isArray(updateData.items) && updateData.items.length > 0) {
+      await transactionInventoryService.checkAvailability({
+        items: updateData.items,
+        transactionNumber: existingTransaction.transactionNumber,
+      } as unknown as Parameters<typeof transactionInventoryService.checkAvailability>[0]);
+    }
+
+    if (isCompletedItemUpdate) {
+      const positive = inventoryDeltas.filter((d) => d.delta > 0);
+      if (positive.length > 0) {
+        const products = (await Product.find({
+          _id: { $in: positive.map((d) => d.productId) }
+        }).select('_id name currentStock').lean()) as unknown as Array<{ _id: unknown; name: string; currentStock: number }>;
+        const map = new Map(products.map((p) => [String(p._id), p]));
+        const shortages: InsufficientStockDetail[] = [];
+        for (const d of positive) {
+          const p = map.get(d.productId);
+          if (!p) {
+            shortages.push({
+              productId: d.productId, productName: d.productName,
+              requested: d.delta, available: 0, pool: 'any',
+              reason: 'product_not_found',
+            });
+            continue;
+          }
+          const current = Number(p.currentStock ?? 0);
+          if (current < d.delta) {
+            shortages.push({
+              productId: d.productId, productName: d.productName || p.name,
+              requested: d.delta, available: Math.max(0, current),
+              pool: 'any', reason: 'insufficient_stock',
+            });
+          }
+        }
+        if (shortages.length > 0) throw new InsufficientStockError(shortages);
+      }
+    }
+
     // Update the transaction first
     const updatedTransaction = await Transaction.findByIdAndUpdate(
       id,
@@ -1114,11 +1162,15 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
         } catch (invError) {
           await inventorySession.abortTransaction();
           console.error('[Transaction] Inventory processing failed for draft conversion:', invError);
-          // Continue - inventory can be reconciled later
+          // InsufficientStockError must surface to the client — a concurrent
+          // sale may have drained stock between our pre-check and here.
+          if (invError instanceof InsufficientStockError) throw invError;
+          // Other errors: continue — inventory can be reconciled later.
         } finally {
           inventorySession.endSession();
         }
       } catch (sessionError) {
+        if (sessionError instanceof InsufficientStockError) throw sessionError;
         console.error('[Transaction] Failed to create inventory session:', sessionError);
       }
     }
@@ -1194,11 +1246,13 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
         } catch (deltaErr) {
           await deltaSession.abortTransaction();
           console.error('[Transaction] Inventory delta adjustment failed:', deltaErr);
-          // Non-fatal — transaction update already saved, log for manual reconciliation
+          if (deltaErr instanceof InsufficientStockError) throw deltaErr;
+          // Other errors are non-fatal — transaction update already saved, log for manual reconciliation
         } finally {
           deltaSession.endSession();
         }
       } catch (sessionErr) {
+        if (sessionErr instanceof InsufficientStockError) throw sessionErr;
         console.error('[Transaction] Failed to create delta session:', sessionErr);
       }
     }
@@ -1327,6 +1381,13 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
     res.status(200).json(updatedTransaction);
   } catch (error) {
     console.error('Error updating transaction:', error);
+    if (error instanceof AppError) {
+      const body: Record<string, unknown> = { error: error.message };
+      if (error.code) body.code = error.code;
+      if (error.details) body.details = error.details;
+      res.status(error.statusCode).json(body);
+      return;
+    }
     res.status(500).json({ error: 'Failed to update transaction' });
   }
 };
@@ -1347,7 +1408,11 @@ export const deleteTransaction = async (req: AuthenticatedRequest, res: Response
       return;
     }
 
-    // Block hard-delete of completed/refunded transactions — must cancel first to preserve audit trail + inventory
+    // Issue #26: preserve invoice history. Completed/refunded transactions
+    // are never hard-deleted — require cancellation first (keeps the record
+    // visible). Cancelled/pending records become soft-deleted so they're
+    // hidden from default queries but remain recoverable via admin tools.
+    // Drafts (unsaved work) are still eligible for a true hard delete.
     if (
       transaction.status === 'completed' ||
       transaction.status === 'refunded' ||
@@ -1387,8 +1452,24 @@ export const deleteTransaction = async (req: AuthenticatedRequest, res: Response
       }
     }
 
-    await Transaction.findByIdAndDelete(id);
-    res.status(200).json({ message: 'Transaction deleted successfully' });
+    // Drafts are ephemeral — safe to hard-delete. Everything else is soft-deleted.
+    if (transaction.status === 'draft') {
+      await Transaction.findByIdAndDelete(id);
+      res.status(200).json({ message: 'Draft deleted' });
+      return;
+    }
+
+    await Transaction.findByIdAndUpdate(id, {
+      $set: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: req.user?.id || 'system',
+        deleteReason: (req.body && typeof req.body === 'object' && 'reason' in req.body)
+          ? String((req.body as Record<string, unknown>).reason ?? '')
+          : undefined,
+      },
+    });
+    res.status(200).json({ message: 'Transaction archived (soft-deleted)' });
   } catch (error) {
     console.error('Error deleting transaction:', error);
     res.status(500).json({ error: 'Failed to delete transaction' });

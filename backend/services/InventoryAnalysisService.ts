@@ -5,15 +5,15 @@ export interface InventoryItem {
   id: string
   name: string
   category: string
+  brand?: string
+  supplier?: string
   current_stock: number
-  min_stock: number
-  max_stock: number
   unit: string
   unit_cost: number
   total_value: number
   turnover_rate: number
   days_supply: number
-  status: 'optimal' | 'low' | 'overstock' | 'out'
+  status: 'optimal' | 'out'
   full_containers?: number
   loose_remainder?: number
   container_display?: string
@@ -41,7 +41,7 @@ export interface InventoryAnalysisData {
   summary?: {
     totalItems: number
     totalValue: number
-    lowStockItems: number
+    outOfStockItems: number
     avgTurnover: number
   }
 }
@@ -83,9 +83,9 @@ export class InventoryAnalysisService {
       const val = (item as { total_value?: number }).total_value
       return sum + (typeof val === 'number' && !isNaN(val) ? val : 0)
     }, 0)
-    const lowStockItems = enhancedInventoryData.filter((item) => {
+    const outOfStockItems = enhancedInventoryData.filter((item) => {
       const status = (item as { status?: string }).status
-      return status === 'low' || status === 'out'
+      return status === 'out'
     }).length
     const avgTurnover = totalItems > 0
       ? enhancedInventoryData.reduce((sum, item) => sum + ((item as { turnover_rate?: number }).turnover_rate ?? 0), 0) / totalItems
@@ -98,7 +98,7 @@ export class InventoryAnalysisService {
       summary: {
         totalItems,
         totalValue: summaryTotalValue,
-        lowStockItems,
+        outOfStockItems,
         avgTurnover,
       }
     }
@@ -108,8 +108,9 @@ export class InventoryAnalysisService {
     id: string;
     name: string;
     category: string;
+    brand: string;
+    supplier: string;
     current_stock: number;
-    min_stock: number;
     cost_price: number;
     selling_price: number;
     stock_status: string;
@@ -127,28 +128,21 @@ export class InventoryAnalysisService {
           id: { $toString: '$_id' },
           name: 1,
           category: { $ifNull: ['$categoryName', 'Uncategorized'] },
+          brand: { $ifNull: ['$brandName', ''] },
+          supplier: { $ifNull: ['$supplierName', ''] },
           current_stock: { $ifNull: ['$currentStock', 0] },
-          min_stock: { $ifNull: ['$reorderPoint', 10] },
-          max_stock: { $multiply: [{ $ifNull: ['$reorderPoint', 10] }, 5] },
           unit: { $ifNull: ['$unitName', 'units'] },
           unit_cost: { $ifNull: ['$costPrice', 0] },
           container_capacity: { $ifNull: ['$containerCapacity', 1] },
           loose_stock: { $ifNull: ['$looseStock', 0] },
-          total_value: { 
+          total_value: {
             $multiply: [
-              { $ifNull: ['$currentStock', 0] }, 
+              { $ifNull: ['$currentStock', 0] },
               { $ifNull: ['$costPrice', 0] }
-            ] 
+            ]
           },
           status: {
-            $switch: {
-              branches: [
-                { case: { $lte: [{ $ifNull: ['$currentStock', 0] }, 0] }, then: 'out' },
-                { case: { $lte: [{ $ifNull: ['$currentStock', 0] }, '$reorderPoint'] }, then: 'low' },
-                { case: { $gte: [{ $ifNull: ['$currentStock', 0] }, { $multiply: ['$reorderPoint', 5] }] }, then: 'overstock' }
-              ],
-              default: 'optimal'
-            }
+            $cond: [{ $lte: [{ $ifNull: ['$currentStock', 0] }, 0] }, 'out', 'optimal']
           }
         }
       }
@@ -158,8 +152,9 @@ export class InventoryAnalysisService {
       id: string;
       name: string;
       category: string;
+      brand: string;
+      supplier: string;
       current_stock: number;
-      min_stock: number;
       cost_price: number;
       selling_price: number;
       stock_status: string;
@@ -205,8 +200,9 @@ export class InventoryAnalysisService {
       id: string;
       name: string;
       category: string;
+      brand: string;
+      supplier: string;
       current_stock: number;
-      min_stock: number;
       cost_price: number;
       selling_price: number;
       stock_status: string;
@@ -220,15 +216,8 @@ export class InventoryAnalysisService {
       const dailySales = monthlySales / 30
       const turnoverRate = item.current_stock > 0 ? (monthlySales / item.current_stock) : 0
       const daysSupply = dailySales > 0 ? Math.floor(item.current_stock / dailySales) : 999
-      
-      let status: InventoryItem['status'] = 'optimal'
-      if (item.current_stock <= 0) {
-        status = 'out'
-      } else if (item.current_stock <= item.min_stock) {
-        status = 'low'
-      } else if (daysSupply > 90) {
-        status = 'overstock'
-      }
+
+      const status: InventoryItem['status'] = item.current_stock <= 0 ? 'out' : 'optimal'
 
       // Calculate container-related fields using actual looseStock
       const containerCapacity = item.container_capacity || 1
@@ -249,7 +238,6 @@ export class InventoryAnalysisService {
 
       return {
         ...item,
-        max_stock: item.current_stock * 2, // Default to 2x current stock
         unit: 'unit', // Default unit
         unit_cost: item.cost_price,
         total_value: item.current_stock * item.cost_price,
@@ -323,16 +311,6 @@ export class InventoryAnalysisService {
         status: 'Optimal Stock',
         count: inventoryData.filter(item => item.status === 'optimal').length,
         value: inventoryData.filter(item => item.status === 'optimal').reduce((sum, item) => sum + item.total_value, 0)
-      },
-      {
-        status: 'Low Stock',
-        count: inventoryData.filter(item => item.status === 'low').length,
-        value: inventoryData.filter(item => item.status === 'low').reduce((sum, item) => sum + item.total_value, 0)
-      },
-      {
-        status: 'Overstock',
-        count: inventoryData.filter(item => item.status === 'overstock').length,
-        value: inventoryData.filter(item => item.status === 'overstock').reduce((sum, item) => sum + item.total_value, 0)
       },
       {
         status: 'Out of Stock',

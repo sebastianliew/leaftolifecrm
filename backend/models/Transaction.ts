@@ -114,6 +114,12 @@ export interface ITransaction extends Document {
   refundCount?: number;
   lastRefundDate?: Date;
   refundableAmount?: number;
+
+  // Soft-delete guard (issue #26)
+  isDeleted?: boolean;
+  deletedAt?: Date;
+  deletedBy?: string;
+  deleteReason?: string;
 }
 
 // Schema for custom blend ingredients
@@ -263,7 +269,15 @@ const TransactionSchema = new Schema<ITransaction>({
   refundHistory: [{ type: String }],
   refundCount: { type: Number, default: 0 },
   lastRefundDate: { type: Date },
-  refundableAmount: { type: Number }
+  refundableAmount: { type: Number },
+
+  // Soft-delete guard (issue #26): completed invoices must never be hard-deleted.
+  // A soft-delete flag preserves the audit trail while hiding the record from
+  // default queries. Hard deletion is still permitted for unsaved drafts.
+  isDeleted: { type: Boolean, default: false },
+  deletedAt: { type: Date },
+  deletedBy: { type: String },
+  deleteReason: { type: String }
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -289,6 +303,8 @@ TransactionSchema.index({ transactionDate: -1 });
 TransactionSchema.index({ status: 1 });
 TransactionSchema.index({ paymentStatus: 1 });
 TransactionSchema.index({ createdBy: 1 });
+TransactionSchema.index({ isDeleted: 1 });
+TransactionSchema.index({ customerId: 1 });
 
 // Unique compound index to prevent duplicate drafts for the same user
 // partialFilterExpression ensures only documents with draftId (string type) are indexed

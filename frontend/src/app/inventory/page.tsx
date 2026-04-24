@@ -11,7 +11,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   HiCube,
   HiExclamationTriangle,
-  HiExclamationCircle,
   HiMagnifyingGlass,
   HiPencil,
   HiTrash,
@@ -172,21 +171,12 @@ export default function InventoryPage() {
   // ΓöÇΓöÇ Stock status helper ΓöÇΓöÇ
   const getStockStatus = (product: Product) => {
     const stock = product.currentStock ?? 0
-    const reorder = product.reorderPoint ?? 0
     if (stock <= 0) {
       return {
         status: "out",
         color: "bg-red-100 text-red-800",
         icon: <HiExclamationTriangle className="w-3 h-3" />,
         text: "Out of Stock"
-      }
-    }
-    if (stock <= reorder) {
-      return {
-        status: "low",
-        color: "bg-yellow-100 text-yellow-800",
-        icon: <HiExclamationCircle className="w-3 h-3" />,
-        text: "Low Stock"
       }
     }
     return {
@@ -274,7 +264,6 @@ export default function InventoryPage() {
         currentStock: data.currentStock || 0,
         sellingPrice: data.sellingPrice || 0,
         costPrice: data.costPrice || 0,
-        reorderPoint: data.reorderPoint || 10,
         description: data.bundleInfo,
         status: 'active',
         canSellLoose: data.canSellLoose,
@@ -482,12 +471,11 @@ export default function InventoryPage() {
         <button onClick={() => handleCardFilter("all")} className={`hover:text-gray-900 ${stockStatusFilter === "all" ? "text-gray-900 font-semibold" : ""}`}>
           <strong className="text-gray-900">{stats?.totalProducts ?? 0}</strong> products ({stats?.activeProducts ?? 0} active)
         </button>
-        <button onClick={() => handleCardFilter(stockStatusFilter === "all" ? ((stats?.lowStock ?? 0) > 0 ? "low_stock" : "out_of_stock") : "all")}
+        <button onClick={() => handleCardFilter(stockStatusFilter === "all" ? "out_of_stock" : "all")}
           className={`hover:text-gray-900 ${stockStatusFilter !== "all" ? "text-gray-900 font-semibold" : ""}`}>
-          {(stats?.lowStock ?? 0) > 0 && <span className="text-amber-600">{stats!.lowStock} low stock</span>}
-          {(stats?.lowStock ?? 0) > 0 && (stats?.outOfStock ?? 0) > 0 && <span> / </span>}
-          {(stats?.outOfStock ?? 0) > 0 && <span className="text-red-600">{stats!.outOfStock} out of stock</span>}
-          {(stats?.lowStock ?? 0) === 0 && (stats?.outOfStock ?? 0) === 0 && <span className="text-green-600">No alerts</span>}
+          {(stats?.outOfStock ?? 0) > 0
+            ? <span className="text-red-600">{stats!.outOfStock} out of stock</span>
+            : <span className="text-green-600">No alerts</span>}
         </button>
         {canViewCostPrices && (
           <span>Value: <strong className="text-gray-900">{formatCurrency(stats?.totalValue ?? 0)}</strong></span>
@@ -522,7 +510,6 @@ export default function InventoryPage() {
             <SelectContent>
               <SelectItem value="all">All Stock</SelectItem>
               <SelectItem value="in_stock">In Stock</SelectItem>
-              <SelectItem value="low_stock">Low Stock</SelectItem>
               <SelectItem value="out_of_stock">Out of Stock</SelectItem>
             </SelectContent>
           </Select>
@@ -577,11 +564,6 @@ export default function InventoryPage() {
                     Price {renderSortIcon('sellingPrice')}
                   </button>
                 </TableHead>
-                <TableHead className="text-center">
-                  <button onClick={() => handleSort('reorderPoint')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
-                    Reorder Pt {renderSortIcon('reorderPoint')}
-                  </button>
-                </TableHead>
                 <TableHead className="text-center whitespace-nowrap">
                   <button onClick={() => handleSort('currentStock')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
                     Current Stock {renderSortIcon('currentStock')}
@@ -613,7 +595,6 @@ export default function InventoryPage() {
                       <TableCell className="text-center text-xs">{formatCurrency(product.costPrice || 0)}</TableCell>
                     )}
                     <TableCell className="text-center text-xs">{formatCurrency(product.sellingPrice || 0)}</TableCell>
-                    <TableCell className="text-center text-xs">{product.reorderPoint || '-'}</TableCell>
                     <TableCell className="text-center whitespace-nowrap">
                       <div className="inline-flex items-center gap-1">
                         <Badge className={`text-[11px] px-1.5 py-0 ${stockStatus.color}`}>
@@ -734,7 +715,6 @@ export default function InventoryPage() {
           sku: productToEdit.sku || '',
           unitOfMeasurement: productToEdit.unitOfMeasurement || { id: '', name: '', abbreviation: '', type: 'count' as const, isActive: true },
           quantity: productToEdit.currentStock,
-          reorderPoint: productToEdit.reorderPoint || 0,
           currentStock: productToEdit.currentStock,
           availableStock: productToEdit.currentStock,
           reservedStock: 0,
@@ -775,7 +755,6 @@ export default function InventoryPage() {
           sku: productToDelete.sku || '',
           unitOfMeasurement: productToDelete.unitOfMeasurement || { id: '', name: '', abbreviation: '', type: 'count' as const, isActive: true },
           quantity: productToDelete.currentStock,
-          reorderPoint: productToDelete.reorderPoint || 0,
           currentStock: productToDelete.currentStock,
           availableStock: productToDelete.currentStock,
           reservedStock: 0,

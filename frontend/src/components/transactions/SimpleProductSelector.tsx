@@ -6,6 +6,33 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { FaSearch } from "react-icons/fa"
 import type { Product } from "@/types/inventory"
+import { safeContainerCapacity } from "@/lib/pricing"
+
+function formatStockDisplay(product: Product): { text: string; unit: string } {
+  const cap = safeContainerCapacity(product.containerCapacity)
+  const stock = product.currentStock ?? 0
+  const looseStock = product.looseStock ?? 0
+  const unitLabel = typeof product.unitOfMeasurement === 'object' && product.unitOfMeasurement
+    ? (product.unitOfMeasurement.abbreviation || product.unitOfMeasurement.name)
+    : product.unitName || 'units'
+
+  // Simple products (no container subdivision)
+  if (cap <= 1) {
+    return { text: `${stock}`, unit: unitLabel }
+  }
+
+  // Products with containers: show total + breakdown
+  const sealedStock = Math.max(0, stock - looseStock)
+  const sealedContainers = Math.floor(sealedStock / cap)
+  const looseAmount = Math.max(0, looseStock)
+
+  const parts: string[] = []
+  if (sealedContainers > 0) parts.push(`${sealedContainers} sealed`)
+  if (looseAmount > 0) parts.push(`${looseAmount} ${unitLabel} loose`)
+
+  const breakdown = parts.length > 0 ? ` (${parts.join(' + ')})` : ''
+  return { text: `${stock} ${unitLabel}${breakdown}`, unit: '' }
+}
 
 interface SimpleProductSelectorProps {
   open: boolean
@@ -72,23 +99,21 @@ export function SimpleProductSelector({ open, onClose, onSelectProduct, products
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <h4 className="font-medium">{product.name}</h4>
-                    <div className="flex items-center gap-3 text-sm text-gray-600 mt-1">
+                    <div className="flex items-center gap-3 text-sm text-gray-600 mt-1 flex-wrap">
                       <span>SKU: {product.sku}</span>
-                      <span className={product.currentStock < 0 ? "text-orange-600 font-medium" : ""}>
-                        Stock: {product.currentStock}
-                        {product.currentStock < 0 && (
-                          <span className="text-xs ml-1 text-orange-500">
-                            (Backorder: {Math.abs(product.currentStock)})
+                      {(() => {
+                        const display = formatStockDisplay(product)
+                        return (
+                          <span className={product.currentStock < 0 ? "text-orange-600 font-medium" : ""}>
+                            Stock: {display.text}{display.unit ? ` ${display.unit}` : ''}
+                            {product.currentStock < 0 && (
+                              <span className="text-xs ml-1 text-orange-500">
+                                (Backorder: {Math.abs(product.currentStock)})
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
-                      {product.containerType && (
-                        <span>
-                          {typeof product.containerType === 'object' 
-                            ? product.containerType.name 
-                            : product.containerType}
-                        </span>
-                      )}
+                        )
+                      })()}
                       {product.currentStock < 0 && (
                         <span className="text-xs text-orange-500 bg-orange-50 px-1 py-0.5 rounded">
                           OVERSOLD

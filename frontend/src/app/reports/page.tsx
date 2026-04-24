@@ -27,7 +27,7 @@ interface DashboardMetrics {
   }
   inventory: {
     totalValue: number
-    lowStockCount: number
+    outOfStockCount: number
     turnoverRate: number
   }
   profit: {
@@ -76,7 +76,7 @@ export default function ReportsDashboard() {
         },
         inventory: {
           totalValue: inventoryData.totalValue || 75000,
-          lowStockCount: inventoryData.lowStockItems?.length || 12,
+          outOfStockCount: inventoryData.outOfStockItems?.length || 0,
           turnoverRate: inventoryData.turnoverRate || 4.2
         },
         profit: {
@@ -90,7 +90,7 @@ export default function ReportsDashboard() {
       setMetrics({
         revenue: { total: 150000, growth: 15.3, trend: [45000, 48000, 52000, 49000, 53000, 55000, 58000] },
         sales: { count: 1250, average: 120, topProduct: "Premium Bundle" },
-        inventory: { totalValue: 75000, lowStockCount: 12, turnoverRate: 4.2 },
+        inventory: { totalValue: 75000, outOfStockCount: 0, turnoverRate: 4.2 },
         profit: { margin: 32, total: 48000 }
       })
     } finally {
@@ -126,7 +126,7 @@ export default function ReportsDashboard() {
           { label: 'Profit Margin', value: `${metrics.profit.margin.toFixed(1)}%` },
           { label: 'Total Profit', value: formatCurrency(metrics.profit.total) },
           { label: 'Inventory Value', value: formatCurrency(metrics.inventory.totalValue) },
-          { label: 'Low Stock Items', value: metrics.inventory.lowStockCount },
+          { label: 'Out of Stock Items', value: metrics.inventory.outOfStockCount },
           { label: 'Inventory Turnover', value: `${metrics.inventory.turnoverRate}x` }
         ],
         data: miniChartData
@@ -171,13 +171,13 @@ export default function ReportsDashboard() {
       bgColor: "bg-purple-50"
     },
     {
-      title: "Low Stock Items",
-      value: metrics?.inventory.lowStockCount || "0",
+      title: "Out of Stock Items",
+      value: metrics?.inventory.outOfStockCount || "0",
       subtext: `Turnover: ${metrics?.inventory.turnoverRate}x`,
       icon: HiCube,
       color: "text-orange-600",
       bgColor: "bg-orange-50",
-      urgent: (metrics?.inventory.lowStockCount || 0) > 10
+      urgent: (metrics?.inventory.outOfStockCount || 0) > 0
     }
   ]
 
@@ -227,7 +227,7 @@ export default function ReportsDashboard() {
       href: "/reports/inventory",
       quickStats: {
         value: formatCurrency(metrics?.inventory.totalValue || 0),
-        critical: `${metrics?.inventory.lowStockCount} items`
+        critical: `${metrics?.inventory.outOfStockCount ?? 0} items out of stock`
       }
     })
   }

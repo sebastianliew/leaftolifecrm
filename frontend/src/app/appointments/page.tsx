@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/alert";
 import Link from "next/link";
 import { AppointmentFormData } from '@/utils/validation/appointmentSchema';
 import { api } from '@/lib/api-client';
+import { BRANDING } from '@/config/branding';
 
 // This would typically come from your database
 const services = [
@@ -53,7 +54,7 @@ export default function AppointmentPage() {
           <div className="text-center mb-8">
             <Link href="/" className="inline-block mb-6">
               <Image
-                src="/logo.jpeg"
+                src={BRANDING.logoPath}
                 alt="Clinic Logo"
                 width={200}
                 height={200}

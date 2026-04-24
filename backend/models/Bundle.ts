@@ -37,8 +37,7 @@ export interface IBundle extends Document {
   // Inventory
   availableQuantity: number;
   maxQuantity: number;
-  reorderPoint: number;
-  
+
   // Metadata
   tags: string[];
   internalNotes?: string;
@@ -104,7 +103,6 @@ const bundleSchema = new mongoose.Schema<IBundle>({
   // Inventory
   availableQuantity: { type: Number, default: 0, min: 0 },
   maxQuantity: { type: Number, default: 1000, min: 0 },
-  reorderPoint: { type: Number, default: 5, min: 0 },
   
   // Metadata
   tags: [{ type: String, trim: true }],

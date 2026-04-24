@@ -13,11 +13,6 @@ export class DashboardStatsService {
     // Get active patients count (exclude deactivated)
     const activePatients = await Patient.countDocuments({ status: 'active' });
 
-    // Get low stock alerts (products with currentStock <= reorderPoint or negative)
-    const lowStockCount = await Product.countDocuments({
-      $expr: { $lte: ['$currentStock', '$reorderPoint'] }
-    });
-    
     // Get oversold products count (negative stock)
     const oversoldCount = await Product.countDocuments({
       currentStock: { $lt: 0 }
@@ -86,7 +81,6 @@ export class DashboardStatsService {
     return {
       totalProducts,
       activePatients,
-      lowStockAlerts: lowStockCount,
       oversoldProducts: oversoldCount,
       expiredProducts: expiredProductsCount,
       expiringSoonProducts: expiringSoonProductsCount,

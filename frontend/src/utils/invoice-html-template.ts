@@ -1,7 +1,7 @@
 import type { Transaction } from '@/types/transaction';
 
 const defaultCompanyInfo = {
-  name: "Sebastian Liew Centre Pte Ltd.",
+  name: "Leaf to Life Pte Ltd",
   address: {
     street: "320 Serangoon Road, Centrium square, #11-10",
     city: "Singapore",
@@ -10,7 +10,7 @@ const defaultCompanyInfo = {
   },
   phone: "+65 6538 9978",
   email: "customerservice@leaftolife.com.sg",
-  website: "www.leaftolife.com.sg"
+  website: "www.leaftolife.com"
 };
 
 export function generateInvoiceHTML(transaction: Transaction): string {
@@ -454,7 +454,7 @@ export function generateInvoiceHTML(transaction: Transaction): string {
         <div class="header">
             <div class="company-info">
                 <h1>Leaf to Life &reg;</h1>
-                <p style="font-size: 12px; color: #374151; margin-top: 2px; margin-bottom: 8px;">by Sebastian Liew Centre Pte Ltd</p>
+                <p style="font-size: 12px; color: #374151; margin-top: 2px; margin-bottom: 8px;">${companyInfo.name}</p>
                 <p>${companyInfo.address.street}</p>
                 <p>${companyInfo.address.city}, ${companyInfo.address.state} ${companyInfo.address.postalCode}</p>
                 <p>Phone: ${companyInfo.phone}</p>

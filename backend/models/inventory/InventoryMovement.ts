@@ -1,6 +1,7 @@
 import { Schema, model, Document } from 'mongoose';
 import { UnitOfMeasurement } from '../UnitOfMeasurement.js';
 import mongoose from 'mongoose';
+import { InsufficientStockError } from '../../middlewares/errorHandler.middleware.js';
 
 export interface IInventoryMovement extends Document {
   productId: Schema.Types.ObjectId;
@@ -155,9 +156,46 @@ InventoryMovementSchema.methods.updateProductStock = async function(session?: an
 
   const stockChange = isDecrease ? -qty : qty;
 
+  // Atomic insufficient-stock guard. For decrements we add a filter predicate
+  // that requires the relevant pool to have >= qty.
+  //
+  // Strict pool enforcement (loose vs sealed) applies only to product
+  // `sale` movements — a volume sale must find that much loose stock, and
+  // a sealed sale must find that much sealed stock. Blend / bundle /
+  // ingredient movements use `pool` as a tracking hint only and are
+  // guarded against total currentStock; in real workflow a pharmacist may
+  // open a sealed bottle mid-blend, which is semantically a pool transfer
+  // and not a hard availability constraint.
+  //
+  // If the filter does not match we re-fetch to build a structured
+  // InsufficientStockError so callers can report per-item.
+  const baseFilter: Record<string, unknown> = { _id: this.productId };
+  const strictPool = mtype === 'sale';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let guardPool: 'loose' | 'sealed' | 'any' = pool as any;
+  if (isDecrease) {
+    if (strictPool && pool === "loose") {
+      baseFilter.looseStock = { $gte: qty };
+    } else if (strictPool && pool === "sealed") {
+      baseFilter.$expr = {
+        $gte: [
+          { $subtract: ["$currentStock", { $ifNull: ["$looseStock", 0] }] },
+          qty,
+        ],
+      };
+      guardPool = 'sealed';
+    } else {
+      baseFilter.currentStock = { $gte: qty };
+      guardPool = 'any';
+    }
+  }
+
+  const opts = session ? { session } : {};
+  let res: { matchedCount?: number; modifiedCount?: number };
+
   if (pool === "loose") {
-    await Product.updateOne(
-      { _id: this.productId },
+    res = await Product.updateOne(
+      baseFilter,
       [
         { $set: {
           currentStock: { $add: ["$currentStock", stockChange] },
@@ -170,11 +208,11 @@ InventoryMovementSchema.methods.updateProductStock = async function(session?: an
           ]}]}
         }}
       ],
-      session ? { session } : {}
+      opts
     );
   } else if (pool === "sealed") {
-    await Product.updateOne(
-      { _id: this.productId },
+    res = await Product.updateOne(
+      baseFilter,
       [
         { $set: {
           currentStock: { $add: ["$currentStock", stockChange] },
@@ -184,12 +222,12 @@ InventoryMovementSchema.methods.updateProductStock = async function(session?: an
           looseStock: { $max: [0, { $min: [{ $ifNull: ["$looseStock", 0] }, "$currentStock"] }] }
         }}
       ],
-      session ? { session } : {}
+      opts
     );
   } else {
     // "any" — blend/restock/adjustment
-    await Product.updateOne(
-      { _id: this.productId },
+    res = await Product.updateOne(
+      baseFilter,
       [
         { $set: {
           currentStock: { $add: ["$currentStock", stockChange] },
@@ -199,8 +237,35 @@ InventoryMovementSchema.methods.updateProductStock = async function(session?: an
           looseStock: { $max: [0, { $min: [{ $ifNull: ["$looseStock", 0] }, "$currentStock"] }] }
         }}
       ],
-      session ? { session } : {}
+      opts
     );
+  }
+
+  if (isDecrease && (res.matchedCount ?? 0) === 0) {
+    const current = await Product.findById(this.productId)
+      .session(session || null)
+      .lean() as Record<string, unknown> | null;
+    if (!current) {
+      throw new InsufficientStockError({
+        productId: String(this.productId),
+        productName: this.productName || 'unknown',
+        requested: qty,
+        available: 0,
+        pool: guardPool,
+        reason: 'product_not_found',
+      });
+    }
+    const cs = Number(current.currentStock ?? 0);
+    const ls = Number(current.looseStock ?? 0);
+    const available = guardPool === 'loose' ? ls : guardPool === 'sealed' ? cs - ls : cs;
+    throw new InsufficientStockError({
+      productId: String(this.productId),
+      productName: this.productName || String(current.name ?? 'unknown'),
+      requested: qty,
+      available,
+      pool: guardPool,
+      reason: 'insufficient_stock',
+    });
   }
 
   console.log(`[InventoryMovement] Stock update: Product ${this.productId} pool:${pool} ${stockChange > 0 ? "+" : ""}${stockChange}`);

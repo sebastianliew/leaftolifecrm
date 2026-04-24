@@ -26,7 +26,7 @@ import { Search, Download } from "lucide-react"
 import { formatCurrency, cn } from "@/lib/utils"
 import { fetchAPI } from "@/lib/query-client"
 import { format, subDays, startOfDay, endOfDay } from "date-fns"
-import { HiCube, HiExclamationTriangle } from "react-icons/hi2"
+import { HiCube } from "react-icons/hi2"
 
 interface InventoryCostData {
   product_name: string
@@ -38,7 +38,7 @@ interface InventoryCostData {
   supplier?: string
   brand?: string
   last_updated?: string
-  stock_status?: 'optimal' | 'low' | 'overstock' | 'out'
+  stock_status?: 'optimal' | 'out'
 }
 
 interface InventoryCostResponse {
@@ -49,7 +49,6 @@ interface InventoryCostResponse {
     totalProducts: number
     totalInventoryValue: number
     averageCostPerItem: number
-    lowStockItems: number
   }
   metadata?: {
     totalItems: number
@@ -63,12 +62,12 @@ interface InventoryCostResponse {
 }
 
 type DateFilterOption = "24h" | "7d" | "14d" | "28d" | "all" | "custom"
-type StockFilterOption = "all" | "optimal" | "low" | "overstock" | "out"
+type StockFilterOption = "all" | "optimal" | "out"
 
 export default function InventoryCostReport() {
   const [data, setData] = useState<InventoryCostData[]>([])
   const [filteredData, setFilteredData] = useState<InventoryCostData[]>([])
-  const [serverSummary, setServerSummary] = useState<{ totalProducts: number; totalInventoryValue: number; averageCostPerItem: number; lowStockItems: number } | null>(null)
+  const [serverSummary, setServerSummary] = useState<{ totalProducts: number; totalInventoryValue: number; averageCostPerItem: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
@@ -78,6 +77,9 @@ export default function InventoryCostReport() {
   const [stockFilter, setStockFilter] = useState<StockFilterOption>("all")
   const [customStartDate, setCustomStartDate] = useState<Date>()
   const [customEndDate, setCustomEndDate] = useState<Date>()
+  const [supplierFilter, setSupplierFilter] = useState<string>("all")
+  const [brandFilter, setBrandFilter] = useState<string>("all")
+  const [categoryFilter, setCategoryFilter] = useState<string>("all")
 
   useEffect(() => {
     const fetchData = async () => {
@@ -161,28 +163,34 @@ export default function InventoryCostReport() {
     fetchData()
   }, [dateFilter, stockFilter, customStartDate, customEndDate])
 
-  // Filter data based on search term
+  // Derive unique supplier/brand/category options from loaded data
+  const supplierOptions = Array.from(new Set(data.map(d => d.supplier).filter((s): s is string => Boolean(s)))).sort()
+  const brandOptions = Array.from(new Set(data.map(d => d.brand).filter((b): b is string => Boolean(b)))).sort()
+  const categoryOptions = Array.from(new Set(data.map(d => d.category).filter((c): c is string => Boolean(c)))).sort()
+
+  // Filter data based on search term + dropdown filters
   useEffect(() => {
-    if (!searchTerm) {
-      setFilteredData(data)
-    } else {
-      const searchLower = searchTerm.toLowerCase()
-      const filtered = data.filter(item =>
+    const searchLower = searchTerm.toLowerCase()
+    const filtered = data.filter(item => {
+      if (supplierFilter !== 'all' && item.supplier !== supplierFilter) return false
+      if (brandFilter !== 'all' && item.brand !== brandFilter) return false
+      if (categoryFilter !== 'all' && item.category !== categoryFilter) return false
+      if (!searchTerm) return true
+      return (
         item.product_name.toLowerCase().includes(searchLower) ||
         (item.category && item.category.toLowerCase().includes(searchLower)) ||
         (item.supplier && item.supplier.toLowerCase().includes(searchLower)) ||
         (item.brand && item.brand.toLowerCase().includes(searchLower))
       )
-      setFilteredData(filtered)
-    }
-  }, [data, searchTerm])
+    })
+    setFilteredData(filtered)
+  }, [data, searchTerm, supplierFilter, brandFilter, categoryFilter])
 
   // Use server-computed summary (fallback to local calculation)
   const summary = serverSummary ?? {
     totalProducts: data.length,
     totalInventoryValue: data.reduce((sum, item) => sum + item.total_cost, 0),
     averageCostPerItem: data.length > 0 ? data.reduce((sum, item) => sum + item.total_cost, 0) / data.length : 0,
-    lowStockItems: data.filter(item => item.stock_status === 'low' || item.stock_status === 'out').length,
   }
 
   // Calculate grand totals from filtered data (for table and CSV)
@@ -194,9 +202,7 @@ export default function InventoryCostReport() {
   const getStockStatusColor = (status?: string) => {
     switch (status) {
       case 'optimal': return 'bg-green-100 text-green-800'
-      case 'low': return 'bg-yellow-100 text-yellow-800'
       case 'out': return 'bg-red-100 text-red-800'
-      case 'overstock': return 'bg-blue-100 text-blue-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
@@ -307,10 +313,53 @@ export default function InventoryCostReport() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All stock</SelectItem>
-                    <SelectItem value="optimal">Optimal</SelectItem>
-                    <SelectItem value="low">Low stock</SelectItem>
+                    <SelectItem value="optimal">In stock</SelectItem>
                     <SelectItem value="out">Out of stock</SelectItem>
-                    <SelectItem value="overstock">Overstock</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Supplier Filter */}
+              <div className="flex items-center gap-2">
+                <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Supplier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All suppliers</SelectItem>
+                    {supplierOptions.map(s => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Brand Filter */}
+              <div className="flex items-center gap-2">
+                <Select value={brandFilter} onValueChange={setBrandFilter}>
+                  <SelectTrigger className="w-36">
+                    <SelectValue placeholder="Brand" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All brands</SelectItem>
+                    {brandOptions.map(b => (
+                      <SelectItem key={b} value={b}>{b}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Category Filter */}
+              <div className="flex items-center gap-2">
+                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All categories</SelectItem>
+                    {categoryOptions.map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -393,18 +442,8 @@ export default function InventoryCostReport() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Alert for low stock */}
-        {summary.lowStockItems > 0 && (
-          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-2">
-            <HiExclamationTriangle className="h-5 w-5 text-yellow-600" />
-            <p className="text-yellow-800">
-              <strong>{summary.lowStockItems} items</strong> require attention (low or out of stock)
-            </p>
-          </div>
-        )}
-
         {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        <div className="grid gap-4 md:grid-cols-3 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Products</CardTitle>
@@ -428,14 +467,6 @@ export default function InventoryCostReport() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(summary.averageCostPerItem)}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Items Need Attention</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">{summary.lowStockItems}</div>
             </CardContent>
           </Card>
         </div>

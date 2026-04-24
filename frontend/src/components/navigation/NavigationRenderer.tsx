@@ -11,6 +11,7 @@ import { useNavigation } from './NavigationProvider'
 import { NavigationItem } from './types/navigation.types'
 import { resolveIcon } from './config/icons.registry'
 import { useAuth } from '@/hooks/useAuth'
+import { BRANDING } from '@/config/branding'
 
 export function NavigationRenderer() {
   const { navigationItems, userMenuItems, context } = useNavigation()
@@ -197,7 +198,7 @@ export function NavigationRenderer() {
           {/* Logo */}
           <div className="flex items-center justify-center h-16 flex-shrink-0 px-4 border-b border-gray-200">
             <Image
-              src="/logo.jpeg"
+              src={BRANDING.logoPath}
               alt="Logo"
               width={40}
               height={40}
@@ -272,7 +273,7 @@ export function NavigationRenderer() {
         <div className="flex items-center justify-between bg-white border-b border-gray-200 shadow-header px-4 py-3">
           <div className="flex items-center">
             <Image
-              src="/logo.jpeg"
+              src={BRANDING.logoPath}
               alt="Logo"
               width={32}
               height={32}

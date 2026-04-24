@@ -1,14 +1,31 @@
 /**
- * Centralized pricing utilities for transaction items.
+ * Centralized pricing utilities.
  * Keep in sync with: backend/utils/pricingUtils.ts
  *
- * The system stores sellingPrice as a **per-container** price on the Product model.
- * When selling loose (saleType === 'volume'), the unit price must be divided by
- * containerCapacity so that quantity × unitPrice yields the correct total.
+ * Why this file exists: `Product.costPrice` and `Product.sellingPrice` are
+ * stored PER CONTAINER on the schema (a 1000 ml bottle with costPrice=80 means
+ * $80 for the bottle, not per ml). Anything that wants a per-base-unit value
+ * (blend ingredient cost, per-ml UI, POS 'volume' pricing) MUST go through a
+ * helper here — never inline `costPrice / containerCapacity` at a call site.
  *
- * Every place that reads, writes, or compares a transaction item's unitPrice MUST
- * go through these helpers to keep the two pricing semantics consistent.
+ * Branded types (PerContainerPrice / PerUnitPrice) make unit mix-ups surface
+ * at compile time instead of at invoice time.
  */
+
+type Brand<T, B extends string> = T & { readonly __brand: B };
+
+/** A monetary value attached to a whole container (e.g. a 1000 ml bottle). */
+export type PerContainerPrice = Brand<number, 'PerContainerPrice'>;
+
+/** A monetary value per base unit (per ml, per g, per piece). */
+export type PerUnitPrice = Brand<number, 'PerUnitPrice'>;
+
+/** Minimal shape needed by pricing helpers. */
+export interface PricingInput {
+  costPrice?: number | null;
+  sellingPrice?: number | null;
+  containerCapacity?: number | null;
+}
 
 /**
  * Returns the effective containerCapacity, clamped to a minimum of 1 to avoid
@@ -16,6 +33,26 @@
  */
 export function safeContainerCapacity(containerCapacity: number | undefined | null): number {
   return containerCapacity && containerCapacity >= 1 ? containerCapacity : 1;
+}
+
+/**
+ * Per-base-unit cost derived from the product's per-container costPrice.
+ * Returns `undefined` when no costPrice is recorded. Does NOT fall back to sellingPrice.
+ */
+export function perUnitCost(product: PricingInput): PerUnitPrice | undefined {
+  if (product.costPrice == null) return undefined;
+  return (product.costPrice / safeContainerCapacity(product.containerCapacity)) as PerUnitPrice;
+}
+
+/** Per-base-unit selling price. */
+export function perUnitSellingPrice(product: PricingInput): PerUnitPrice | undefined {
+  if (product.sellingPrice == null) return undefined;
+  return (product.sellingPrice / safeContainerCapacity(product.containerCapacity)) as PerUnitPrice;
+}
+
+/** Per-unit cost with a caller-supplied fallback for missing costPrice. */
+export function perUnitCostOr(product: PricingInput, fallback: number): PerUnitPrice {
+  return (perUnitCost(product) ?? fallback) as PerUnitPrice;
 }
 
 /**

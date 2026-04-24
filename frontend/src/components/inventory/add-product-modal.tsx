@@ -27,11 +27,10 @@ const productSchema = z.object({
   brand: z.string().optional(),
   costPrice: z.number().min(0, "Cost price must be positive").optional(),
   sellingPrice: z.number().min(0, "Selling price must be positive").optional(),
-  reorderPoint: z.number().min(0, "Reorder point must be positive"),
   currentStock: z.number().min(0, "Stock must be positive"),
   bundleInfo: z.string().optional(),
   bundlePrice: z.number().min(0, "Bundle price must be positive").optional(),
-  category: z.string().optional(),
+  category: z.string().min(1, "Category is required"),
 }).refine(
   (data) => !data.canSellLoose || (data.containerCapacity !== undefined && data.containerCapacity > 1),
   {
@@ -52,7 +51,6 @@ export interface AddProductSubmitData {
   canSellLoose?: boolean
   costPrice?: number
   sellingPrice?: number
-  reorderPoint: number
   currentStock: number
   totalQuantity?: number
   expiryDate?: string
@@ -128,7 +126,6 @@ export function AddProductModal({
       brand: "",
       costPrice: undefined,
       sellingPrice: undefined,
-      reorderPoint: 10,
       currentStock: 0,
       bundleInfo: "",
       bundlePrice: undefined,
@@ -168,7 +165,6 @@ export function AddProductModal({
         // Only include cost price if user has permission
         costPrice: canEditCostPrices ? data.costPrice : 0,
         sellingPrice: data.sellingPrice,
-        reorderPoint: data.reorderPoint,
         // Always include current stock for product creation
         currentStock: data.currentStock || 0,
         bundleInfo: data.bundleInfo,
@@ -252,6 +248,48 @@ export function AddProductModal({
                 <p className="text-sm text-red-500">{errors.containerType.message}</p>
               )}
             </div>
+          </div>
+
+          {/* Category */}
+          <div className="space-y-2">
+            <Label htmlFor="category">Category *</Label>
+            <Select
+              value={watch('category') || ''}
+              onValueChange={(value) => {
+                setValue('category', value, { shouldValidate: true })
+                // Auto-apply category defaults (issues #20 and #21): pre-select
+                // the UOM the category is usually sold in and pre-check
+                // "sell loose" if the category supports it. User can override.
+                const selectedCat = categories.find(c => (c._id || c.id) === value) as (ProductCategory & { defaultUom?: string; defaultCanSellLoose?: boolean }) | undefined
+                if (selectedCat?.defaultUom && !watch('unitOfMeasurement')) {
+                  setValue('unitOfMeasurement', String(selectedCat.defaultUom), { shouldValidate: true })
+                }
+                if (selectedCat?.defaultCanSellLoose && !watch('canSellLoose')) {
+                  setValue('canSellLoose', true)
+                }
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories && categories.length > 0 ? categories.map((cat) => {
+                  if (!cat) return null
+                  const catId = cat._id || cat.id || ''
+                  if (!catId) return null
+                  return (
+                    <SelectItem key={catId} value={catId}>
+                      {cat.name || 'Unknown'}
+                    </SelectItem>
+                  )
+                }) : (
+                  <SelectItem value="no-categories" disabled>No categories available</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {errors.category && (
+              <p className="text-sm text-red-500">{errors.category.message}</p>
+            )}
           </div>
 
           {/* Unit and Capacity */}
@@ -530,7 +568,6 @@ export function AddProductModal({
             const inContainerMode = hasContainers && stockInputMode === 'containers'
 
             const stockVal = watch('currentStock') || 0
-            const reorderVal = watch('reorderPoint') || 0
 
             // Sanity check: warn if total base units seems unrealistically large (> 10,000)
             const stockSanityWarning = hasContainers && stockVal > 50000
@@ -538,18 +575,12 @@ export function AddProductModal({
             // All inputs are controlled via watch()/setValue() so toggling modes always reflects the correct value.
             // Hidden inputs sync the form for react-hook-form validation/submission.
             const displayStock = inContainerMode ? Math.round(stockVal / cap) : stockVal
-            const displayReorder = inContainerMode ? Math.round(reorderVal / cap) : reorderVal
             const stepVal = inContainerMode ? '1' : '0.01'
 
             const onStockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
               const raw = e.target.value === '' ? 0 : Number(e.target.value)
               const baseUnits = inContainerMode ? Math.max(0, Math.round(raw)) * cap : Math.max(0, raw)
               setValue('currentStock', +baseUnits.toFixed(2), { shouldValidate: true })
-            }
-            const onReorderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-              const raw = e.target.value === '' ? 0 : Number(e.target.value)
-              const baseUnits = inContainerMode ? Math.max(0, Math.round(raw)) * cap : Math.max(0, raw)
-              setValue('reorderPoint', +baseUnits.toFixed(2), { shouldValidate: true })
             }
 
             return (
@@ -584,22 +615,7 @@ export function AddProductModal({
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Reorder Point * {inContainerMode ? '(containers)' : `(${unitLabel})`}</Label>
-                    <Input type="number" min="0" step={stepVal}
-                      value={displayReorder} onChange={onReorderChange} placeholder="0" />
-                    {hasContainers && (
-                      <p className="text-xs text-muted-foreground">
-                        {inContainerMode
-                          ? `= ${reorderVal} ${unitLabel}`
-                          : formatContainerBreakdown(reorderVal, cap, unitLabel)}
-                      </p>
-                    )}
-                    {errors.reorderPoint && <p className="text-sm text-red-500">{errors.reorderPoint.message}</p>}
-                    <input type="hidden" {...register("reorderPoint", { valueAsNumber: true })} />
-                  </div>
-
+                <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-2">
                     <Label>Current Stock * {inContainerMode ? '(containers)' : `(${unitLabel})`}</Label>
                     <Input type="number" min="0" step={stepVal}

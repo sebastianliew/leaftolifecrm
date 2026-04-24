@@ -99,7 +99,6 @@ export async function createTestProduct(overrides: Partial<{
       }>;
     }>;
   };
-  reorderPoint: number;
   sellingPrice: number;
   costPrice: number;
   isActive: boolean;
@@ -122,7 +121,6 @@ export async function createTestProduct(overrides: Partial<{
     reservedStock: overrides.reservedStock ?? 0,
     containerCapacity: overrides.containerCapacity ?? 0,
     containers: overrides.containers || { full: 0, partial: [] },
-    reorderPoint: overrides.reorderPoint ?? 10,
     sellingPrice: overrides.sellingPrice ?? 25.00,
     costPrice: overrides.costPrice ?? 10.00,
     isActive: overrides.isActive ?? true,

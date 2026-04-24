@@ -8,7 +8,6 @@ const productSchema = new mongoose.Schema({
   brand: String,
   supplier: String,
   currentStock: { type: Number, default: 0 },
-  reorderPoint: { type: Number, default: 10 },
   costPrice: { type: Number, required: true },
   sellingPrice: { type: Number, required: true },
   unit: { type: String, default: 'pieces' },
