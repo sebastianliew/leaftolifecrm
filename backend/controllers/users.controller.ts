@@ -35,7 +35,7 @@ export const getAllUsers = async (req: Request, res: Response): Promise<Response
   try {
     const {
       page = 1,
-      limit = 10,
+      limit,
       search = '',
       role,
       status,
@@ -43,9 +43,10 @@ export const getAllUsers = async (req: Request, res: Response): Promise<Response
       sortOrder = 'desc',
     } = req.query;
 
-    const pageNum = parseInt(page as string);
-    const limitNum = parseInt(limit as string);
-    const skip = (pageNum - 1) * limitNum;
+    const paginated = limit !== undefined;
+    const pageNum = parseInt(page as string) || 1;
+    const limitNum = paginated ? parseInt(limit as string) || 10 : 0;
+    const skip = paginated ? (pageNum - 1) * limitNum : 0;
 
     const query: FilterQuery<IUser> = {};
 
@@ -53,6 +54,7 @@ export const getAllUsers = async (req: Request, res: Response): Promise<Response
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
+        { username: { $regex: search, $options: 'i' } },
       ];
     }
 
@@ -60,24 +62,26 @@ export const getAllUsers = async (req: Request, res: Response): Promise<Response
       query.role = role;
     }
 
-    if (status) {
-      query.status = status;
+    if (status === 'active') {
+      query.isActive = true;
+    } else if (status === 'inactive') {
+      query.isActive = false;
     }
 
     const sortOptions: Record<string, 1 | -1> = {};
     sortOptions[sortBy as string] = sortOrder === 'asc' ? 1 : -1;
 
+    let findQuery = User.find(query).select('-password').sort(sortOptions);
+    if (paginated) {
+      findQuery = findQuery.limit(limitNum).skip(skip);
+    }
+
     const [users, totalCount] = await Promise.all([
-      User.find(query)
-        .select('-password')
-        .sort(sortOptions)
-        .limit(limitNum)
-        .skip(skip)
-        .lean(),
+      findQuery.lean(),
       User.countDocuments(query),
     ]);
 
-    const totalPages = Math.ceil(totalCount / limitNum);
+    const totalPages = paginated ? Math.ceil(totalCount / limitNum) : 1;
 
     res.json({
       users,
@@ -85,8 +89,8 @@ export const getAllUsers = async (req: Request, res: Response): Promise<Response
         currentPage: pageNum,
         totalPages,
         totalCount,
-        hasNextPage: pageNum < totalPages,
-        hasPrevPage: pageNum > 1,
+        hasNextPage: paginated ? pageNum < totalPages : false,
+        hasPrevPage: paginated ? pageNum > 1 : false,
       },
     });
   } catch (error) {
