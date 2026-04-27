@@ -156,39 +156,15 @@ InventoryMovementSchema.methods.updateProductStock = async function(session?: an
 
   const stockChange = isDecrease ? -qty : qty;
 
-  // Atomic insufficient-stock guard. For decrements we add a filter predicate
-  // that requires the relevant pool to have >= qty.
-  //
-  // Strict pool enforcement (loose vs sealed) applies only to product
-  // `sale` movements — a volume sale must find that much loose stock, and
-  // a sealed sale must find that much sealed stock. Blend / bundle /
-  // ingredient movements use `pool` as a tracking hint only and are
-  // guarded against total currentStock; in real workflow a pharmacist may
-  // open a sealed bottle mid-blend, which is semantically a pool transfer
-  // and not a hard availability constraint.
-  //
-  // If the filter does not match we re-fetch to build a structured
-  // InsufficientStockError so callers can report per-item.
+  // Sell-through-permissive policy: decrements are NEVER blocked by stock.
+  // A sale that exceeds available stock is recorded faithfully and pushes
+  // currentStock (and possibly the sealed pool) negative — the deficit shows
+  // up in reports as "stock owed" so admin can reconcile when convenient.
+  // The atomic $add pipeline below still runs in a single round trip, so
+  // concurrent oversells stay race-consistent.
   const baseFilter: Record<string, unknown> = { _id: this.productId };
-  const strictPool = mtype === 'sale';
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let guardPool: 'loose' | 'sealed' | 'any' = pool as any;
-  if (isDecrease) {
-    if (strictPool && pool === "loose") {
-      baseFilter.looseStock = { $gte: qty };
-    } else if (strictPool && pool === "sealed") {
-      baseFilter.$expr = {
-        $gte: [
-          { $subtract: ["$currentStock", { $ifNull: ["$looseStock", 0] }] },
-          qty,
-        ],
-      };
-      guardPool = 'sealed';
-    } else {
-      baseFilter.currentStock = { $gte: qty };
-      guardPool = 'any';
-    }
-  }
+  const guardPool: 'loose' | 'sealed' | 'any' = pool as any;
 
   const opts = session ? { session } : {};
   let res: { matchedCount?: number; modifiedCount?: number };
@@ -241,30 +217,16 @@ InventoryMovementSchema.methods.updateProductStock = async function(session?: an
     );
   }
 
-  if (isDecrease && (res.matchedCount ?? 0) === 0) {
-    const current = await Product.findById(this.productId)
-      .session(session || null)
-      .lean() as Record<string, unknown> | null;
-    if (!current) {
-      throw new InsufficientStockError({
-        productId: String(this.productId),
-        productName: this.productName || 'unknown',
-        requested: qty,
-        available: 0,
-        pool: guardPool,
-        reason: 'product_not_found',
-      });
-    }
-    const cs = Number(current.currentStock ?? 0);
-    const ls = Number(current.looseStock ?? 0);
-    const available = guardPool === 'loose' ? ls : guardPool === 'sealed' ? cs - ls : cs;
+  // matchedCount === 0 now only happens when the product itself is missing
+  // (the stock predicate was removed). Treat that as a not-found error.
+  if ((res.matchedCount ?? 0) === 0) {
     throw new InsufficientStockError({
       productId: String(this.productId),
-      productName: this.productName || String(current.name ?? 'unknown'),
+      productName: this.productName || 'unknown',
       requested: qty,
-      available,
+      available: 0,
       pool: guardPool,
-      reason: 'insufficient_stock',
+      reason: 'product_not_found',
     });
   }
 

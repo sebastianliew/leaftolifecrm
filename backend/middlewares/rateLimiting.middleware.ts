@@ -1,5 +1,6 @@
 import rateLimit from 'express-rate-limit';
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 
 /**
  * Rate Limiting Middleware
@@ -13,6 +14,80 @@ import { Request, Response } from 'express';
  * STORE: Uses in-memory store by default. For horizontally scaled deployments,
  * consider using rate-limit-redis for shared state across instances.
  */
+
+/**
+ * Whitelist of identities exempt from rate limiting.
+ *
+ * Configured via RATE_LIMIT_EXEMPT_IDENTITIES env var (comma-separated
+ * substrings, case-insensitive). Default includes "sebastianliew" — the
+ * client owner whose office IP is shared by the whole staff and was
+ * tripping the global per-IP limit.
+ *
+ * Match is a case-insensitive substring on email OR username (so
+ * "sebastianliew", "sebastianliew@example.com", and
+ * "Sebastian.Liew@..." all match the entry "sebastianliew").
+ */
+const EXEMPT_IDENTITIES: string[] = (process.env.RATE_LIMIT_EXEMPT_IDENTITIES || 'sebastianliew')
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+function matchesExemptIdentity(value: unknown): boolean {
+  if (typeof value !== 'string' || !value) return false;
+  const v = value.toLowerCase();
+  return EXEMPT_IDENTITIES.some((needle) => v.includes(needle));
+}
+
+/**
+ * Direct email/username check — for callers (e.g. the refresh handler)
+ * that already have the user object loaded and don't have the identity
+ * in req.user / req.body / auth header.
+ */
+export function isExemptIdentity(email?: unknown, username?: unknown): boolean {
+  return matchesExemptIdentity(email) || matchesExemptIdentity(username);
+}
+
+/**
+ * Returns true when this request belongs to a rate-limit-exempt identity.
+ *
+ * Order of checks:
+ *   1. req.user (set by auth middleware on already-protected routes)
+ *   2. req.body.email (login / password reset payloads)
+ *   3. Decoded JWT payload from Authorization header — used for the global
+ *      limiter, which runs BEFORE auth middleware so req.user is empty.
+ *      We do NOT verify the signature here: a forged JWT only buys an
+ *      attacker the right to skip rate limits, not to make any actual
+ *      API call (the real auth middleware downstream still verifies).
+ */
+type RateLimitRequest = Pick<Request, 'headers'> & {
+  body?: unknown;
+  user?: unknown;
+};
+
+export function isExemptFromRateLimit(req: RateLimitRequest): boolean {
+  const user = (req as { user?: { email?: string; username?: string } }).user;
+  if (user && (matchesExemptIdentity(user.email) || matchesExemptIdentity(user.username))) {
+    return true;
+  }
+
+  const bodyEmail = (req.body as { email?: unknown } | undefined)?.email;
+  if (matchesExemptIdentity(bodyEmail)) return true;
+
+  const authHeader = req.headers['authorization'];
+  if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    try {
+      const decoded = jwt.decode(token) as { email?: unknown; username?: unknown } | null;
+      if (decoded && (matchesExemptIdentity(decoded.email) || matchesExemptIdentity(decoded.username))) {
+        return true;
+      }
+    } catch {
+      // Malformed token — fall through, the real auth middleware will reject it.
+    }
+  }
+
+  return false;
+}
 
 /**
  * Creates a rate limit message function that includes the exact retry time
@@ -55,7 +130,8 @@ export const authRateLimit = rateLimit({
   message: createRateLimitMessage('Too many authentication attempts'),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  skipSuccessfulRequests: true // Only count failed attempts
+  skipSuccessfulRequests: true, // Only count failed attempts
+  skip: isExemptFromRateLimit
 });
 
 /**
@@ -68,7 +144,8 @@ export const passwordResetRateLimit = rateLimit({
   message: createRateLimitMessage('Too many password reset requests'),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  skipSuccessfulRequests: false
+  skipSuccessfulRequests: false,
+  skip: isExemptFromRateLimit
 });
 
 /**
@@ -87,7 +164,8 @@ export const sensitiveOperationRateLimit = rateLimit({
   message: createRateLimitMessage('Rate limit exceeded for this operation'),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  skipSuccessfulRequests: true // Only count failed attempts - legitimate usage is unlimited
+  skipSuccessfulRequests: true, // Only count failed attempts - legitimate usage is unlimited
+  skip: isExemptFromRateLimit
 });
 
 /**
@@ -100,7 +178,8 @@ export const bulkOperationRateLimit = rateLimit({
   message: createRateLimitMessage('Bulk operation rate limit exceeded'),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  skipSuccessfulRequests: false
+  skipSuccessfulRequests: false,
+  skip: isExemptFromRateLimit
 });
 
 /**
@@ -118,8 +197,10 @@ export const emailRateLimit = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   skipSuccessfulRequests: false,
-  // Fix #10: Exempt super_admin from email rate limiting
-  skip: (req) => (req as any).user?.role === 'super_admin'
+  // Exempt super_admin and any whitelisted identity (e.g. sebastianliew)
+  skip: (req) =>
+    (req as { user?: { role?: string } }).user?.role === 'super_admin' ||
+    isExemptFromRateLimit(req)
 });
 
 /**
@@ -136,7 +217,8 @@ export const fileGenerationRateLimit = rateLimit({
   message: createRateLimitMessage('File generation rate limit exceeded'),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  skipSuccessfulRequests: true // Only count failed attempts - legitimate usage is unlimited
+  skipSuccessfulRequests: true, // Only count failed attempts - legitimate usage is unlimited
+  skip: isExemptFromRateLimit
 });
 
 /**
@@ -149,5 +231,6 @@ export const tokenRefreshRateLimit = rateLimit({
   message: createRateLimitMessage('Too many token refresh requests'),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  skipSuccessfulRequests: true // Skip successful refreshes
+  skipSuccessfulRequests: true, // Skip successful refreshes
+  skip: isExemptFromRateLimit
 });

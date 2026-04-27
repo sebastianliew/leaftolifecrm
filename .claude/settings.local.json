@@ -61,7 +61,8 @@
       "Bash(cd \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/backend\" && git push origin main)",
       "Bash(cd \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/frontend\" && git push origin main)",
       "Bash(sshpass *)",
-      "Bash(mongosh *)"
+      "Bash(mongosh *)",
+      "Bash(node *)"
     ]
   },
   "autoMode": {

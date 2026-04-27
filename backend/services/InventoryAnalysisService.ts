@@ -13,7 +13,7 @@ export interface InventoryItem {
   total_value: number
   turnover_rate: number
   days_supply: number
-  status: 'optimal' | 'out'
+  status: 'optimal' | 'out' | 'owed'
   full_containers?: number
   loose_remainder?: number
   container_display?: string
@@ -111,11 +111,12 @@ export class InventoryAnalysisService {
     brand: string;
     supplier: string;
     current_stock: number;
-    cost_price: number;
-    selling_price: number;
-    stock_status: string;
+    unit_cost: number;
+    total_value: number;
+    status: string;
     container_capacity: number;
     loose_stock: number;
+    unit: string;
   }>> {
     const pipeline = [
       {
@@ -135,14 +136,22 @@ export class InventoryAnalysisService {
           unit_cost: { $ifNull: ['$costPrice', 0] },
           container_capacity: { $ifNull: ['$containerCapacity', 1] },
           loose_stock: { $ifNull: ['$looseStock', 0] },
+          // Clamp valuation to non-negative: oversold stock represents owed
+          // inventory, not a negative balance-sheet asset.
           total_value: {
             $multiply: [
-              { $ifNull: ['$currentStock', 0] },
+              { $max: [0, { $ifNull: ['$currentStock', 0] }] },
               { $ifNull: ['$costPrice', 0] }
             ]
           },
           status: {
-            $cond: [{ $lte: [{ $ifNull: ['$currentStock', 0] }, 0] }, 'out', 'optimal']
+            $switch: {
+              branches: [
+                { case: { $lt: [{ $ifNull: ['$currentStock', 0] }, 0] }, then: 'owed' },
+                { case: { $eq: [{ $ifNull: ['$currentStock', 0] }, 0] }, then: 'out' }
+              ],
+              default: 'optimal'
+            }
           }
         }
       }
@@ -155,11 +164,12 @@ export class InventoryAnalysisService {
       brand: string;
       supplier: string;
       current_stock: number;
-      cost_price: number;
-      selling_price: number;
-      stock_status: string;
+      unit_cost: number;
+      total_value: number;
+      status: string;
       container_capacity: number;
       loose_stock: number;
+      unit: string;
     }>
   }
 
@@ -203,11 +213,12 @@ export class InventoryAnalysisService {
       brand: string;
       supplier: string;
       current_stock: number;
-      cost_price: number;
-      selling_price: number;
-      stock_status: string;
+      unit_cost: number;
+      total_value: number;
+      status: string;
       container_capacity: number;
       loose_stock: number;
+      unit: string;
     }>,
     turnoverMap: Map<string, number>
   ): InventoryItem[] {
@@ -215,16 +226,21 @@ export class InventoryAnalysisService {
       const monthlySales = turnoverMap.get(item.id.toString()) || 0
       const dailySales = monthlySales / 30
       const turnoverRate = item.current_stock > 0 ? (monthlySales / item.current_stock) : 0
-      const daysSupply = dailySales > 0 ? Math.floor(item.current_stock / dailySales) : 999
+      const daysSupply = dailySales > 0 && item.current_stock > 0
+        ? Math.floor(item.current_stock / dailySales)
+        : 999
 
-      const status: InventoryItem['status'] = item.current_stock <= 0 ? 'out' : 'optimal'
+      const status: InventoryItem['status'] =
+        item.current_stock < 0 ? 'owed'
+        : item.current_stock === 0 ? 'out'
+        : 'optimal'
 
       // Calculate container-related fields using actual looseStock
       const containerCapacity = item.container_capacity || 1
       const looseStock = item.loose_stock || 0
       const sealedStock = Math.max(0, item.current_stock - looseStock)
       const sealedContainers = Math.floor(sealedStock / containerCapacity)
-      const looseRemainder = item.current_stock % containerCapacity
+      const looseRemainder = Math.max(0, item.current_stock) % containerCapacity
 
       // Only show container display when containerCapacity > 1
       let containerDisplay: string | undefined
@@ -239,8 +255,8 @@ export class InventoryAnalysisService {
       return {
         ...item,
         unit: 'unit', // Default unit
-        unit_cost: item.cost_price,
-        total_value: item.current_stock * item.cost_price,
+        // unit_cost and total_value come from the aggregation pipeline; the
+        // pipeline already clamps total_value via $max(0, currentStock).
         turnover_rate: turnoverRate,
         days_supply: daysSupply,
         status,
@@ -264,13 +280,13 @@ export class InventoryAnalysisService {
         $group: {
           _id: { $ifNull: ['$categoryName', 'Uncategorized'] },
           items: { $sum: 1 },
-          value: { 
-            $sum: { 
+          value: {
+            $sum: {
               $multiply: [
-                { $ifNull: ['$currentStock', 0] }, 
+                { $max: [0, { $ifNull: ['$currentStock', 0] }] },
                 { $ifNull: ['$costPrice', 0] }
-              ] 
-            } 
+              ]
+            }
           }
         }
       },
@@ -306,6 +322,7 @@ export class InventoryAnalysisService {
   }
 
   private static getStockStatusSummary(inventoryData: InventoryItem[]): StockStatus[] {
+    const owedItems = inventoryData.filter(item => item.status === 'owed')
     return [
       {
         status: 'Optimal Stock',
@@ -316,6 +333,16 @@ export class InventoryAnalysisService {
         status: 'Out of Stock',
         count: inventoryData.filter(item => item.status === 'out').length,
         value: 0
+      },
+      {
+        status: 'Stock Owed',
+        count: owedItems.length,
+        // Sum of |current_stock| × cost_price — represents inventory the
+        // business has sold but not yet received. Useful for reconciliation.
+        value: owedItems.reduce(
+          (sum, item) => sum + Math.abs(item.current_stock) * (item.unit_cost || 0),
+          0,
+        )
       }
     ]
   }

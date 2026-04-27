@@ -13,7 +13,7 @@ import { PermissionService } from '../lib/permissions/PermissionService.js';
 import type { FeaturePermissions } from '../lib/permissions/types.js';
 import { createAuditLog } from '../models/AuditLog.js';
 import { transactionInventoryService } from '../services/TransactionInventoryService.js';
-import { AppError, InsufficientStockError, type InsufficientStockDetail } from '../middlewares/errorHandler.middleware.js';
+import { AppError } from '../middlewares/errorHandler.middleware.js';
 import { computeUnitPrice, safeContainerCapacity, perUnitCost } from '../utils/pricingUtils.js';
 import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 import { normalizeTransactionForPayment, formatInvoiceFilename } from '../utils/transactionUtils.js';
@@ -531,20 +531,11 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
     }
 
     // ========================================================================
-    // SERVER-SIDE STOCK VALIDATION
-    // Reject non-draft transactions that would take stock to/below zero.
-    // The atomic guard in InventoryMovement.updateProductStock is the
-    // authoritative check under concurrent writes; this pre-check exists so
-    // the user gets a single consolidated 400 with per-item detail before
-    // any DB work happens. Drafts are exempt — staff can stage a cart
-    // against a product that's currently out.
+    // STOCK VALIDATION REMOVED
+    // Sell-through-permissive policy: sales proceed even when stock would go
+    // negative. Deficits surface in inventory reports as "stock owed" so admin
+    // can reconcile when convenient — never blocking a patient consultation.
     // ========================================================================
-    if (transactionData.status !== 'draft') {
-      await transactionInventoryService.checkAvailability({
-        items: transactionData.items,
-        transactionNumber: transactionData.transactionNumber || 'pending',
-      } as unknown as Parameters<typeof transactionInventoryService.checkAvailability>[0]);
-    }
 
     // ========================================================================
     // CUSTOM BLEND PRICE VERIFICATION
@@ -642,6 +633,12 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
     const session = await mongoose.startSession();
     let savedTransaction;
     let transactionId;
+    const oversoldItems: Array<{
+      productId: string;
+      productName: string;
+      deficit: number;
+      currentStock: number;
+    }> = [];
 
     try {
       session.startTransaction();
@@ -746,16 +743,29 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
           console.warn('[Transaction] Inventory processing had errors:', inventoryResult.errors);
         }
 
-        // Alert on negative stock after deduction
+        // Collect oversold-item details so the response can surface a
+        // non-blocking warning to the user. Reads stock once per unique
+        // productId touched by this transaction; entries are emitted only
+        // when the post-deduction currentStock crossed below zero.
+        const seen = new Set<string>();
         for (const movement of inventoryResult.movements) {
-          if (movement.productId) {
-            const prod = await Product.findById(movement.productId).lean() as Record<string, unknown> | null;
-            if (prod && ((prod.currentStock as number) ?? 0) < 0) {
-              console.error(
-                `[STOCK ALERT] Product "${prod.name}" (${prod._id}) is OVERSOLD — currentStock: ${prod.currentStock}. ` +
-                `Transaction: ${savedTransaction.transactionNumber}`
-              );
-            }
+          if (!movement.productId) continue;
+          const pid = String(movement.productId);
+          if (seen.has(pid)) continue;
+          seen.add(pid);
+          const prod = await Product.findById(pid).lean() as Record<string, unknown> | null;
+          if (prod && ((prod.currentStock as number) ?? 0) < 0) {
+            const deficit = Math.abs((prod.currentStock as number) ?? 0);
+            oversoldItems.push({
+              productId: pid,
+              productName: String(prod.name ?? movement.productName ?? 'Unknown'),
+              deficit,
+              currentStock: (prod.currentStock as number) ?? 0,
+            });
+            console.error(
+              `[STOCK ALERT] Product "${prod.name}" (${prod._id}) is OVERSOLD — ` +
+              `currentStock: ${prod.currentStock}. Transaction: ${savedTransaction.transactionNumber}`
+            );
           }
         }
 
@@ -796,7 +806,10 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
       ...savedTransaction.toObject(),
       _invoiceGenerated: false,
       _invoiceGenerating: true,
-      _invoiceError: null
+      _invoiceError: null,
+      // Oversold items so the frontend can show a non-blocking warning toast.
+      // Empty array when no items went negative.
+      _oversoldItems: oversoldItems,
     });
 
     // ========================================================================
@@ -844,6 +857,35 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
 // PUT /api/transactions/:id - Update transaction
 // FIX: When converting a draft to a completed transaction, generate an invoice
 export const updateTransaction = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  // Oversold-item aggregator surfaced to the client so the frontend can show
+  // a non-blocking "stock owed" toast without re-querying the inventory.
+  const oversoldItems: Array<{
+    productId: string;
+    productName: string;
+    deficit: number;
+    currentStock: number;
+  }> = [];
+  const collectOversoldFrom = async (movements: Array<{ productId?: unknown; productName?: string }>) => {
+    const seen = new Set<string>();
+    for (const m of movements) {
+      if (!m.productId) continue;
+      const pid = String(m.productId);
+      if (seen.has(pid)) continue;
+      seen.add(pid);
+      // Skip if already collected on a previous pass within this request.
+      if (oversoldItems.some((o) => o.productId === pid)) continue;
+      const prod = await Product.findById(pid).lean() as Record<string, unknown> | null;
+      if (prod && ((prod.currentStock as number) ?? 0) < 0) {
+        oversoldItems.push({
+          productId: pid,
+          productName: String(prod.name ?? m.productName ?? 'Unknown'),
+          deficit: Math.abs((prod.currentStock as number) ?? 0),
+          currentStock: (prod.currentStock as number) ?? 0,
+        });
+      }
+    }
+  };
+
   try {
     const { id } = req.params;
     const updateData = req.body;
@@ -851,6 +893,19 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
     if (!mongoose.Types.ObjectId.isValid(id)) {
       res.status(400).json({ error: 'Invalid transaction ID' });
       return;
+    }
+
+    // Strip server-managed fields when the client sends them empty/falsy.
+    // The transaction form initializes transactionNumber to '' as a placeholder
+    // ("Will be generated server-side"); without this guard, converting a draft
+    // to completed via PUT would overwrite the saved TXN-... with an empty
+    // string. Same logic for transactionDate/createdBy in case forms ever
+    // pass them through blank.
+    if (
+      Object.prototype.hasOwnProperty.call(updateData, 'transactionNumber') &&
+      !updateData.transactionNumber
+    ) {
+      delete updateData.transactionNumber;
     }
 
     // Validate all items have valid names if items are being updated
@@ -1077,54 +1132,10 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
 
     // ========================================================================
     // SERVER-SIDE STOCK VALIDATION (pre-persistence)
-    // Two paths require a stock check before we persist the update:
-    //
-    //   1. Draft → completed: full availability check on the final items.
-    //   2. Completed-txn item edit: only POSITIVE deltas represent new
-    //      demand; negative deltas are restorations which always succeed.
-    //
-    // We throw InsufficientStockError so the outer catch returns 400 with
-    // per-item detail. Persisting the update before the check would leave
-    // the transaction in an inconsistent state (marked completed with no
-    // inventory movements).
+    // Sell-through-permissive policy: no stock pre-check on draft→completed
+    // conversion or on item edits. Deficits surface in reports as "stock
+    // owed" rather than blocking the consult.
     // ========================================================================
-    if (needsInventoryDeduction && Array.isArray(updateData.items) && updateData.items.length > 0) {
-      await transactionInventoryService.checkAvailability({
-        items: updateData.items,
-        transactionNumber: existingTransaction.transactionNumber,
-      } as unknown as Parameters<typeof transactionInventoryService.checkAvailability>[0]);
-    }
-
-    if (isCompletedItemUpdate) {
-      const positive = inventoryDeltas.filter((d) => d.delta > 0);
-      if (positive.length > 0) {
-        const products = (await Product.find({
-          _id: { $in: positive.map((d) => d.productId) }
-        }).select('_id name currentStock').lean()) as unknown as Array<{ _id: unknown; name: string; currentStock: number }>;
-        const map = new Map(products.map((p) => [String(p._id), p]));
-        const shortages: InsufficientStockDetail[] = [];
-        for (const d of positive) {
-          const p = map.get(d.productId);
-          if (!p) {
-            shortages.push({
-              productId: d.productId, productName: d.productName,
-              requested: d.delta, available: 0, pool: 'any',
-              reason: 'product_not_found',
-            });
-            continue;
-          }
-          const current = Number(p.currentStock ?? 0);
-          if (current < d.delta) {
-            shortages.push({
-              productId: d.productId, productName: d.productName || p.name,
-              requested: d.delta, available: Math.max(0, current),
-              pool: 'any', reason: 'insufficient_stock',
-            });
-          }
-        }
-        if (shortages.length > 0) throw new InsufficientStockError(shortages);
-      }
-    }
 
     // Update the transaction first
     const updatedTransaction = await Transaction.findByIdAndUpdate(
@@ -1159,18 +1170,17 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
           if (inventoryResult.errors.length > 0) {
             console.warn('[Transaction] Inventory processing had errors:', inventoryResult.errors);
           }
+
+          await collectOversoldFrom(inventoryResult.movements);
         } catch (invError) {
           await inventorySession.abortTransaction();
           console.error('[Transaction] Inventory processing failed for draft conversion:', invError);
-          // InsufficientStockError must surface to the client — a concurrent
-          // sale may have drained stock between our pre-check and here.
-          if (invError instanceof InsufficientStockError) throw invError;
-          // Other errors: continue — inventory can be reconciled later.
+          // Sell-through policy: stock-shortage errors no longer surface.
+          // Other errors are logged and skipped — inventory reconciles later.
         } finally {
           inventorySession.endSession();
         }
       } catch (sessionError) {
-        if (sessionError instanceof InsufficientStockError) throw sessionError;
         console.error('[Transaction] Failed to create inventory session:', sessionError);
       }
     }
@@ -1246,13 +1256,12 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
         } catch (deltaErr) {
           await deltaSession.abortTransaction();
           console.error('[Transaction] Inventory delta adjustment failed:', deltaErr);
-          if (deltaErr instanceof InsufficientStockError) throw deltaErr;
-          // Other errors are non-fatal — transaction update already saved, log for manual reconciliation
+          // Sell-through policy: stock-shortage errors no longer surface;
+          // any error here is non-fatal — transaction already saved.
         } finally {
           deltaSession.endSession();
         }
       } catch (sessionErr) {
-        if (sessionErr instanceof InsufficientStockError) throw sessionErr;
         console.error('[Transaction] Failed to create delta session:', sessionErr);
       }
     }
@@ -1354,7 +1363,8 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
 
         res.status(200).json({
           ...finalTransaction?.toObject(),
-          _invoiceGenerated: true
+          _invoiceGenerated: true,
+          _oversoldItems: oversoldItems,
         });
         return;
 
@@ -1372,13 +1382,17 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
         res.status(200).json({
           ...failedTransaction?.toObject(),
           _invoiceGenerated: false,
-          _invoiceError: invoiceError instanceof Error ? invoiceError.message : 'Unknown error'
+          _invoiceError: invoiceError instanceof Error ? invoiceError.message : 'Unknown error',
+          _oversoldItems: oversoldItems,
         });
         return;
       }
     }
 
-    res.status(200).json(updatedTransaction);
+    const responseDoc = (updatedTransaction as unknown as { toObject?: () => Record<string, unknown> }).toObject
+      ? (updatedTransaction as unknown as { toObject: () => Record<string, unknown> }).toObject()
+      : updatedTransaction;
+    res.status(200).json({ ...responseDoc, _oversoldItems: oversoldItems });
   } catch (error) {
     console.error('Error updating transaction:', error);
     if (error instanceof AppError) {

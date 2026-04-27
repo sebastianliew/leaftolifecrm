@@ -7,16 +7,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { HiCube } from "react-icons/hi2"
 import type { Product, UnitOfMeasurement } from '@/types/inventory'
 
@@ -39,7 +29,6 @@ export function QuantitySelectorModal({
 }: QuantitySelectorModalProps) {
   const [quantity, setQuantity] = useState<string>("")
   const [saleType, setSaleType] = useState<'quantity' | 'volume'>('quantity')
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
   const handleQuantityChange = (value: string) => {
     setQuantity(value)
@@ -81,16 +70,6 @@ export function QuantitySelectorModal({
     }
   }
 
-  const getMaxAllowed = () => {
-    if (saleType === "volume") {
-      return product.looseStock ?? 0;
-    }
-    const cap = Math.max(1, product.containerCapacity || 1);
-    const looseStock = product.looseStock ?? 0;
-    const sealedStock = Math.max(0, (product.currentStock || 0) - looseStock);
-    return Math.floor(sealedStock / cap);
-  }
-
   const getInputLabel = () => {
     switch (saleType) {
       case 'quantity':
@@ -102,54 +81,22 @@ export function QuantitySelectorModal({
     }
   }
 
-  const getStockLabel = () => {
-    if (saleType === "quantity") return "sealed containers available";
-    if (saleType === "volume") return `${product.unitOfMeasurement?.abbreviation || "units"} available (loose pool)`;
-    return "units available";
-  }
-
   const hasValidationErrors = () => {
     const qty = parseFloat(quantity) || 0
-
-    // Allow selling out-of-stock items for clinical workflow
-    // Only check if quantity is positive
     return qty <= 0
   }
 
+  // Sell-through-permissive policy: never block a sale on stock. The patient
+  // flow proceeds silently even when quantity exceeds available stock; the
+  // resulting deficit appears in admin reports as "stock owed".
   const handleConfirm = () => {
     const qty = parseFloat(quantity) || 0
 
-    // Only validate that quantity is positive
     if (qty <= 0) {
       alert(`❌ Invalid Quantity!\n\nQuantity must be greater than 0.`)
       return
     }
 
-    // Show warning for out-of-stock sales but allow them to proceed
-    const maxAllowed = getMaxAllowed()
-    if (qty > maxAllowed) {
-      setShowConfirmDialog(true)
-      return
-    }
-
-    const productUnit = typeof product.unitOfMeasurement === 'object'
-      ? product.unitOfMeasurement._id || ''
-      : product.unitOfMeasurement || ''
-
-    onConfirm(
-      qty,
-      getTotalPrice(),
-      productUnit,
-      saleType
-    )
-
-    onClose()
-  }
-
-  const handleConfirmOutOfStock = () => {
-    setShowConfirmDialog(false)
-
-    const qty = parseFloat(quantity)
     const productUnit = typeof product.unitOfMeasurement === 'object'
       ? product.unitOfMeasurement._id || ''
       : product.unitOfMeasurement || ''
@@ -283,16 +230,7 @@ export function QuantitySelectorModal({
                   onChange={(e) => handleQuantityChange(e.target.value)}
                   onFocus={(e) => e.target.select()}
                   placeholder={`Enter ${getInputLabel().toLowerCase()}`}
-                  className={(parseFloat(quantity) || 0) > getMaxAllowed() ? 'border-orange-400 focus:border-orange-400' : ''}
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Available: {getMaxAllowed()} {getStockLabel()}
-                </p>
-                {(parseFloat(quantity) || 0) > getMaxAllowed() && (
-                  <p className="text-xs text-orange-500 mt-1">
-                    ⚠️ Out-of-stock sale - will create negative inventory
-                  </p>
-                )}
               </div>
 
               <div>
@@ -360,64 +298,6 @@ export function QuantitySelectorModal({
           </Button>
         </div>
       </DialogContent>
-
-      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <span className="text-orange-500">⚠️</span>
-              Out-of-Stock Sale Warning
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will create negative inventory that needs to be reconciled later. Do you want to proceed with this out-of-stock sale?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <div className="space-y-4">
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="font-medium">Requested:</span>
-                  <div className="text-lg font-bold text-orange-700">
-                    {parseFloat(quantity).toFixed(2)} {
-                      saleType === 'quantity'
-                        ? 'units'
-                        : (product.unitOfMeasurement?.abbreviation || 'units')
-                    }
-                  </div>
-                </div>
-                <div>
-                  <span className="font-medium">Available:</span>
-                  <div className="text-lg font-bold text-green-700">
-                    {getMaxAllowed().toFixed(2)} {
-                      saleType === 'quantity'
-                        ? 'units'
-                        : (product.unitOfMeasurement?.abbreviation || 'units')
-                    }
-                  </div>
-                </div>
-              </div>
-              <div className="mt-2 pt-2 border-t border-orange-200">
-                <span className="font-medium">Shortage:</span>
-                <span className="ml-2 text-lg font-bold text-red-600">
-                  +{(parseFloat(quantity) - getMaxAllowed()).toFixed(2)} over limit
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmOutOfStock}
-              className="bg-orange-600 hover:bg-orange-700"
-            >
-              Proceed with Sale
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
     </Dialog>
   )
 }

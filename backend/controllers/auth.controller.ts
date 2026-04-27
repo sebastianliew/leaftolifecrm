@@ -3,6 +3,22 @@ import jwt from 'jsonwebtoken';
 import { Request, Response } from 'express';
 import { User, IUser } from '@models/User.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../auth/jwt.js';
+import { isExemptFromRateLimit, isExemptIdentity } from '../middlewares/rateLimiting.middleware.js';
+
+/**
+ * Whitelisted accounts (e.g. the client owner sebastianliew) must never
+ * be locked out by an inactive flag — auto-reactivate them instead of
+ * denying access. Mirrors the manual unblock script the team was running.
+ */
+async function ensureWhitelistedUserActive(user: IUser & { _id: unknown }): Promise<void> {
+  if (user.isActive) return;
+  await User.updateOne(
+    { _id: user._id },
+    { $set: { isActive: true, failedLoginAttempts: 0 }, $unset: { lastFailedLogin: 1 } }
+  );
+  user.isActive = true;
+  user.failedLoginAttempts = 0;
+}
 
 // Request body interfaces
 interface LoginRequest {
@@ -66,10 +82,15 @@ export const login = async (req: Request<object, object, LoginRequest>, res: Res
       return;
     }
     
-    // Check if user is active
+    // Check if user is active. Whitelisted identities (e.g. sebastianliew)
+    // are auto-reactivated rather than denied.
     if (!user.isActive) {
-      res.status(401).json({ error: 'Account is deactivated' });
-      return;
+      if (isExemptFromRateLimit(req)) {
+        await ensureWhitelistedUserActive(user);
+      } else {
+        res.status(401).json({ error: 'Account is deactivated' });
+        return;
+      }
     }
     
     // Verify password
@@ -150,9 +171,20 @@ export const refreshToken = async (req: Request<object, object, RefreshTokenRequ
     // Get user
     const user = await User.findById(decoded.userId).select('-password');
     
-    if (!user || !user.isActive) {
+    if (!user) {
       res.status(401).json({ error: 'User not found or inactive' });
       return;
+    }
+
+    if (!user.isActive) {
+      // Whitelisted identities (e.g. sebastianliew) are auto-reactivated
+      // on refresh so a stray deactivation doesn't end their session.
+      if (isExemptIdentity(user.email, user.username)) {
+        await ensureWhitelistedUserActive(user as IUser & { _id: unknown });
+      } else {
+        res.status(401).json({ error: 'User not found or inactive' });
+        return;
+      }
     }
     
     // Generate new access token

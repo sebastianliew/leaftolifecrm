@@ -5,7 +5,7 @@ import { Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { SimpleTransactionForm } from './SimpleTransactionForm'
 import { useInventory } from '@/hooks/useInventory'
-import { useCreateTransaction } from '@/hooks/queries/use-transaction-queries'
+import { useCreateTransaction, useUpdateTransaction } from '@/hooks/queries/use-transaction-queries'
 import { useToast } from '@/hooks/use-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { fetchAPI, queryKeys } from '@/lib/query-client'
@@ -17,8 +17,14 @@ export function CreateTransactionButton() {
   const [isDraftSaving, setIsDraftSaving] = useState(false)
   // Persist draftId across saves to prevent duplicate drafts
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null)
+  // Server-side transaction _id of the saved draft. When this exists, Pay
+  // converts the existing draft instead of creating a brand-new transaction —
+  // prevents the "1 draft + 1 completed" duplicate when the user saves a
+  // draft and submits within the same modal session.
+  const [currentDraftTxnId, setCurrentDraftTxnId] = useState<string | null>(null)
   const { products, getProducts } = useInventory()
   const createTransactionMutation = useCreateTransaction()
+  const updateTransactionMutation = useUpdateTransaction()
   const { toast } = useToast()
   const queryClient = useQueryClient()
   // Ref-based lock to prevent duplicate API calls (independent of React state timing)
@@ -30,6 +36,7 @@ export function CreateTransactionButton() {
     } else {
       // Reset draft state when dialog closes
       setCurrentDraftId(null)
+      setCurrentDraftTxnId(null)
       setIsDraftSaving(false)
       isSubmittingRef.current = false
     }
@@ -37,7 +44,11 @@ export function CreateTransactionButton() {
 
   const handleSubmit = async (data: TransactionFormData) => {
     // CRITICAL: Ref-based lock to prevent duplicate submissions
-    if (isSubmittingRef.current || createTransactionMutation.isPending) {
+    if (
+      isSubmittingRef.current ||
+      createTransactionMutation.isPending ||
+      updateTransactionMutation.isPending
+    ) {
       console.log('[CreateTransactionButton] Blocked duplicate submission')
       return
     }
@@ -45,11 +56,40 @@ export function CreateTransactionButton() {
     isSubmittingRef.current = true
 
     try {
-      await createTransactionMutation.mutateAsync(data)
+      // If a draft was saved within this modal session, convert it in place
+      // rather than creating a second record. The update controller handles
+      // the draft→completed status transition, including stock deduction.
+      const result = currentDraftTxnId
+        ? await updateTransactionMutation.mutateAsync({
+            id: currentDraftTxnId,
+            data: { ...data, status: 'completed' } as Partial<typeof data> & { status: 'completed' },
+          }) as unknown as {
+            _oversoldItems?: Array<{ productName: string; deficit: number; currentStock: number }>
+          }
+        : await createTransactionMutation.mutateAsync(data) as unknown as {
+            _oversoldItems?: Array<{ productName: string; deficit: number; currentStock: number }>
+          }
       toast({
         title: "Success",
-        description: "Transaction created successfully",
+        description: currentDraftTxnId
+          ? "Draft converted to completed transaction"
+          : "Transaction created successfully",
       })
+
+      // Non-blocking warning: if any item went negative, surface it so admin
+      // knows to reconcile later. Patient flow continues uninterrupted.
+      const oversold = result?._oversoldItems ?? []
+      if (oversold.length > 0) {
+        const lines = oversold.map((o) =>
+          `• ${o.productName}: ${o.deficit} owed (now at ${o.currentStock})`
+        )
+        toast({
+          title: `${oversold.length} item${oversold.length === 1 ? "" : "s"} oversold — please restock soon`,
+          description: lines.join("\n"),
+          variant: "default",
+        })
+      }
+
       setIsOpen(false)
       // React Query will automatically invalidate and refetch the transaction list
     } catch (error) {
@@ -100,7 +140,12 @@ export function CreateTransactionButton() {
       }
 
       // Save to database via API using fetchAPI (handles auth automatically)
-      await fetchAPI('/transactions/drafts/autosave', {
+      const draftResponse = await fetchAPI<{
+        success: boolean
+        draftId: string
+        transactionId: string
+        message: string
+      }>('/transactions/drafts/autosave', {
         method: 'POST',
         body: JSON.stringify({
           draftId,
@@ -108,6 +153,12 @@ export function CreateTransactionButton() {
           formData: data
         })
       })
+
+      // Capture the server-side _id so a later Pay click in the same modal
+      // session converts this draft instead of creating a duplicate.
+      if (draftResponse?.transactionId) {
+        setCurrentDraftTxnId(draftResponse.transactionId)
+      }
 
       // Invalidate transactions query to refresh the list
       queryClient.invalidateQueries({ queryKey: queryKeys.transactions })

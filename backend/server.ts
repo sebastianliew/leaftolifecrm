@@ -24,6 +24,7 @@ import { createServer } from 'http';
 import { AddressInfo } from 'net';
 
 // Import routes AFTER loading environment variables
+import { isExemptFromRateLimit } from './middlewares/rateLimiting.middleware.js';
 import authRoutes from './routes/auth.routes.js';
 import brandsRoutes from './routes/brands.routes.js';
 // Dead code removed: container-types routes (container tracking was removed)
@@ -223,7 +224,10 @@ const limiter = rateLimit({
     retryAfter: '15 minutes'
   },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  // Whitelisted identities (e.g. sebastianliew) are exempt — their office
+  // IP is shared by the whole staff and was tripping the per-IP cap.
+  skip: isExemptFromRateLimit
 });
 
 app.use('/api/', limiter);

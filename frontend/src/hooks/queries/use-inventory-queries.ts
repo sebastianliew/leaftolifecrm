@@ -8,7 +8,7 @@ export interface InventoryFilters {
   search?: string;
   category?: string;
   brand?: string;
-  stockStatus?: 'in_stock' | 'low_stock' | 'out_of_stock';
+  stockStatus?: 'in_stock' | 'low_stock' | 'out_of_stock' | 'owed';
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   page?: number;
@@ -19,6 +19,10 @@ export interface InventoryStats {
   totalProducts: number;
   activeProducts: number;
   outOfStock: number;
+  /** Number of products with currentStock < 0 (owed inventory). */
+  stockOwed: number;
+  /** Sum of |currentStock| × costPrice across all owed products. */
+  totalOwedValue: number;
   lowStock: number;
   expired: number;
   expiringSoon: number;

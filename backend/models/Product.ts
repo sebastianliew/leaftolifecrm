@@ -82,9 +82,11 @@ const productSchema = new mongoose.Schema<IProduct>({
   brand: { type: mongoose.Schema.Types.ObjectId, ref: 'Brand' },
   unitOfMeasurement: { type: mongoose.Schema.Types.ObjectId, ref: 'UnitOfMeasurement', required: true },
   quantity: { type: Number, required: true, default: 0 },
-  currentStock: { type: Number, required: true, default: 0, min: 0 },
+  // Stock fields permit negatives: oversells are recorded as deficits
+  // ("stock owed") rather than blocked. Reports clamp valuation to >= 0.
+  currentStock: { type: Number, required: true, default: 0 },
   totalQuantity: { type: Number, default: 0 },
-  availableStock: { type: Number, default: 0, min: 0 },
+  availableStock: { type: Number, default: 0 },
   reservedStock: { type: Number, default: 0 },
   costPrice: Number,
   sellingPrice: Number,
@@ -119,7 +121,7 @@ const productSchema = new mongoose.Schema<IProduct>({
   baseUnitSize: { type: Number, default: 1 },
   canSellLoose: { type: Boolean, default: false },
   containerCapacity: { type: Number, default: 1 },
-  looseStock: { type: Number, default: 0, min: 0 },
+  looseStock: { type: Number, default: 0 },
   supplierId: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
   supplierName: String,
   isDeleted: { type: Boolean, default: false },
@@ -128,11 +130,15 @@ const productSchema = new mongoose.Schema<IProduct>({
   deleteReason: String
 }, { timestamps: true });
 
-// ── Pre-save: clamp looseStock to currentStock ──
+// ── Pre-save: clamp looseStock to [0, max(0, currentStock)] ──
+// currentStock can go negative under oversell (deficit / "stock owed"), but
+// looseStock represents physically-open containers and stays in [0, currentStock].
+// When currentStock is negative, looseStock collapses to 0 — all deficit is
+// carried by the sealed pool (currentStock − looseStock).
 productSchema.pre('save', function(next) {
-  if (this.looseStock > this.currentStock) {
-    this.looseStock = Math.max(0, this.currentStock);
-  }
+  const cap = Math.max(0, this.currentStock);
+  if (this.looseStock < 0) this.looseStock = 0;
+  if (this.looseStock > cap) this.looseStock = cap;
   next();
 });
 

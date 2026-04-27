@@ -1,11 +1,13 @@
 /**
- * Stock-availability policy: reject sales that would take stock to zero or
- * below, and reject any sale quantity greater than available stock.
+ * Stock-availability policy: SELL-THROUGH-PERMISSIVE.
  *
- * The authoritative guard is the conditional updateOne filter inside
- * `InventoryMovement.updateProductStock` (atomic, race-safe). This file
- * exercises it end-to-end alongside the controller-level pre-check and the
- * schema-level belt-and-suspenders (`min: 0`).
+ * Sales never block on stock. A sale of 5 against stock 0 succeeds and
+ * leaves currentStock at -5 ("stock owed"). Reports clamp valuation to
+ * non-negative; admin reconciles deficits when convenient.
+ *
+ * The atomic $add pipeline inside `InventoryMovement.updateProductStock`
+ * still runs in a single round trip, so concurrent oversells stay
+ * race-consistent — they just no longer race-fail.
  */
 
 process.env.JWT_SECRET = 'test-secret';
@@ -17,7 +19,7 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 
 import inventoryRoutes from '../../routes/inventory.routes.js';
-import { errorHandler, InsufficientStockError } from '../../middlewares/errorHandler.middleware.js';
+import { errorHandler } from '../../middlewares/errorHandler.middleware.js';
 import { clearUserCache } from '../../middlewares/auth.middleware.js';
 import { User } from '../../models/User.js';
 
@@ -64,13 +66,13 @@ function buildApp(): Express {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// 1. Sale path — insufficient stock is rejected, stock never goes negative
+// 1. Sale path — oversells succeed, stock can go negative
 // ────────────────────────────────────────────────────────────────────
-describe('Oversell policy: sale path rejects insufficient stock', () => {
+describe('Sell-through policy: sale path allows oversell', () => {
   let tis: TransactionInventoryService;
   beforeAll(() => { tis = new TransactionInventoryService(); });
 
-  it('selling 5 when currentStock=0 throws InsufficientStockError and leaves stock at 0', async () => {
+  it('selling 5 when currentStock=0 succeeds and leaves stock at -5', async () => {
     const unit = await createTestUnit({ name: 'ml' });
     const product = await createTestProduct({
       unitOfMeasurement: unit._id as mongoose.Types.ObjectId,
@@ -89,22 +91,21 @@ describe('Oversell policy: sale path rejects insufficient stock', () => {
       totalPrice: 125,
     });
     const tx = await Transaction.create(
-      createTestTransaction([item], { transactionNumber: 'BLOCK-ZERO-1' }),
+      createTestTransaction([item], { transactionNumber: 'OVERSELL-ZERO-1' }),
     );
 
-    await expect(tis.processTransactionInventory(tx as any, 'stress-user'))
-      .rejects.toBeInstanceOf(InsufficientStockError);
+    const result = await tis.processTransactionInventory(tx as any, 'stress-user');
+    expect(result.errors).toEqual([]);
+    expect(result.movements.length).toBe(1);
 
     const after = await Product.findById(product._id);
-    expect(after!.currentStock).toBe(0);
-    expect(after!.availableStock).toBe(0);
+    expect(after!.currentStock).toBe(-5);
 
-    // No movement recorded.
-    const movements = await InventoryMovement.countDocuments({ reference: 'BLOCK-ZERO-1' });
-    expect(movements).toBe(0);
+    const movements = await InventoryMovement.countDocuments({ reference: 'OVERSELL-ZERO-1' });
+    expect(movements).toBe(1);
   });
 
-  it('selling 10 when currentStock=3 throws and leaves stock at 3 (no partial)', async () => {
+  it('selling 10 when currentStock=3 succeeds and leaves stock at -7', async () => {
     const unit = await createTestUnit({ name: 'ml' });
     const product = await createTestProduct({
       unitOfMeasurement: unit._id as mongoose.Types.ObjectId,
@@ -123,18 +124,14 @@ describe('Oversell policy: sale path rejects insufficient stock', () => {
       totalPrice: 250,
     });
     const tx = await Transaction.create(
-      createTestTransaction([item], { transactionNumber: 'BLOCK-SHORT-1' }),
+      createTestTransaction([item], { transactionNumber: 'OVERSELL-SHORT-1' }),
     );
 
-    const err = await tis.processTransactionInventory(tx as any, 'stress-user').catch((e) => e);
-    expect(err).toBeInstanceOf(InsufficientStockError);
-    const details = (err as InsufficientStockError).items[0];
-    expect(details.productId).toBe(String(product._id));
-    expect(details.requested).toBe(10);
-    expect(details.available).toBe(3);
+    const result = await tis.processTransactionInventory(tx as any, 'stress-user');
+    expect(result.errors).toEqual([]);
 
     const after = await Product.findById(product._id);
-    expect(after!.currentStock).toBe(3);
+    expect(after!.currentStock).toBe(-7);
   });
 
   it('selling exactly currentStock succeeds and leaves stock at 0', async () => {
@@ -166,7 +163,7 @@ describe('Oversell policy: sale path rejects insufficient stock', () => {
     expect(after!.currentStock).toBe(0);
   });
 
-  it('10 concurrent sales of 1 on stock=5: exactly 5 succeed, 5 rejected, stock lands at 0 (TOCTOU-safe)', async () => {
+  it('10 concurrent sales of 1 on stock=5: all 10 succeed, stock lands at -5 (race-consistent)', async () => {
     const unit = await createTestUnit({ name: 'ml' });
     const product = await createTestProduct({
       unitOfMeasurement: unit._id as mongoose.Types.ObjectId,
@@ -190,40 +187,31 @@ describe('Oversell policy: sale path rejects insufficient stock', () => {
         const tx = await Transaction.create(
           createTestTransaction([item], { transactionNumber: `RACE-${i}` }),
         );
-        try {
-          await tis.processTransactionInventory(tx as any, 'stress-user');
-          return 'ok' as const;
-        } catch (e) {
-          if (e instanceof InsufficientStockError) return 'rejected' as const;
-          throw e;
-        }
+        const result = await tis.processTransactionInventory(tx as any, 'stress-user');
+        return result.errors.length === 0 ? 'ok' : 'failed';
       }),
     );
 
-    const ok = outcomes.filter((o) => o === 'ok').length;
-    const rejected = outcomes.filter((o) => o === 'rejected').length;
-
-    expect(ok).toBe(5);
-    expect(rejected).toBe(5);
+    expect(outcomes.filter((o) => o === 'ok').length).toBe(SALES);
 
     const after = await Product.findById(product._id);
-    expect(after!.currentStock).toBe(0);
+    // Atomic pipeline: every sale decrements by exactly 1, so stock = 5 - 10 = -5.
+    expect(after!.currentStock).toBe(-5);
   });
 });
 
 // ────────────────────────────────────────────────────────────────────
-// 2. Blend + bundle paths — all-or-nothing pre-check
+// 2. Blend + bundle paths — oversells succeed component-by-component
 // ────────────────────────────────────────────────────────────────────
-describe('Oversell policy: blends and bundles reject when any component is short', () => {
+describe('Sell-through policy: blends and bundles oversell partially', () => {
   let tis: TransactionInventoryService;
   beforeAll(() => { tis = new TransactionInventoryService(); });
 
-  it('fixed_blend rejects when any ingredient is short, neither ingredient is deducted', async () => {
+  it('fixed_blend with one short ingredient succeeds; both ingredients deducted', async () => {
     const unit = await createTestUnit({ name: 'ml' });
     const unitId = unit._id as mongoose.Types.ObjectId;
     const a = await createTestProduct({ name: 'A', unitOfMeasurement: unitId, currentStock: 100, availableStock: 100, containerCapacity: 100 });
     const b = await createTestProduct({ name: 'B', unitOfMeasurement: unitId, currentStock: 5, availableStock: 5, containerCapacity: 100 });
-    // Allow loose-pool deduction on both ingredients.
     await Product.updateMany(
       { _id: { $in: [a._id, b._id] } },
       { $set: { canSellLoose: true } },
@@ -239,7 +227,6 @@ describe('Oversell policy: blends and bundles reject when any component is short
       { unitOfMeasurementId: unitId, unitName: 'ml' },
     );
 
-    // One blend requires 10 of B; only 5 available.
     const item = createTestTransactionItem({
       productId: String(template._id),
       name: template.name,
@@ -250,21 +237,20 @@ describe('Oversell policy: blends and bundles reject when any component is short
       totalPrice: 40,
     });
     const tx = await Transaction.create(
-      createTestTransaction([item], { transactionNumber: 'BLEND-SHORT-1' }),
+      createTestTransaction([item], { transactionNumber: 'BLEND-OVERSELL-1' }),
     );
 
-    await expect(tis.processTransactionInventory(tx as any, 'stress-user'))
-      .rejects.toBeInstanceOf(InsufficientStockError);
+    const result = await tis.processTransactionInventory(tx as any, 'stress-user');
+    expect(result.errors).toEqual([]);
 
-    // A was not touched even though it had plenty.
     const afterA = await Product.findById(a._id);
     const afterB = await Product.findById(b._id);
-    expect(afterA!.currentStock).toBe(100);
-    expect(afterB!.currentStock).toBe(5);
-    expect(await InventoryMovement.countDocuments({ reference: 'BLEND-SHORT-1' })).toBe(0);
+    expect(afterA!.currentStock).toBe(90);    // 100 - 10
+    expect(afterB!.currentStock).toBe(-5);    // 5 - 10 (oversold)
+    expect(await InventoryMovement.countDocuments({ reference: 'BLEND-OVERSELL-1' })).toBe(2);
   });
 
-  it('bundle rejects when any component is short, no component is deducted', async () => {
+  it('bundle with one short component succeeds; all components deducted', async () => {
     const unit = await createTestUnit({ name: 'ml' });
     const unitId = unit._id as mongoose.Types.ObjectId;
     const comp1 = await createTestProduct({ name: 'C1', unitOfMeasurement: unitId, currentStock: 100, availableStock: 100, containerCapacity: 100 });
@@ -294,36 +280,35 @@ describe('Oversell policy: blends and bundles reject when any component is short
       totalPrice: 50,
     });
     const tx = await Transaction.create(
-      createTestTransaction([item], { transactionNumber: 'BUNDLE-SHORT-1' }),
+      createTestTransaction([item], { transactionNumber: 'BUNDLE-OVERSELL-1' }),
     );
 
-    await expect(tis.processTransactionInventory(tx as any, 'stress-user'))
-      .rejects.toBeInstanceOf(InsufficientStockError);
+    const result = await tis.processTransactionInventory(tx as any, 'stress-user');
+    expect(result.errors).toEqual([]);
 
     const afterC1 = await Product.findById(comp1._id);
     const afterC2 = await Product.findById(comp2._id);
-    expect(afterC1!.currentStock).toBe(100);
-    expect(afterC2!.currentStock).toBe(3);
+    expect(afterC1!.currentStock).toBe(98);   // 100 - 2
+    expect(afterC2!.currentStock).toBe(-2);   // 3 - 5 (oversold)
   });
 });
 
 // ────────────────────────────────────────────────────────────────────
-// 3. Paths that must REMAIN unblocked
+// 3. Refunds and restocks still work and recover from negative
 // ────────────────────────────────────────────────────────────────────
-describe('Paths that are exempt from the availability guard', () => {
+describe('Recovery from negative stock', () => {
   let tis: TransactionInventoryService;
   beforeAll(() => { tis = new TransactionInventoryService(); });
 
-  it('refund/return movements add stock without triggering the availability guard', async () => {
+  it('refund of an oversold transaction restores stock toward zero', async () => {
     const unit = await createTestUnit({ name: 'ml' });
     const product = await createTestProduct({
       unitOfMeasurement: unit._id as mongoose.Types.ObjectId,
-      currentStock: 10,
-      availableStock: 10,
+      currentStock: 0,
+      availableStock: 0,
       containerCapacity: 1,
     });
 
-    // Sell 5 first so there's something to reverse.
     const item = createTestTransactionItem({
       productId: String(product._id),
       name: product.name,
@@ -333,28 +318,27 @@ describe('Paths that are exempt from the availability guard', () => {
       totalPrice: 50,
     });
     const tx = await Transaction.create(
-      createTestTransaction([item], { transactionNumber: 'REV-1' }),
+      createTestTransaction([item], { transactionNumber: 'OVERSOLD-REV-1' }),
     );
     await tis.processTransactionInventory(tx as any, 'stress-user');
 
     let after = await Product.findById(product._id);
-    expect(after!.currentStock).toBe(5);
+    expect(after!.currentStock).toBe(-5);
 
-    // Reverse it — returns add stock back, should never be blocked.
-    const reversal = await tis.reverseTransactionInventory('REV-1', 'stress-user');
+    const reversal = await tis.reverseTransactionInventory('OVERSOLD-REV-1', 'stress-user');
     expect(reversal.errors).toEqual([]);
     expect(reversal.reversedCount).toBe(1);
 
     after = await Product.findById(product._id);
-    expect(after!.currentStock).toBe(10);
+    expect(after!.currentStock).toBe(0);
   });
 
-  it('adjustment movements (restock) add stock and are not blocked', async () => {
+  it('adjustment (restock) brings negative stock back positive', async () => {
     const unit = await createTestUnit({ name: 'ml' });
     const product = await createTestProduct({
       unitOfMeasurement: unit._id as mongoose.Types.ObjectId,
-      currentStock: 0,
-      availableStock: 0,
+      currentStock: -5,
+      availableStock: -5,
       containerCapacity: 1,
     });
     const movement = new InventoryMovement({
@@ -372,35 +356,37 @@ describe('Paths that are exempt from the availability guard', () => {
     await (movement as any).updateProductStock();
 
     const after = await Product.findById(product._id);
-    expect(after!.currentStock).toBe(50);
+    expect(after!.currentStock).toBe(45);  // -5 + 50
   });
 });
 
 // ────────────────────────────────────────────────────────────────────
-// 4. Schema-level belt-and-suspenders
+// 4. Schema accepts negative stock values
 // ────────────────────────────────────────────────────────────────────
-describe('Schema-level stock guards', () => {
-  it('GUARD: Product.currentStock has min:0 — direct save of negative is rejected', async () => {
+describe('Schema permits negative stock', () => {
+  it('Product.currentStock can persist as negative', async () => {
     const unit = await createTestUnit({ name: 'ml' });
     const product = await createTestProduct({
       unitOfMeasurement: unit._id as mongoose.Types.ObjectId,
       currentStock: 0,
     });
-    product.currentStock = -1;
-    await expect(product.save()).rejects.toThrow(/currentStock|min/i);
+    product.currentStock = -10;
+    await expect(product.save()).resolves.toBeTruthy();
+    const after = await Product.findById(product._id);
+    expect(after!.currentStock).toBe(-10);
   });
 
-  it('GUARD: Product.availableStock has min:0 — direct save of negative is rejected', async () => {
+  it('Product.availableStock can persist as negative', async () => {
     const unit = await createTestUnit({ name: 'ml' });
     const product = await createTestProduct({
       unitOfMeasurement: unit._id as mongoose.Types.ObjectId,
       availableStock: 0,
     });
-    product.availableStock = -1;
-    await expect(product.save()).rejects.toThrow(/availableStock|min/i);
+    product.availableStock = -3;
+    await expect(product.save()).resolves.toBeTruthy();
   });
 
-  it('GUARD: Product.looseStock has min:0 — direct save of negative is rejected', async () => {
+  it('looseStock collapses to 0 when currentStock goes negative (pre-save clamp)', async () => {
     const unit = await createTestUnit({ name: 'ml' });
     const product = await createTestProduct({
       unitOfMeasurement: unit._id as mongoose.Types.ObjectId,
@@ -408,15 +394,21 @@ describe('Schema-level stock guards', () => {
       availableStock: 100,
       containerCapacity: 100,
     });
-    await Product.updateOne({ _id: product._id }, { $set: { canSellLoose: true, looseStock: 0 } });
+    await Product.updateOne({ _id: product._id }, { $set: { canSellLoose: true, looseStock: 50 } });
     const refreshed = await Product.findById(product._id);
-    refreshed!.looseStock = -10;
-    await expect(refreshed!.save()).rejects.toThrow(/looseStock|min/i);
+    refreshed!.currentStock = -5;
+    refreshed!.looseStock = 50;
+    await refreshed!.save();
+
+    const after = await Product.findById(product._id);
+    expect(after!.currentStock).toBe(-5);
+    // looseStock is bounded by [0, max(0, currentStock)] = 0 here.
+    expect(after!.looseStock).toBe(0);
   });
 });
 
 // ────────────────────────────────────────────────────────────────────
-// 5. Pool transfer — still guarded (regression)
+// 5. Pool transfer still validates (separate code path)
 // ────────────────────────────────────────────────────────────────────
 describe('Pool transfer guards (regression)', () => {
   const app = buildApp();
@@ -433,7 +425,7 @@ describe('Pool transfer guards (regression)', () => {
     return jwt.sign({ userId: String(u._id), role: 'super_admin' }, process.env.JWT_SECRET!, { expiresIn: '1h' });
   }
 
-  it('open 500ml when sealed stock is 0 → 400', async () => {
+  it('open 500ml when sealed stock is 0 → 400 (StockPoolService still validates)', async () => {
     const unit = await createTestUnit({ name: 'ml' });
     const product = await createTestProduct({
       unitOfMeasurement: unit._id as mongoose.Types.ObjectId,

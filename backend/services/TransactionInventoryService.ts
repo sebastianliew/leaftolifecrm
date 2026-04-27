@@ -7,7 +7,7 @@ import { CustomBlendHistory } from '../models/CustomBlendHistory.js';
 import { CustomBlendService } from './CustomBlendService.js';
 import { ITransaction } from '../models/Transaction.js';
 import { InventoryDeductionResult, InventoryReversalResult, TransactionItem } from '../types/transaction-inventory.types.js';
-import { InsufficientStockError, type InsufficientStockDetail } from '../middlewares/errorHandler.middleware.js';
+import { type InsufficientStockDetail } from '../middlewares/errorHandler.middleware.js';
 
 // ── Helpers ──
 
@@ -245,22 +245,24 @@ export class TransactionInventoryService {
   }
 
   /**
-   * Check whether the transaction can be fulfilled against current stock.
-   * Throws InsufficientStockError with the full list of shortages if not.
-   * Safe to call before processTransactionInventory as a fast-fail guard.
+   * Compute the shortages a transaction would incur against current stock.
    *
-   * NOTE: This is best-effort. The atomic per-movement guard in
-   * InventoryMovement.updateProductStock is the source of truth under
-   * concurrent writes.
+   * Sell-through-permissive policy: this method does NOT throw. Sales are
+   * allowed to push stock negative; the returned list is informational so
+   * callers can surface "stock owed" warnings or skip them entirely. Kept
+   * around for diagnostic endpoints; the patient-flow path no longer calls it.
    */
-  async checkAvailability(transaction: ITransaction, session?: ClientSession): Promise<void> {
+  async checkAvailability(
+    transaction: ITransaction,
+    session?: ClientSession,
+  ): Promise<InsufficientStockDetail[]> {
     const reqs = await this.computeRequirements(transaction, session);
-    if (reqs.size === 0) return;
+    if (reqs.size === 0) return [];
 
     const ids = Array.from(reqs.keys())
       .filter((id) => ID_RE.test(id))
       .map((id) => new mongoose.Types.ObjectId(id));
-    if (ids.length === 0) return;
+    if (ids.length === 0) return [];
 
     const products = (await Product.find({ _id: { $in: ids } })
       .select('_id name currentStock looseStock')
@@ -312,7 +314,7 @@ export class TransactionInventoryService {
       }
     }
 
-    if (shortages.length > 0) throw new InsufficientStockError(shortages);
+    return shortages;
   }
 
   async processTransactionInventory(
@@ -345,11 +347,9 @@ export class TransactionInventoryService {
       }
     }
 
-    // Pre-check: fail fast with a single consolidated shortage response
-    // before any writes. Defense-in-depth is provided by the atomic guard
-    // inside InventoryMovement.updateProductStock (handles TOCTOU races).
-    await this.checkAvailability(transaction, session);
-
+    // Sell-through-permissive policy: no pre-check. Sales proceed even when
+    // stock would go negative; the resulting deficit appears in reports as
+    // "stock owed" for admin reconciliation.
     for (const item of transaction.items) {
       try {
         const txItem = item as TransactionItem;
@@ -379,9 +379,8 @@ export class TransactionInventoryService {
           }
         }
       } catch (error) {
-        // InsufficientStockError must propagate so the HTTP layer returns
-        // a structured 400 rather than a 200 with a silent error list.
-        if (error instanceof InsufficientStockError) throw error;
+        // Sell-through policy: stock-shortage errors no longer surface here.
+        // Any error reaching this catch is a real failure — log and continue.
         result.errors.push(`Failed to process ${item.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }

@@ -1,16 +1,13 @@
 "use client"
 
-import { useState, useRef, useCallback, memo } from "react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useState, useRef, useCallback, memo, useEffect } from "react"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
-  HiCube,
-  HiExclamationTriangle,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   HiMagnifyingGlass,
   HiPencil,
   HiTrash,
@@ -62,7 +59,31 @@ interface Brand {
 // re-render the parent InventoryPage component.
 // Only calls onSearch (debounced) when the user
 // stops typing for 400ms.
-// ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── Editorial typography for the inventory page ──
+function PoppinsStyle() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&display=swap');
+      .inv-page { font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif; color: #0A0A0A; }
+      .inv-page input::-webkit-outer-spin-button,
+      .inv-page input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+      .inv-page input[type=number] { -moz-appearance: textfield; }
+      @keyframes invRise {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .inv-rise > * { animation: invRise 480ms cubic-bezier(0.2, 0.7, 0.1, 1) both; }
+      .inv-rise > *:nth-child(1) { animation-delay: 30ms; }
+      .inv-rise > *:nth-child(2) { animation-delay: 90ms; }
+      .inv-rise > *:nth-child(3) { animation-delay: 150ms; }
+      .inv-rise > *:nth-child(4) { animation-delay: 210ms; }
+      .inv-rise > *:nth-child(5) { animation-delay: 270ms; }
+      .inv-rise > *:nth-child(6) { animation-delay: 330ms; }
+    `}</style>
+  )
+}
+
+// ────────────────────────────────────────────────────────
 const DebouncedSearchInput = memo(function DebouncedSearchInput({
   onSearch,
   placeholder = "Search products or SKU...",
@@ -83,13 +104,13 @@ const DebouncedSearchInput = memo(function DebouncedSearchInput({
   }
 
   return (
-    <div className="relative">
-      <HiMagnifyingGlass className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-      <Input
+    <div className="relative w-72">
+      <HiMagnifyingGlass className="absolute left-0 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#6B7280]" />
+      <input
         placeholder={placeholder}
         value={value}
         onChange={handleChange}
-        className="pl-10 w-64"
+        className="w-full bg-transparent border-0 border-b border-[#E5E7EB] focus:border-[#0A0A0A] focus:outline-none focus:ring-0 pl-6 pr-2 py-2 text-sm text-[#0A0A0A] placeholder:text-[#9CA3AF] transition-colors"
       />
     </div>
   )
@@ -128,6 +149,12 @@ export default function InventoryPage() {
   const [showPoolDialog, setShowPoolDialog] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
 
+  // Stock-owed reconciliation modal: fires once per page mount when stats
+  // load with at least one owed product. Closing it does not reopen until
+  // the next navigation to this page.
+  const [showOwedModal, setShowOwedModal] = useState(false)
+  const owedModalShownRef = useRef(false)
+
   // Stable callback ΓÇö passed to the isolated search component
   const handleSearch = useCallback((term: string) => {
     setSearchTerm(term)
@@ -152,6 +179,16 @@ export default function InventoryPage() {
   // For subsequent searches/filters, data stays visible via placeholderData.
   const isInitialLoad = isLoading && !inventoryData
   const { data: stats } = useInventoryStats()
+
+  // Trigger the reconciliation modal when stats first arrives with owed > 0.
+  // Tied to a ref so it fires exactly once per mount even if React re-renders.
+  useEffect(() => {
+    if (owedModalShownRef.current) return
+    if (stats && (stats.stockOwed ?? 0) > 0) {
+      owedModalShownRef.current = true
+      setShowOwedModal(true)
+    }
+  }, [stats])
   const { data: brands = [], isLoading: brandsLoading } = useBrands()
   const { data: categories = [], isLoading: categoriesLoading } = useCategoriesQuery()
   const { data: containerTypes = [], isLoading: containerTypesLoading } = useContainerTypesQuery()
@@ -168,26 +205,7 @@ export default function InventoryPage() {
   const poolTransferMutation = usePoolTransfer()
   const bulkDeleteMutation = useBulkDeleteInventoryItems()
 
-  // ΓöÇΓöÇ Stock status helper ΓöÇΓöÇ
-  const getStockStatus = (product: Product) => {
-    const stock = product.currentStock ?? 0
-    if (stock <= 0) {
-      return {
-        status: "out",
-        color: "bg-red-100 text-red-800",
-        icon: <HiExclamationTriangle className="w-3 h-3" />,
-        text: "Out of Stock"
-      }
-    }
-    return {
-      status: "normal",
-      color: "bg-green-100 text-green-800",
-      icon: <HiCube className="w-3 h-3" />,
-      text: "In Stock"
-    }
-  }
-
-  // ΓöÇΓöÇ Sort handling ΓöÇΓöÇ
+  // ── Sort handling ──
   const handleSort = (column: string) => {
     if (sortBy === column) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
@@ -407,35 +425,45 @@ export default function InventoryPage() {
     }
   }
 
-  // ΓöÇΓöÇ Error state ΓöÇΓöÇ
+  // ── Error state ──
   if (inventoryError) {
     return (
-      <div className="p-6">
-        <div className="max-w-lg mx-auto mt-16">
-          <Card>
-            <CardContent className="p-6 text-center">
-              <HiExclamationTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold mb-2">Error Loading Data</h2>
-              <p className="text-gray-600 mb-4">There was an error loading the inventory data.</p>
-              <Button onClick={() => window.location.reload()}>Retry</Button>
-            </CardContent>
-          </Card>
+      <div className="inv-page p-12 bg-white min-h-screen">
+        <PoppinsStyle />
+        <div className="max-w-lg mx-auto mt-24">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280]">Error</p>
+          <h2 className="font-light text-[40px] leading-[1.05] mt-3 text-[#0A0A0A]">Could not load inventory.</h2>
+          <p className="text-sm text-[#6B7280] mt-4 max-w-md">There was an error reaching the inventory service. Try reloading; if it persists, check the network log.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="group inline-flex items-center gap-2 bg-[#0A0A0A] text-white px-7 py-3 mt-8 text-[11px] uppercase tracking-[0.28em] hover:bg-black transition-colors"
+          >
+            Retry
+            <span className="text-base normal-case tracking-normal opacity-80 group-hover:translate-x-0.5 transition-transform">→</span>
+          </button>
         </div>
       </div>
     )
   }
 
-  // ΓöÇΓöÇ Loading state (only first load ΓÇö never unmounts the page after data exists) ΓöÇΓöÇ
+  // ── Loading state (first load only) ──
   if (isInitialLoad) {
     return (
-      <div className="p-6">
+      <div className="inv-page p-12 bg-white min-h-screen">
+        <PoppinsStyle />
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
-          <div className="grid grid-cols-3 gap-4 mb-8">
-            {[...Array(3)].map((_, i) => <div key={i} className="h-24 bg-gray-100 rounded"></div>)}
+          <div className="h-3 w-32 bg-[#E5E7EB] mb-4" />
+          <div className="h-12 w-1/2 bg-[#E5E7EB] mb-12" />
+          <div className="grid grid-cols-4 gap-10 mb-12 border-y border-[#E5E7EB] py-8">
+            {[...Array(4)].map((_, i) => (
+              <div key={i}>
+                <div className="h-2 w-16 bg-[#E5E7EB] mb-3" />
+                <div className="h-10 w-20 bg-[#E5E7EB]" />
+              </div>
+            ))}
           </div>
-          <div className="space-y-3">
-            {[...Array(10)].map((_, i) => <div key={i} className="h-12 bg-gray-100 rounded"></div>)}
+          <div className="space-y-2">
+            {[...Array(10)].map((_, i) => <div key={i} className="h-10 bg-[#F3F4F6]"></div>)}
           </div>
         </div>
       </div>
@@ -443,240 +471,344 @@ export default function InventoryPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Inventory Management</h1>
-          <p className="text-sm text-gray-600">Manage your product inventory and stock levels</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <DebouncedSearchInput onSearch={handleSearch} />
-          {isFetching && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
-          <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2">
-            <HiFunnel className="h-4 w-4" /> Filters
-          </Button>
-          <Button variant="outline" onClick={handleExportExcel} disabled={isExporting} className="flex items-center gap-2">
-            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <HiArrowDownTray className="h-4 w-4" />}
-            Download Excel
-          </Button>
-          <Button className="flex items-center gap-2" onClick={() => setShowAddModal(true)} disabled={!canAddProducts}>
-            <HiPlus className="h-4 w-4" /> Add Product
-          </Button>
-        </div>
-      </div>
+    <div className="inv-page bg-white min-h-screen">
+      <PoppinsStyle />
 
-      {/* Stats summary */}
-      <div className="flex items-center gap-6 text-sm text-gray-600">
-        <button onClick={() => handleCardFilter("all")} className={`hover:text-gray-900 ${stockStatusFilter === "all" ? "text-gray-900 font-semibold" : ""}`}>
-          <strong className="text-gray-900">{stats?.totalProducts ?? 0}</strong> products ({stats?.activeProducts ?? 0} active)
-        </button>
-        <button onClick={() => handleCardFilter(stockStatusFilter === "all" ? "out_of_stock" : "all")}
-          className={`hover:text-gray-900 ${stockStatusFilter !== "all" ? "text-gray-900 font-semibold" : ""}`}>
-          {(stats?.outOfStock ?? 0) > 0
-            ? <span className="text-red-600">{stats!.outOfStock} out of stock</span>
-            : <span className="text-green-600">No alerts</span>}
-        </button>
-        {canViewCostPrices && (
-          <span>Value: <strong className="text-gray-900">{formatCurrency(stats?.totalValue ?? 0)}</strong></span>
+      <div className="px-12 pt-12 pb-20 inv-rise">
+
+        {/* ── Masthead ── */}
+        <header className="flex items-end justify-between border-b border-[#E5E7EB] pb-8">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280]">Inventory</p>
+            <h1 className="font-light text-[48px] leading-[1] mt-3 text-[#0A0A0A]">Ledger</h1>
+            <p className="text-sm text-[#6B7280] mt-3 italic font-light">
+              <span className="tabular-nums">{pagination.total}</span> products on file
+              {isFetching && <span className="ml-2 text-[#9CA3AF]">· refreshing…</span>}
+            </p>
+          </div>
+          <div className="flex items-center gap-7">
+            <DebouncedSearchInput onSearch={handleSearch} />
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`text-[11px] uppercase tracking-[0.28em] py-2 transition-colors flex items-center gap-2 ${showFilters ? 'text-[#0A0A0A] border-b border-[#0A0A0A]' : 'text-[#6B7280] hover:text-[#0A0A0A]'}`}
+            >
+              <HiFunnel className="h-3 w-3" /> Filter
+            </button>
+            <button
+              onClick={handleExportExcel}
+              disabled={isExporting}
+              className="text-[11px] uppercase tracking-[0.28em] text-[#6B7280] hover:text-[#0A0A0A] py-2 transition-colors flex items-center gap-2 disabled:opacity-50"
+            >
+              {isExporting ? <Loader2 className="h-3 w-3 animate-spin" /> : <HiArrowDownTray className="h-3 w-3" />}
+              Export
+            </button>
+            <button
+              onClick={() => setShowAddModal(true)}
+              disabled={!canAddProducts}
+              className="group inline-flex items-center gap-2 bg-[#0A0A0A] text-white px-7 py-2.5 text-[11px] uppercase tracking-[0.28em] hover:bg-black disabled:bg-[#9CA3AF] disabled:cursor-not-allowed transition-colors"
+            >
+              <HiPlus className="h-3 w-3" /> New product
+              <span className="text-base normal-case tracking-normal opacity-80 group-hover:translate-x-0.5 transition-transform">→</span>
+            </button>
+          </div>
+        </header>
+
+        {/* ── Stats masthead ── */}
+        <section className="grid grid-cols-4 gap-10 border-b border-[#E5E7EB] py-8">
+          <button onClick={() => handleCardFilter("all")} className="text-left group">
+            <p className={`text-[10px] uppercase tracking-[0.32em] transition-colors ${stockStatusFilter === "all" ? "text-[#0A0A0A]" : "text-[#6B7280] group-hover:text-[#0A0A0A]"}`}>
+              i. Total products
+            </p>
+            <p className="font-light text-[44px] leading-none tabular-nums mt-3 text-[#0A0A0A]">{stats?.totalProducts ?? 0}</p>
+            <p className="text-xs text-[#6B7280] mt-2 italic font-light">
+              <span className="tabular-nums">{stats?.activeProducts ?? 0}</span> active
+            </p>
+          </button>
+
+          <button onClick={() => handleCardFilter(stockStatusFilter === "out_of_stock" ? "all" : "out_of_stock")} className="text-left group">
+            <p className={`text-[10px] uppercase tracking-[0.32em] transition-colors ${stockStatusFilter === "out_of_stock" ? "text-[#DC2626]" : "text-[#6B7280] group-hover:text-[#0A0A0A]"}`}>
+              ii. Out of stock
+            </p>
+            <p className={`font-light text-[44px] leading-none tabular-nums mt-3 ${(stats?.outOfStock ?? 0) > 0 ? "text-[#DC2626]" : "text-[#16A34A]"}`}>
+              {stats?.outOfStock ?? 0}
+            </p>
+            <p className="text-xs text-[#6B7280] mt-2 italic font-light">
+              {(stats?.outOfStock ?? 0) > 0 ? "needs attention" : "all clear"}
+            </p>
+          </button>
+
+          {(stats?.stockOwed ?? 0) > 0 ? (
+            <button onClick={() => handleCardFilter(stockStatusFilter === "owed" ? "all" : "owed")} className="text-left group"
+              title="Click to filter to owed items — these need restocking to reconcile reports">
+              <p className={`text-[10px] uppercase tracking-[0.32em] transition-colors ${stockStatusFilter === "owed" ? "text-[#EA580C]" : "text-[#6B7280] group-hover:text-[#EA580C]"}`}>
+                iii. Stock owed
+              </p>
+              <p className="font-light text-[44px] leading-none tabular-nums mt-3 text-[#EA580C]">
+                {stats?.stockOwed ?? 0}
+              </p>
+              <p className="text-xs text-[#EA580C] mt-2 italic font-light">
+                {canViewCostPrices && (stats?.totalOwedValue ?? 0) > 0
+                  ? `${formatCurrency(stats?.totalOwedValue ?? 0)} to reconcile`
+                  : "to reconcile"}
+              </p>
+            </button>
+          ) : (
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.32em] text-[#6B7280]">iii. Low stock</p>
+              <p className="font-light text-[44px] leading-none tabular-nums mt-3 text-[#0A0A0A]">{stats?.lowStock ?? 0}</p>
+              <p className="text-xs text-[#6B7280] mt-2 italic font-light">below threshold</p>
+            </div>
+          )}
+
+          {canViewCostPrices ? (
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.32em] text-[#6B7280]">iv. Inventory value</p>
+              <p className="font-light text-[44px] leading-none tabular-nums mt-3 text-[#0A0A0A]">
+                {formatCurrency(stats?.totalValue ?? 0)}
+              </p>
+              <p className="text-xs text-[#6B7280] mt-2 italic font-light">at cost</p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.32em] text-[#6B7280]">iv. Expiring</p>
+              <p className="font-light text-[44px] leading-none tabular-nums mt-3 text-[#0A0A0A]">{stats?.expiringSoon ?? 0}</p>
+              <p className="text-xs text-[#6B7280] mt-2 italic font-light">within 30 days</p>
+            </div>
+          )}
+        </section>
+
+        {/* ── Filters (collapsible) ── */}
+        {showFilters && (
+          <section className="border-b border-[#E5E7EB] py-6 grid grid-cols-3 gap-10">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280] mb-1">Category</p>
+              <select value={categoryFilter}
+                onChange={(e) => { setCategoryFilter(e.target.value); setCurrentPage(1) }}
+                className="w-full bg-transparent border-0 border-b border-[#E5E7EB] focus:border-[#0A0A0A] focus:outline-none focus:ring-0 px-0 py-2 text-sm text-[#0A0A0A] cursor-pointer"
+              >
+                <option value="all">All categories</option>
+                {categories.map((cat: ProductCategory) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280] mb-1">Brand</p>
+              <select value={brandFilter}
+                onChange={(e) => { setBrandFilter(e.target.value); setCurrentPage(1) }}
+                className="w-full bg-transparent border-0 border-b border-[#E5E7EB] focus:border-[#0A0A0A] focus:outline-none focus:ring-0 px-0 py-2 text-sm text-[#0A0A0A] cursor-pointer"
+              >
+                <option value="all">All brands</option>
+                {brands.map((brand: Brand) => (
+                  <option key={brand._id} value={brand._id}>{brand.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280] mb-1">Stock status</p>
+              <select value={stockStatusFilter}
+                onChange={(e) => { setStockStatusFilter(e.target.value); setCurrentPage(1) }}
+                className="w-full bg-transparent border-0 border-b border-[#E5E7EB] focus:border-[#0A0A0A] focus:outline-none focus:ring-0 px-0 py-2 text-sm text-[#0A0A0A] cursor-pointer"
+              >
+                <option value="all">All stock</option>
+                <option value="in_stock">In stock</option>
+                <option value="out_of_stock">Out of stock</option>
+                <option value="owed">Stock owed</option>
+              </select>
+            </div>
+          </section>
         )}
-      </div>
 
-      {/* Filter Options */}
-      {showFilters && (
-        <div className="flex items-center gap-4">
-          <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setCurrentPage(1) }}>
-            <SelectTrigger className="w-48"><SelectValue placeholder="All Categories" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {categories.map((cat: ProductCategory) => (
-                <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* ── Bulk action bar (sticky reveal) ── */}
+        {selectedProducts.size > 0 && (
+          <div className="flex items-center justify-between bg-[#0A0A0A] text-white px-6 py-3 mt-6">
+            <span className="text-[11px] uppercase tracking-[0.28em]">
+              <span className="tabular-nums">{selectedProducts.size}</span> selected
+            </span>
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkDeleteMutation.isPending}
+              className="text-[11px] uppercase tracking-[0.28em] text-[#FCA5A5] hover:text-white transition-colors flex items-center gap-2 disabled:opacity-50"
+            >
+              {bulkDeleteMutation.isPending ? "Deleting…" : "Delete selected"}
+              <span className="text-base normal-case tracking-normal">→</span>
+            </button>
+          </div>
+        )}
 
-          <Select value={brandFilter} onValueChange={(v) => { setBrandFilter(v); setCurrentPage(1) }}>
-            <SelectTrigger className="w-48"><SelectValue placeholder="All Brands" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Brands</SelectItem>
-              {brands.map((brand: Brand) => (
-                <SelectItem key={brand._id} value={brand._id}>{brand.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={stockStatusFilter} onValueChange={(v) => { setStockStatusFilter(v); setCurrentPage(1) }}>
-            <SelectTrigger className="w-40"><SelectValue placeholder="Stock Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Stock</SelectItem>
-              <SelectItem value="in_stock">In Stock</SelectItem>
-              <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      {/* Bulk Actions */}
-      {selectedProducts.size > 0 && (
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="text-sm">{selectedProducts.size} selected</Badge>
-          <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={bulkDeleteMutation.isPending}>
-            {bulkDeleteMutation.isPending ? "Deleting..." : "Delete Selected"}
-          </Button>
-        </div>
-      )}
-
-      {/* Products Table */}
-      <div className="border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader className="sticky top-0 bg-white z-10">
-              <TableRow>
-                <TableHead className="w-8">
+        {/* ── Ledger table ── */}
+        <section className="mt-8">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-[#0A0A0A]">
+                <th className="text-left py-3 pr-2 w-8 align-bottom">
                   <Checkbox checked={isAllSelected} onCheckedChange={handleSelectAll} />
-                </TableHead>
-                <TableHead>
-                  <button onClick={() => handleSort('name')} className="flex items-center hover:text-blue-600 transition-colors">
-                    Product Name {renderSortIcon('name')}
+                </th>
+                <th className="text-left py-3 align-bottom text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">
+                  <button onClick={() => handleSort('name')} className="flex items-center hover:text-[#0A0A0A] transition-colors">
+                    Product {renderSortIcon('name')}
                   </button>
-                </TableHead>
-                <TableHead className="text-center">Unit</TableHead>
-                <TableHead className="text-center">Capacity</TableHead>
-                <TableHead className="text-center">
-                  <button onClick={() => handleSort('category')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
+                </th>
+                <th className="text-left py-3 align-bottom text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Unit</th>
+                <th className="text-right py-3 align-bottom text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Capacity</th>
+                <th className="text-left py-3 align-bottom text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">
+                  <button onClick={() => handleSort('category')} className="flex items-center hover:text-[#0A0A0A] transition-colors">
                     Category {renderSortIcon('category')}
                   </button>
-                </TableHead>
-                <TableHead className="text-center">
-                  <button onClick={() => handleSort('brand')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
+                </th>
+                <th className="text-left py-3 align-bottom text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">
+                  <button onClick={() => handleSort('brand')} className="flex items-center hover:text-[#0A0A0A] transition-colors">
                     Brand {renderSortIcon('brand')}
                   </button>
-                </TableHead>
+                </th>
                 {canViewCostPrices && (
-                  <TableHead className="text-center">
-                    <button onClick={() => handleSort('costPrice')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
+                  <th className="text-right py-3 align-bottom text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">
+                    <button onClick={() => handleSort('costPrice')} className="flex items-center justify-end w-full hover:text-[#0A0A0A] transition-colors">
                       Cost {renderSortIcon('costPrice')}
                     </button>
-                  </TableHead>
+                  </th>
                 )}
-                <TableHead className="text-center">
-                  <button onClick={() => handleSort('sellingPrice')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
+                <th className="text-right py-3 align-bottom text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">
+                  <button onClick={() => handleSort('sellingPrice')} className="flex items-center justify-end w-full hover:text-[#0A0A0A] transition-colors">
                     Price {renderSortIcon('sellingPrice')}
                   </button>
-                </TableHead>
-                <TableHead className="text-center whitespace-nowrap">
-                  <button onClick={() => handleSort('currentStock')} className="flex items-center justify-center hover:text-blue-600 transition-colors w-full">
-                    Current Stock {renderSortIcon('currentStock')}
+                </th>
+                <th className="text-right py-3 align-bottom text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">
+                  <button onClick={() => handleSort('currentStock')} className="flex items-center justify-end w-full hover:text-[#0A0A0A] transition-colors">
+                    On hand {renderSortIcon('currentStock')}
                   </button>
-                </TableHead>
-                <TableHead className="text-center">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+                </th>
+                <th className="text-right py-3 align-bottom text-[10px] uppercase tracking-[0.28em] text-[#6B7280] w-28">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
               {products.map((product: Product) => {
-                const stockStatus = getStockStatus(product)
+                const stock = product.currentStock ?? 0
+                const capacity = product.containerCapacity || 1
+                const unit = product.unitOfMeasurement?.abbreviation || 'units'
+                const isOut = stock <= 0
+                const isOwed = stock < 0
+                const stockColor = isOwed ? '#EA580C' : isOut ? '#DC2626' : '#0A0A0A'
+                const containers = capacity > 1 ? Math.floor(Math.abs(stock) / capacity) : null
+
                 return (
-                  <TableRow key={product._id} className="hover:bg-gray-50">
-                    <TableCell>
+                  <tr key={product._id} className="border-b border-[#E5E7EB] hover:bg-[#FAFAFA] transition-colors group">
+                    <td className="py-4 pr-2">
                       <Checkbox
                         checked={selectedProducts.has(product._id)}
                         onCheckedChange={(checked) => handleSelectProduct(product._id, checked as boolean)}
                       />
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium text-sm">{product.name}</div>
-                      {product.description && <div className="text-xs text-gray-500 truncate">{product.description}</div>}
-                    </TableCell>
-                    <TableCell className="text-center text-xs">{product.unitOfMeasurement?.name || 'N/A'}</TableCell>
-                    <TableCell className="text-center text-xs">{product.containerCapacity || '-'}</TableCell>
-                    <TableCell className="text-center text-xs">{product.category?.name || 'N/A'}</TableCell>
-                    <TableCell className="text-center text-xs">{product.brand?.name || 'N/A'}</TableCell>
+                    </td>
+                    <td className="py-4 pr-4">
+                      <p className="text-[14px] text-[#0A0A0A] font-medium">{product.name}</p>
+                      {product.sku && <p className="text-[11px] text-[#9CA3AF] font-mono mt-0.5 tracking-wide">SKU · {product.sku}</p>}
+                    </td>
+                    <td className="py-4 text-[12px] text-[#6B7280]">{product.unitOfMeasurement?.name || '—'}</td>
+                    <td className="text-right py-4 text-[12px] text-[#6B7280] tabular-nums">{product.containerCapacity || '—'}</td>
+                    <td className="py-4 text-[12px] text-[#6B7280]">{product.category?.name || '—'}</td>
+                    <td className="py-4 text-[12px] italic font-light text-[#6B7280]">{product.brand?.name || '—'}</td>
                     {canViewCostPrices && (
-                      <TableCell className="text-center text-xs">{formatCurrency(product.costPrice || 0)}</TableCell>
+                      <td className="text-right py-4 text-[12px] text-[#6B7280] tabular-nums">{formatCurrency(product.costPrice || 0)}</td>
                     )}
-                    <TableCell className="text-center text-xs">{formatCurrency(product.sellingPrice || 0)}</TableCell>
-                    <TableCell className="text-center whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1">
-                        <Badge className={`text-[11px] px-1.5 py-0 ${stockStatus.color}`}>
-                          <span className="flex items-center gap-0.5">
-                            {stockStatus.icon}
-                            {(() => {
-                              const stock = product.currentStock ?? 0;
-                              const capacity = product.containerCapacity || 1;
-                              const unit = product.unitOfMeasurement?.abbreviation || 'units';
-
-                              if (capacity > 1) {
-                                const containers = Math.floor(stock / capacity);
-                                return `${stock}${unit} (${containers}${containers === 1 ? 'ctn' : 'ctns'})`;
-                              }
-                              return stock;
-                            })()}
-                          </span>
-                        </Badge>
+                    <td className="text-right py-4 text-[13px] text-[#0A0A0A] tabular-nums">{formatCurrency(product.sellingPrice || 0)}</td>
+                    <td className="text-right py-4">
+                      <div className="flex flex-col items-end">
+                        <p className="text-[16px] tabular-nums leading-none font-light" style={{ color: stockColor }}>
+                          {stock}
+                          <span className="text-[11px] text-[#9CA3AF] ml-1.5 font-normal">{unit}</span>
+                        </p>
+                        {containers !== null && stock !== 0 && (
+                          <p className="text-[10px] italic text-[#9CA3AF] mt-1 font-light">
+                            {containers} {containers === 1 ? 'ctn' : 'ctns'}
+                          </p>
+                        )}
                         {(product.looseStock ?? 0) > 0 && (
-                          <span className="text-[11px] text-green-700 font-medium">
-                            ⚗️{product.looseStock} loose
-                          </span>
+                          <p className="text-[10px] text-[#16A34A] mt-1 tracking-wide">
+                            + {product.looseStock} loose
+                          </p>
+                        )}
+                        {isOwed && (
+                          <p className="text-[9px] uppercase tracking-[0.22em] text-[#EA580C] mt-1">Owed</p>
+                        )}
+                        {isOut && !isOwed && (
+                          <p className="text-[9px] uppercase tracking-[0.22em] text-[#DC2626] mt-1">Out</p>
                         )}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-center gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => handleEditProduct(product)} disabled={!canEditProducts}
-                          title={canEditProducts ? `Edit ${product.name}` : 'No permission to edit'}>
-                          <HiPencil className="h-3 w-3" />
-                        </Button>
+                    </td>
+                    <td className="py-4 text-right">
+                      <div className="flex items-center justify-end gap-3 opacity-40 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => handleEditProduct(product)} disabled={!canEditProducts}
+                          title={canEditProducts ? `Edit ${product.name}` : 'No permission to edit'}
+                          className="text-[#6B7280] hover:text-[#0A0A0A] disabled:cursor-not-allowed disabled:opacity-30 transition-colors">
+                          <HiPencil className="h-3.5 w-3.5" />
+                        </button>
                         {product.canSellLoose && (product.containerCapacity ?? 1) > 1 && (
-                          <Button variant="ghost" size="sm"
-                            onClick={() => handleOpenPoolDialog(product)}
+                          <button onClick={() => handleOpenPoolDialog(product)}
                             title="Manage loose pool — open or seal containers"
-                            className="hover:text-blue-600">
-                            <span className="text-xs font-bold leading-none">~</span>
-                          </Button>
+                            className="text-[#6B7280] hover:text-[#16A34A] transition-colors text-sm font-light italic leading-none">
+                            ~
+                          </button>
                         )}
-                        <Button variant="ghost" size="sm" onClick={() => handleDeleteProduct(product)}
+                        <button onClick={() => handleDeleteProduct(product)}
                           disabled={deleteMutation.isPending || !canDeleteProducts}
-                          className="hover:text-red-600"
-                          title={canDeleteProducts ? `Delete ${product.name}` : 'No permission to delete'}>
-                          <HiTrash className="h-3 w-3" />
-                        </Button>
+                          title={canDeleteProducts ? `Delete ${product.name}` : 'No permission to delete'}
+                          className="text-[#6B7280] hover:text-[#DC2626] disabled:cursor-not-allowed disabled:opacity-30 transition-colors">
+                          <HiTrash className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 )
               })}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
+              {products.length === 0 && (
+                <tr>
+                  <td colSpan={canViewCostPrices ? 10 : 9} className="text-center py-20">
+                    <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280]">Nothing to show</p>
+                    <p className="text-sm italic font-light text-[#6B7280] mt-3">No products match the current filters.</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </section>
 
-      {/* Pagination ΓÇö server-side */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <p className="text-sm text-gray-600">
-            Showing {((pagination.page - 1) * pagination.limit) + 1} to {Math.min(pagination.page * pagination.limit, pagination.total)} of {pagination.total} results
-          </p>
-          <Select value={itemsPerPage.toString()} onValueChange={(v) => { setItemsPerPage(Number(v)); setCurrentPage(1) }}>
-            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="20">20 per page</SelectItem>
-              <SelectItem value="50">50 per page</SelectItem>
-              <SelectItem value="100">100 per page</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {pagination.pages > 1 && (
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>
-              Previous
-            </Button>
-            <span className="px-3 py-1 text-sm">Page {currentPage} of {pagination.pages}</span>
-            <Button variant="outline" onClick={() => setCurrentPage(p => Math.min(pagination.pages, p + 1))} disabled={currentPage === pagination.pages}>
-              Next
-            </Button>
+        {/* ── Pagination — editorial caption + arrow nav ── */}
+        <div className="flex items-center justify-between mt-10">
+          <div className="flex items-center gap-8">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-[#6B7280]">
+              <span className="tabular-nums text-[#0A0A0A]">
+                {pagination.total === 0 ? 0 : ((pagination.page - 1) * pagination.limit) + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)}
+              </span>
+              {' '}of{' '}
+              <span className="tabular-nums text-[#0A0A0A]">{pagination.total}</span>
+            </p>
+            <select value={itemsPerPage.toString()}
+              onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1) }}
+              className="bg-transparent border-0 border-b border-[#E5E7EB] focus:border-[#0A0A0A] focus:outline-none focus:ring-0 px-0 pb-1 text-[10px] uppercase tracking-[0.22em] text-[#6B7280] cursor-pointer"
+            >
+              <option value="20">20 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
           </div>
-        )}
+
+          {pagination.pages > 1 && (
+            <div className="flex items-center gap-7">
+              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
+                className="text-[11px] uppercase tracking-[0.28em] text-[#6B7280] hover:text-[#0A0A0A] disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-2">
+                <span className="text-base normal-case tracking-normal">←</span> Previous
+              </button>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-[#6B7280]">
+                Page <span className="tabular-nums text-[#0A0A0A]">{currentPage}</span> of <span className="tabular-nums text-[#0A0A0A]">{pagination.pages}</span>
+              </p>
+              <button onClick={() => setCurrentPage(p => Math.min(pagination.pages, p + 1))} disabled={currentPage === pagination.pages}
+                className="text-[11px] uppercase tracking-[0.28em] text-[#6B7280] hover:text-[#0A0A0A] disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex items-center gap-2">
+                Next <span className="text-base normal-case tracking-normal">→</span>
+              </button>
+            </div>
+          )}
+        </div>
+
       </div>
 
       {/* Add Product Modal */}
@@ -788,6 +920,63 @@ export default function InventoryPage() {
         onConfirm={handlePoolTransfer}
         loading={poolTransferMutation.isPending}
       />
+
+      {/* Stock Owed Reconciliation Modal */}
+      <Dialog open={showOwedModal} onOpenChange={setShowOwedModal}>
+        <DialogContent
+          className="sm:max-w-lg p-0 border-none bg-white shadow-[0_30px_80px_-20px_rgba(0,0,0,0.25)]"
+          style={{ borderRadius: 0, fontFamily: "'Poppins', ui-sans-serif, system-ui, sans-serif" }}
+        >
+          <DialogTitle className="sr-only">Inventory Reconciliation Needed</DialogTitle>
+          <div className="px-10 pt-10 pb-8">
+            <p className="text-[10px] uppercase tracking-[0.4em] text-[#EA580C]">Reconciliation</p>
+            <h2 className="font-light text-[32px] leading-[1.1] mt-3 text-[#0A0A0A]">
+              Inventory needs reconciling.
+            </h2>
+
+            <div className="mt-6 flex items-baseline gap-3">
+              <span className="font-light text-[56px] leading-none tabular-nums text-[#EA580C]">
+                {stats?.stockOwed ?? 0}
+              </span>
+              <span className="text-sm text-[#6B7280] italic font-light">
+                item{(stats?.stockOwed ?? 0) === 1 ? "" : "s"} owed from oversold sales
+              </span>
+            </div>
+            {canViewCostPrices && (stats?.totalOwedValue ?? 0) > 0 && (
+              <p className="text-[11px] uppercase tracking-[0.28em] text-[#6B7280] mt-3">
+                Est. value <span className="tabular-nums text-[#0A0A0A] normal-case tracking-normal text-sm ml-1">{formatCurrency(stats?.totalOwedValue ?? 0)}</span>
+              </p>
+            )}
+
+            <div className="mt-7 border-l-2 border-[#EA580C] bg-[#FFF7ED] px-5 py-4">
+              <p className="text-[13px] text-[#0A0A0A] leading-relaxed">
+                Reports stay accurate only when these items are restocked back to their real physical count.
+                Open <span className="text-[#EA580C]">Owed items</span> to reconcile now.
+              </p>
+            </div>
+
+            <div className="mt-8 flex items-center justify-end gap-6">
+              <button
+                onClick={() => setShowOwedModal(false)}
+                className="text-[11px] uppercase tracking-[0.28em] text-[#6B7280] hover:text-[#0A0A0A] transition-colors"
+              >
+                Remind me later
+              </button>
+              <button
+                onClick={() => {
+                  setStockStatusFilter("owed")
+                  setCurrentPage(1)
+                  setShowOwedModal(false)
+                }}
+                className="group inline-flex items-center gap-2 bg-[#0A0A0A] text-white px-7 py-3 text-[11px] uppercase tracking-[0.28em] hover:bg-black transition-colors"
+              >
+                Show owed items
+                <span className="text-base normal-case tracking-normal opacity-80 group-hover:translate-x-0.5 transition-transform">→</span>
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

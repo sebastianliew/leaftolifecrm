@@ -69,3 +69,6 @@ Thumbs.db
 
 # Graphify knowledge graph caches (auto-generated)
 /graphify-out/
+
+# Local secrets
+token.txt

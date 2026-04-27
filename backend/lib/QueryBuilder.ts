@@ -120,7 +120,7 @@ export class QueryBuilder<T = unknown> {
     return this;
   }
 
-  /** Stock status filter (in_stock / out_of_stock) */
+  /** Stock status filter (in_stock / out_of_stock / owed) */
   stockStatusFilter(paramName: string = 'stockStatus'): this {
     const status = this.params[paramName];
     if (!status) return this;
@@ -130,7 +130,11 @@ export class QueryBuilder<T = unknown> {
         (this._query as Record<string, unknown>).currentStock = { $gt: 0 };
         break;
       case 'out_of_stock':
-        (this._query as Record<string, unknown>).currentStock = { $lte: 0 };
+        // Exactly zero — kept distinct from 'owed' so admin can triage.
+        (this._query as Record<string, unknown>).currentStock = 0;
+        break;
+      case 'owed':
+        (this._query as Record<string, unknown>).currentStock = { $lt: 0 };
         break;
     }
     return this;

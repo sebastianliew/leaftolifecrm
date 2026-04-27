@@ -89,7 +89,25 @@ export const getInventoryStats = asyncHandler(async (req: Request, res: Response
         _id: null,
         totalProducts: { $sum: 1 },
         activeProducts: { $sum: { $cond: ['$isActive', 1, 0] } },
-        outOfStock: { $sum: { $cond: [{ $lte: ['$currentStock', 0] }, 1, 0] } },
+        // outOfStock counts only products at exactly zero. Negative stock
+        // ("owed") is reported separately so admin can see what needs
+        // reconciliation.
+        outOfStock: { $sum: { $cond: [{ $eq: [{ $ifNull: ['$currentStock', 0] }, 0] }, 1, 0] } },
+        stockOwed: { $sum: { $cond: [{ $lt: [{ $ifNull: ['$currentStock', 0] }, 0] }, 1, 0] } },
+        totalOwedValue: {
+          $sum: {
+            $cond: [
+              { $lt: [{ $ifNull: ['$currentStock', 0] }, 0] },
+              {
+                $multiply: [
+                  { $abs: { $ifNull: ['$currentStock', 0] } },
+                  { $ifNull: ['$costPrice', 0] },
+                ],
+              },
+              0,
+            ],
+          },
+        },
         expired: {
           $sum: {
             $cond: [
@@ -112,8 +130,15 @@ export const getInventoryStats = asyncHandler(async (req: Request, res: Response
             ]
           }
         },
+        // totalValue clamps each row to non-negative — owed inventory is not
+        // a balance-sheet asset; surface it via totalOwedValue instead.
         totalValue: {
-          $sum: { $multiply: [{ $ifNull: ['$currentStock', 0] }, { $ifNull: ['$costPrice', 0] }] }
+          $sum: {
+            $multiply: [
+              { $max: [0, { $ifNull: ['$currentStock', 0] }] },
+              { $ifNull: ['$costPrice', 0] },
+            ],
+          },
         }
       }
     }
@@ -121,6 +146,7 @@ export const getInventoryStats = asyncHandler(async (req: Request, res: Response
 
   res.json(stats || {
     totalProducts: 0, activeProducts: 0, outOfStock: 0,
+    stockOwed: 0, totalOwedValue: 0,
     expired: 0, expiringSoon: 0, totalValue: 0
   });
 });

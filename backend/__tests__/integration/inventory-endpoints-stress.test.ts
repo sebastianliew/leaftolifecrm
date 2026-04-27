@@ -319,7 +319,9 @@ describe('Product CRUD — create / read / update via HTTP', () => {
     expect(after!.currentStock).toBe(200);
   });
 
-  it('PUT /products/:id rejects negative currentStock (schema min:0)', async () => {
+  it('PUT /products/:id allows negative currentStock (sell-through-permissive policy)', async () => {
+    // Schema min:0 was removed when we adopted sell-through-permissive: stock
+    // can be authoritatively set to a negative value to model owed inventory.
     const product = await seedProduct({ currentStock: 50 });
 
     const res = await request(app)
@@ -327,9 +329,9 @@ describe('Product CRUD — create / read / update via HTTP', () => {
       .set('Authorization', `Bearer ${authToken}`)
       .send({ currentStock: -5 });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
     const after = await Product.findById(product._id);
-    expect(after!.currentStock).toBe(50);
+    expect(after!.currentStock).toBe(-5);
   });
 
   it('PUT /products/:id allows setting currentStock to 0 (reduction is fine; only SELLING from zero is blocked)', async () => {

@@ -374,14 +374,29 @@ export function TransactionList() {
     isSubmittingRef.current = true
 
     try {
-      await updateTransactionMutation.mutateAsync({
+      const result = await updateTransactionMutation.mutateAsync({
         id: editingTransaction._id,
         data
-      })
+      }) as unknown as {
+        _oversoldItems?: Array<{ productName: string; deficit: number; currentStock: number }>
+      }
       toast({
         title: "Success",
         description: "Transaction updated successfully",
       })
+
+      // Non-blocking warning: surface oversold items so admin can reconcile.
+      const oversold = result?._oversoldItems ?? []
+      if (oversold.length > 0) {
+        const lines = oversold.map((o) =>
+          `• ${o.productName}: ${o.deficit} owed (now at ${o.currentStock})`
+        )
+        toast({
+          title: `${oversold.length} item${oversold.length === 1 ? "" : "s"} oversold — please restock soon`,
+          description: lines.join("\n"),
+        })
+      }
+
       setEditingTransactionId(null)
       // React Query will automatically invalidate and refetch
     } catch (error) {

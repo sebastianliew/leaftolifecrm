@@ -67,11 +67,19 @@ export class InventoryCostService {
       },
       {
         $addFields: {
+          // Clamp valuation to non-negative: oversold stock is owed inventory,
+          // not a negative balance-sheet asset.
           total_cost: {
-            $multiply: ['$total_stock', '$cost_price']
+            $multiply: [{ $max: [0, '$total_stock'] }, '$cost_price']
           },
           stock_status: {
-            $cond: [{ $lte: ['$total_stock', 0] }, 'out', 'optimal']
+            $switch: {
+              branches: [
+                { case: { $lt: ['$total_stock', 0] }, then: 'owed' },
+                { case: { $eq: ['$total_stock', 0] }, then: 'out' }
+              ],
+              default: 'optimal'
+            }
           }
         }
       },
