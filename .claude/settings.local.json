@@ -45,7 +45,29 @@
       "Bash(ls -la \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/backend/\"*.env*)",
       "Bash(ls -la \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/backend/.env\"*)",
       "Bash(MONGODB_URI=\"mongodb+srv://adminbem:digitalmission2126@leaftolife.tc2dczj.mongodb.net/l2l?retryWrites=true&w=majority&appName=Leaftolife\" npx tsx migrations/001-seed-container-types.ts)",
-      "Bash(MONGODB_URI=\"mongodb+srv://adminbem:digitalmission2126@leaftolife.tc2dczj.mongodb.net/l2l?retryWrites=true&w=majority&appName=Leaftolife\" npx tsx migrations/002-fix-empty-allowed-uom-types.ts)"
+      "Bash(MONGODB_URI=\"mongodb+srv://adminbem:digitalmission2126@leaftolife.tc2dczj.mongodb.net/l2l?retryWrites=true&w=majority&appName=Leaftolife\" npx tsx migrations/002-fix-empty-allowed-uom-types.ts)",
+      "Bash(echo \"---exit: $?\")",
+      "Bash(ls graphify-out/.graphify_chunk_*.json)",
+      "Write(graphify-out/**)",
+      "Write(./graphify-out/**)",
+      "Bash(mkdir -p graphify-out*)",
+      "Bash(mkdir -p ./graphify-out*)",
+      "Bash(graphify hook *)",
+      "Bash(graphify claude *)",
+      "WebSearch",
+      "Bash(graphify --help)",
+      "Skill(update-config)",
+      "Bash(git push origin main)",
+      "Bash(cd \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/backend\" && git push origin main)",
+      "Bash(cd \"/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/frontend\" && git push origin main)",
+      "Bash(sshpass *)",
+      "Bash(mongosh *)"
+    ]
+  },
+  "autoMode": {
+    "allow": [
+      "git push origin main in the backend repo (/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/backend) — solo-dev repo, direct-to-main is the established workflow; recent git history confirms (aa463c3, da1c8b6, 865c211 all pushed direct to main). No PR review step.",
+      "git push origin main in the frontend repo (/Users/macbookm2pro16inch/Coding Projects/leaftolifecrm/frontend) — solo-dev repo, direct-to-main is the established workflow; recent git history confirms (45f0c35, c9ea837, f9b1417 all pushed direct to main). No PR review step."
     ]
   }
 }

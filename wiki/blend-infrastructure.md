@@ -7,7 +7,7 @@ tags:
   - audit
   - stress-test
 status: fixed
-date: 2026-04-23
+date: 2026-04-24
 audience: engineering
 ---
 
@@ -15,8 +15,8 @@ audience: engineering
 
 Audit + stress test of the three blend code paths: **fixed blends** (reusable templates), **custom blends** (ad-hoc recipes attached to a single sale), and the shared validator/pricing core that underpins both.
 
-> [!success] Status (2026-04-23)
-> All three criticals plus MAJOR-4, MAJOR-5, MAJOR-6, MINOR-7, and MINOR-9 are fixed. MINOR-8 (UOM fallback) was left intact — it's load-bearing for legacy templates that reference deleted UOMs; changing it risks breaking enrichment at runtime. Stress test is now 10 cases, 10/10 passing; full suite 283/283. The findings below are kept as the audit record.
+> [!success] Status (2026-04-24)
+> All three criticals plus MAJOR-4, MAJOR-5, MAJOR-6, MINOR-7, and MINOR-9 are fixed. MINOR-8 (UOM fallback) was left intact — it's load-bearing for legacy templates that reference deleted UOMs; changing it risks breaking enrichment at runtime. Stress test is 14 cases, 14/14 passing; full suite 409/409. The findings below are kept as the audit record. See §6 for the 2026-04-24 edit-flow pricing fix.
 
 ## 1. Architecture map
 
@@ -179,8 +179,57 @@ Any future change to this area must keep these true (the stress test guards most
 3. **Pricing monotonicity**: for a product with `costPrice > 0`, `perUnitCost(product) > 0` and never equals `sellingPrice / containerCapacity`.
 4. **Validator contract**: `validateIngredientAvailability` returns `valid: false` whenever any ingredient has `availableQuantity < requiredQuantity × batchQuantity`.
 5. **Signature determinism**: `CustomBlendHistory.calculateSignature` is stable under ingredient reorderings (already true — sorted join).
+6. **Snapshot survival**: `customBlendData.ingredients[*].costPerUnit` and `sellingPricePerUnit` round-trip through save/fetch, unchanged by later product edits (see §6).
 
-## 6. Related
+## 6. Snapshot vs. live-derivation in the edit flow
+
+> [!info] Added 2026-04-24 after a "$0.00 selling price" bug in `CustomBlendCreator` edit mode
+> Root cause: `sellingPricePerUnit` was computed once in `addIngredient` but **not persisted** in `customBlendData.ingredients`. On edit, it was re-derived from `products.find(p => p._id === ing.productId)` with no fallback, so any product lookup that returned `undefined` or a product with `sellingPrice == null` silently rendered $0.00. The parallel `costPerUnit` code path already had a `?? ingredient.costPerUnit ?? 0` fallback, which is why costs were fine.
+
+### The split
+
+Custom-blend data lives in **two** places with very different refresh semantics:
+
+| Surface | Source | Affected by later product edits? |
+|---|---|---|
+| `TransactionItem.unitPrice` / `totalPrice` / `costPrice` | frozen at sale time | No |
+| `customBlendData.ingredients[*].costPerUnit` | snapshotted into the transaction doc | No |
+| `customBlendData.ingredients[*].sellingPricePerUnit` | snapshotted (**added 2026-04-24**) | No |
+| Reports, margin analytics, invoices | read the saved snapshot | No |
+| "Edit Custom Blend" per-unit price columns | live-derived via `products.find()` | **Yes** |
+| "Edit Custom Blend" availableStock badge | live product `currentStock` | **Yes** |
+
+**Rule of thumb:** money on a saved line is frozen. Everything the edit dialog *re-renders* is live and will drift when product data changes.
+
+### Triggers that can change what the edit view displays (without changing the sale)
+
+- **`sellingPrice` / `costPrice` edited** on the product → the edit dialog shows the new per-unit price, inconsistent with the frozen `unitPrice`. Display-only; not a money bug.
+- **Product re-imported with a new `_id`** (the 2026-04-24 symptom) → `products.find` returns `undefined`. With the fallback, the stored snapshot renders correctly; without it, the column silently fell to $0.00.
+- **Product deleted / deactivated** → same path as re-import; fallback protects it.
+- **`containerCapacity` changed** → every per-unit derivation shifts.
+
+### Where the fix lives
+
+- `frontend/src/components/transactions/CustomBlendCreator.tsx`:
+  - Edit useEffect: `perUnitSellingPrice(currentProduct) ?? ing.sellingPricePerUnit ?? 0` (mirrors the `costPerUnit` pattern).
+  - `handleCreateCustomBlend`: writes `sellingPricePerUnit` into the persisted `customBlendData.ingredients` shape.
+- `frontend/src/types/transaction.ts`, `frontend/src/types/blend.ts`: `sellingPricePerUnit?: number` added to the ingredient types.
+- `backend/models/Transaction.ts`: `CustomBlendIngredientSchema` gains `sellingPricePerUnit: { type: Number, default: 0 }` and the TS interface on `ITransaction.items[].customBlendData.ingredients` is widened to match.
+
+### Guards
+
+`backend/__tests__/integration/blend-stress.test.ts` — describe block *Blend stress — custom blend edit-flow round-trip* (4 cases):
+
+1. `sellingPricePerUnit` survives save → fetch on `customBlendData.ingredients`.
+2. Edit-flow fallback resolves correctly across (a) product missing, (b) product present with null `sellingPrice`, (c) product present with valid price — fresh wins, (d) no snapshot either → 0.
+3. Saved `unitPrice` / `totalPrice` / snapshot prices are immune after mutating the product's `sellingPrice` × 5 and `costPrice` ÷ 2.
+4. 30 concurrent blend saves all preserve `sellingPricePerUnit > 0` on every ingredient.
+
+### Legacy cart items and legacy transactions
+
+Ingredients saved before 2026-04-24 have no `sellingPricePerUnit` field. The fallback will still return `0` for those when the product is missing — there is no earlier value to recover. Re-opening such a blend in the edit dialog while the product is still present works fine (fresh derivation wins). Only "product missing *and* snapshot missing" shows $0.00, which is unavoidable.
+
+## 7. Related
 
 - Wiki: [[transaction-flow]] — how transactions dispatch to inventory.
 - Wiki: [[controller-conventions]] — response-shape rules this controller doesn't fully follow.
