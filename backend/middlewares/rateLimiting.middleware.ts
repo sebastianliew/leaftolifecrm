@@ -16,18 +16,40 @@ import jwt from 'jsonwebtoken';
  */
 
 /**
+ * Global kill-switch for rate limiting.
+ *
+ * Set RATE_LIMITS_DISABLED=false to re-enable per-route limiters. Default is
+ * `true`: clinic staff (non-technical) were repeatedly hitting limits during
+ * normal workflow because the office IP is shared across the whole team and
+ * shared per-IP budgets get exhausted very quickly. The decision was to err
+ * toward "always let users through" and rely on application-layer guards
+ * (auth, permissions, validation) for protection. Brute-force protection
+ * for /auth/login is the main thing this gives up — accept that risk in
+ * exchange for unblocking daily operations.
+ *
+ * To re-enable globally:
+ *   export RATE_LIMITS_DISABLED=false
+ *
+ * To re-enable selectively, also flip individual `skip` functions back to
+ * the per-route logic.
+ */
+const RATE_LIMITS_DISABLED: boolean =
+  (process.env.RATE_LIMITS_DISABLED ?? 'true').toLowerCase() !== 'false';
+
+/**
  * Whitelist of identities exempt from rate limiting.
  *
  * Configured via RATE_LIMIT_EXEMPT_IDENTITIES env var (comma-separated
- * substrings, case-insensitive). Default includes "sebastianliew" — the
- * client owner whose office IP is shared by the whole staff and was
- * tripping the global per-IP limit.
+ * substrings, case-insensitive). Default includes "sebastianliew" (client
+ * owner) and "customerservice" (clinic's outgoing invoice sender — kept on
+ * the list so re-enabling rate limits later doesn't immediately re-block
+ * invoice emailing).
  *
  * Match is a case-insensitive substring on email OR username (so
  * "sebastianliew", "sebastianliew@example.com", and
  * "Sebastian.Liew@..." all match the entry "sebastianliew").
  */
-const EXEMPT_IDENTITIES: string[] = (process.env.RATE_LIMIT_EXEMPT_IDENTITIES || 'sebastianliew')
+const EXEMPT_IDENTITIES: string[] = (process.env.RATE_LIMIT_EXEMPT_IDENTITIES || 'sebastianliew,customerservice')
   .split(',')
   .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
@@ -65,6 +87,11 @@ type RateLimitRequest = Pick<Request, 'headers'> & {
 };
 
 export function isExemptFromRateLimit(req: RateLimitRequest): boolean {
+  // Global kill-switch — when rate limits are disabled, every request is
+  // exempt. Lets the per-route `skip: isExemptFromRateLimit` wiring stay in
+  // place so re-enabling is a single env-var flip.
+  if (RATE_LIMITS_DISABLED) return true;
+
   const user = (req as { user?: { email?: string; username?: string } }).user;
   if (user && (matchesExemptIdentity(user.email) || matchesExemptIdentity(user.username))) {
     return true;
@@ -197,10 +224,12 @@ export const emailRateLimit = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   skipSuccessfulRequests: false,
-  // Exempt super_admin and any whitelisted identity (e.g. sebastianliew)
+  // Honors the global kill-switch via isExemptFromRateLimit; super_admin and
+  // whitelisted identities (e.g. customerservice, sebastianliew) are always
+  // exempt even when rate limits are re-enabled.
   skip: (req) =>
-    (req as { user?: { role?: string } }).user?.role === 'super_admin' ||
-    isExemptFromRateLimit(req)
+    isExemptFromRateLimit(req) ||
+    (req as { user?: { role?: string } }).user?.role === 'super_admin'
 });
 
 /**
