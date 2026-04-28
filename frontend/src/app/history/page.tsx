@@ -1,190 +1,148 @@
 "use client"
 
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useTransactions } from "@/hooks/useTransactions";
-import { formatCurrency } from "@/lib/utils";
-import { format } from "date-fns";
-import { Search, History, Receipt, Clock, DollarSign } from "lucide-react";
+import { useState, useEffect, useCallback } from "react"
+import { useTransactions } from "@/hooks/useTransactions"
+import { formatCurrency } from "@/lib/utils"
+import { format } from "date-fns"
+import { HiFunnel } from "react-icons/hi2"
+import {
+  EditorialPage,
+  EditorialMasthead,
+  EditorialSearch,
+  EditorialButton,
+  EditorialFilterRow,
+  EditorialField,
+  EditorialSelect,
+  EditorialTable,
+  EditorialTHead,
+  EditorialTh,
+  EditorialTr,
+  EditorialTd,
+  EditorialEmptyRow,
+  EditorialErrorScreen,
+  EditorialMeta,
+  EditorialPill,
+} from "@/components/ui/editorial"
+
+const statusToneMap: Record<string, "muted" | "ink" | "danger" | "warning" | "ok"> = {
+  completed: 'ok',
+  pending: 'warning',
+  cancelled: 'danger',
+  draft: 'muted',
+}
 
 export default function HistoryPage() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  
-  const { 
-    transactions = [], 
-    loading, 
-    error,
-    getTransactions 
-  } = useTransactions();
+  const [searchTerm, setSearchTerm] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [showFilters, setShowFilters] = useState(false)
 
-  // Filter transactions based on search and status
+  const { transactions = [], loading, error, getTransactions } = useTransactions()
+
+  const handleSearch = useCallback((term: string) => setSearchTerm(term), [])
+
   const filteredTransactions = transactions.filter(transaction => {
-    const matchesSearch = searchTerm === "" || 
+    const matchesSearch =
+      searchTerm === "" ||
       transaction.transactionNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      transaction.customerName?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === "all" || transaction.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
+      transaction.customerName?.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesStatus = statusFilter === "all" || transaction.status === statusFilter
+    return matchesSearch && matchesStatus
+  })
 
   useEffect(() => {
-    getTransactions();
-  }, [getTransactions]);
+    getTransactions()
+  }, [getTransactions])
 
   if (error) {
     return (
-      <div className="container mx-auto py-6">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center text-red-600">
-              Error loading history. Please try again.
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+      <EditorialErrorScreen
+        title="Could not load history."
+        description="There was an error reaching the transaction service."
+        onRetry={() => window.location.reload()}
+      />
+    )
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3">
-            <History className="h-8 w-8" />
-            Transaction History
-          </h1>
-          <p className="text-muted-foreground">
-            View and search through past transactions
-          </p>
-        </div>
-      </div>
+    <EditorialPage>
+      <EditorialMasthead
+        kicker="History"
+        title="Ledger archive"
+        subtitle={
+          <>
+            <span className="tabular-nums">{filteredTransactions.length}</span> transaction
+            {filteredTransactions.length === 1 ? '' : 's'} on file
+          </>
+        }
+      >
+        <EditorialSearch onSearch={handleSearch} placeholder="Search history..." />
+        <EditorialButton
+          variant={showFilters ? 'ghost-active' : 'ghost'}
+          icon={<HiFunnel className="h-3 w-3" />}
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          Filter
+        </EditorialButton>
+      </EditorialMasthead>
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Search & Filter</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                placeholder="Search by transaction number, customer, or patient..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      {showFilters && (
+        <EditorialFilterRow columns={2}>
+          <EditorialField label="Status">
+            <EditorialSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="all">All status</option>
+              <option value="completed">Completed</option>
+              <option value="pending">Pending</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="draft">Draft</option>
+            </EditorialSelect>
+          </EditorialField>
+        </EditorialFilterRow>
+      )}
 
-      {/* Results */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Receipt className="h-5 w-5" />
-            Transaction History
-            <Badge variant="secondary">{filteredTransactions.length} transactions</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <EditorialTable>
+        <EditorialTHead>
+          <EditorialTh>Transaction</EditorialTh>
+          <EditorialTh>Date</EditorialTh>
+          <EditorialTh>Customer</EditorialTh>
+          <EditorialTh align="right">Total</EditorialTh>
+          <EditorialTh>Status</EditorialTh>
+          <EditorialTh align="right">Items</EditorialTh>
+        </EditorialTHead>
+        <tbody>
           {loading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-              <p className="mt-2 text-muted-foreground">Loading transactions...</p>
-            </div>
+            <EditorialEmptyRow colSpan={6} title="Loading" description="Fetching transaction history…" />
           ) : filteredTransactions.length === 0 ? (
-            <div className="text-center py-8">
-              <History className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-muted-foreground">No transactions found matching your criteria.</p>
-            </div>
+            <EditorialEmptyRow colSpan={6} description="No transactions match the current filters." />
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Transaction #</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Customer/Patient</TableHead>
-                    <TableHead>Total Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Items</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTransactions.map((transaction) => (
-                    <TableRow key={transaction._id}>
-                      <TableCell className="font-mono">
-                        {transaction.transactionNumber || transaction._id}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4 text-gray-400" />
-                          {format(new Date(transaction.createdAt), "MMM dd, yyyy")}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">
-                            {transaction.customerName || 'Unknown Customer'}
-                          </div>
-                          {transaction.customerEmail && (
-                            <div className="text-sm text-muted-foreground">
-                              {transaction.customerEmail}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="h-4 w-4 text-gray-400" />
-                          {formatCurrency(transaction.totalAmount || 0)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge 
-                          variant={
-                            transaction.status === 'completed' ? 'default' :
-                            transaction.status === 'pending' ? 'secondary' :
-                            transaction.status === 'cancelled' ? 'destructive' :
-                            'outline'
-                          }
-                        >
-                          {transaction.status || 'unknown'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {transaction.items?.length || 0} items
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            filteredTransactions.map((transaction) => {
+              const tone = statusToneMap[transaction.status || ''] || 'muted'
+              return (
+                <EditorialTr key={transaction._id}>
+                  <EditorialTd size="md" className="font-mono tracking-wide">
+                    {transaction.transactionNumber || transaction._id}
+                  </EditorialTd>
+                  <EditorialTd className="tabular-nums">
+                    {format(new Date(transaction.createdAt), "MMM dd, yyyy")}
+                  </EditorialTd>
+                  <EditorialTd size="md" className="pr-4">
+                    <p className="text-[14px] text-[#0A0A0A]">{transaction.customerName || 'Unknown'}</p>
+                    {transaction.customerEmail && <EditorialMeta>{transaction.customerEmail}</EditorialMeta>}
+                  </EditorialTd>
+                  <EditorialTd align="right" size="md" className="tabular-nums">
+                    {formatCurrency(transaction.totalAmount || 0)}
+                  </EditorialTd>
+                  <EditorialTd>
+                    <EditorialPill tone={tone}>{transaction.status || 'unknown'}</EditorialPill>
+                  </EditorialTd>
+                  <EditorialTd align="right" className="tabular-nums">
+                    {transaction.items?.length || 0}
+                  </EditorialTd>
+                </EditorialTr>
+              )
+            })
           )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+        </tbody>
+      </EditorialTable>
+    </EditorialPage>
+  )
 }

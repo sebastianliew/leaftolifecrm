@@ -1,19 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Clock, FileText, Trash2 } from 'lucide-react'
+import { Clock, Trash2 } from 'lucide-react'
 import type { DraftData } from '@/lib/client/draftStorage'
+import {
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+} from '@/components/ui/editorial'
 
 interface DraftRecoveryDialogProps {
   isOpen: boolean
@@ -28,30 +23,18 @@ export function DraftRecoveryDialog({
   onClose,
   drafts,
   onSelectDraft,
-  onDeleteDraft
+  onDeleteDraft,
 }: DraftRecoveryDialogProps) {
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null)
 
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date)
-  }
+  const formatDate = (date: Date) =>
+    new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(date)
 
   const getFormSummary = (formData: Record<string, unknown>) => {
     const items = Array.isArray(formData.items) ? formData.items : []
-    const itemCount = items.length
     const customerName = typeof formData.customerName === 'string' ? formData.customerName : 'No customer'
     const totalAmount = typeof formData.totalAmount === 'number' ? formData.totalAmount : 0
-    
-    return {
-      customerName,
-      itemCount,
-      totalAmount: totalAmount.toFixed(2)
-    }
+    return { customerName, itemCount: items.length, totalAmount: totalAmount.toFixed(2) }
   }
 
   const handleContinue = () => {
@@ -61,95 +44,75 @@ export function DraftRecoveryDialog({
     }
   }
 
-  const handleStartFresh = () => {
-    onClose()
-  }
-
   const handleDeleteDraft = (draftId: string, e: React.MouseEvent) => {
     e.stopPropagation()
     onDeleteDraft(draftId)
-    if (selectedDraftId === draftId) {
-      setSelectedDraftId(null)
-    }
+    if (selectedDraftId === draftId) setSelectedDraftId(null)
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Incomplete Transactions Found
-          </DialogTitle>
-          <DialogDescription>
-            You have unsaved transaction drafts. Would you like to continue working on one of them?
-          </DialogDescription>
-        </DialogHeader>
-
-        <ScrollArea className="max-h-96">
-          <div className="space-y-3">
-            {drafts.map((draft) => {
-              const summary = getFormSummary(draft.formData)
-              const isSelected = selectedDraftId === draft.draftId
-              
-              return (
-                <div
-                  key={draft.draftId}
-                  className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                    isSelected 
-                      ? 'border-primary bg-primary/5' 
-                      : 'border-border hover:border-primary/50'
-                  }`}
-                  onClick={() => setSelectedDraftId(draft.draftId)}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h4 className="font-medium">
-                          {draft.draftName || `Draft for ${summary.customerName}`}
-                        </h4>
-                        <Badge variant="secondary" className="text-xs">
-                          {summary.itemCount} item{summary.itemCount !== 1 ? 's' : ''}
-                        </Badge>
-                      </div>
-                      
-                      <div className="text-sm text-muted-foreground space-y-1">
-                        <div>Customer: {summary.customerName}</div>
-                        <div>Total: ${summary.totalAmount}</div>
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          Saved: {formatDate(draft.timestamp)}
-                        </div>
-                      </div>
+    <EditorialModal
+      open={isOpen}
+      onOpenChange={(open) => !open && onClose()}
+      kicker="Drafts found"
+      title="Resume an incomplete transaction?"
+      description="You have unsaved transaction drafts. Continue working on one or start fresh."
+      size="lg"
+    >
+      <ScrollArea className="max-h-96">
+        <div className="space-y-2">
+          {drafts.map((draft) => {
+            const summary = getFormSummary(draft.formData)
+            const isSelected = selectedDraftId === draft.draftId
+            return (
+              <div
+                key={draft.draftId}
+                onClick={() => setSelectedDraftId(draft.draftId)}
+                className={`px-5 py-4 cursor-pointer transition-colors border-l-2 ${
+                  isSelected ? 'border-[#0A0A0A] bg-[#FAFAFA]' : 'border-[#E5E7EB] hover:bg-[#FAFAFA]'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <p className="text-[14px] text-[#0A0A0A] font-medium">
+                        {draft.draftName || `Draft for ${summary.customerName}`}
+                      </p>
+                      <span className="text-[10px] uppercase tracking-[0.22em] text-[#6B7280]">
+                        {summary.itemCount} item{summary.itemCount !== 1 ? 's' : ''}
+                      </span>
                     </div>
-                    
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => handleDeleteDraft(draft.draftId, e)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="text-[12px] text-[#6B7280] space-y-1">
+                      <p>Customer · {summary.customerName}</p>
+                      <p className="tabular-nums">Total · ${summary.totalAmount}</p>
+                      <p className="flex items-center gap-1.5 italic font-light">
+                        <Clock className="h-3 w-3" />
+                        Saved {formatDate(draft.timestamp)}
+                      </p>
+                    </div>
                   </div>
+                  <button
+                    onClick={(e) => handleDeleteDraft(draft.draftId, e)}
+                    title="Delete draft"
+                    className="text-[#6B7280] hover:text-[#DC2626] transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-              )
-            })}
-          </div>
-        </ScrollArea>
+              </div>
+            )
+          })}
+        </div>
+      </ScrollArea>
 
-        <DialogFooter className="flex gap-2">
-          <Button variant="outline" onClick={handleStartFresh}>
-            Start Fresh
-          </Button>
-          <Button 
-            onClick={handleContinue}
-            disabled={!selectedDraftId}
-          >
-            Continue Selected Draft
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <EditorialModalFooter>
+        <EditorialButton variant="ghost" onClick={onClose}>
+          Start fresh
+        </EditorialButton>
+        <EditorialButton variant="primary" arrow onClick={handleContinue} disabled={!selectedDraftId}>
+          Continue draft
+        </EditorialButton>
+      </EditorialModalFooter>
+    </EditorialModal>
   )
 }

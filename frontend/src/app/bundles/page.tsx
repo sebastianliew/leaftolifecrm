@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { BundleList } from "@/components/bundles/BundleList"
 import { BundleForm } from "@/components/bundles/BundleForm"
 import { useToast } from "@/components/ui/use-toast"
@@ -15,6 +14,7 @@ import {
 import { useInventory } from "@/hooks/queries/use-inventory-queries"
 import { useBlendTemplates } from "@/hooks/useBlendTemplates"
 import { usePermissions } from "@/hooks/usePermissions"
+import { EditorialPage, EditorialModal } from "@/components/ui/editorial"
 
 export default function BundlesPage() {
   const { toast } = useToast()
@@ -23,26 +23,20 @@ export default function BundlesPage() {
   const [editingBundle, setEditingBundle] = useState<Bundle | null>(null)
   const [viewingBundle, setViewingBundle] = useState<Bundle | null>(null)
 
-  // Data queries
   const { data: categories = [] } = useBundleCategoriesQuery()
   const { data: inventoryData } = useInventory({ limit: 1000 })
   const rawProducts = inventoryData?.products || []
   const { templates: blendTemplates, getTemplates } = useBlendTemplates()
-
-  // Products from backend already have populated category objects
   const products = rawProducts as Product[]
 
-  // Mutations
   const createBundleMutation = useCreateBundleMutation()
   const updateBundleMutation = useUpdateBundleMutation()
 
-  // Permissions
   const canCreateBundles = hasPermission('bundles', 'canCreateBundles')
   const canEditBundles = hasPermission('bundles', 'canEditBundles')
   const canDeleteBundles = hasPermission('bundles', 'canDeleteBundles')
   const canSetPricing = hasPermission('bundles', 'canSetPricing')
 
-  // Fetch blend templates on component mount
   useEffect(() => {
     getTemplates({ isActive: true })
   }, [getTemplates])
@@ -57,10 +51,6 @@ export default function BundlesPage() {
     setShowForm(true)
   }
 
-  const handleView = (bundle: Bundle) => {
-    setViewingBundle(bundle)
-  }
-
   const handleCloseForm = () => {
     setShowForm(false)
     setEditingBundle(null)
@@ -69,20 +59,11 @@ export default function BundlesPage() {
   const handleSubmit = async (data: BundleFormData) => {
     try {
       if (editingBundle) {
-        await updateBundleMutation.mutateAsync({
-          id: editingBundle._id,
-          data
-        })
-        toast({
-          title: "Success",
-          description: "Bundle updated successfully",
-        })
+        await updateBundleMutation.mutateAsync({ id: editingBundle._id, data })
+        toast({ title: "Success", description: "Bundle updated successfully" })
       } else {
         await createBundleMutation.mutateAsync(data)
-        toast({
-          title: "Success", 
-          description: "Bundle created successfully",
-        })
+        toast({ title: "Success", description: "Bundle created successfully" })
       }
       handleCloseForm()
     } catch (error) {
@@ -97,105 +78,103 @@ export default function BundlesPage() {
   const loading = createBundleMutation.isPending || updateBundleMutation.isPending
 
   return (
-    <div className="container mx-auto py-8 space-y-6">
-      {/* Bundle List */}
+    <EditorialPage>
       <BundleList
         onCreateNew={canCreateBundles ? handleCreateNew : undefined}
         onEdit={canEditBundles ? handleEdit : undefined}
-        onView={handleView}
+        onView={setViewingBundle}
         canDelete={canDeleteBundles}
       />
 
-      {/* Bundle Form Dialog */}
-      <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingBundle ? 'Edit Bundle' : 'Create New Bundle'}
-            </DialogTitle>
-          </DialogHeader>
-          <BundleForm
-            bundle={editingBundle || undefined}
-            products={products}
-            blendTemplates={blendTemplates}
-            categories={categories}
-            onSubmit={handleSubmit}
-            onCancel={handleCloseForm}
-            loading={loading}
-            canManagePricing={canSetPricing}
-          />
-        </DialogContent>
-      </Dialog>
+      <EditorialModal
+        open={showForm}
+        onOpenChange={(open) => !open && handleCloseForm()}
+        kicker="Bundles"
+        title={editingBundle ? `Edit ${editingBundle.name}` : 'New bundle'}
+        description="Group products and blends into a discounted bundle for sale."
+        size="2xl"
+      >
+        <BundleForm
+          bundle={editingBundle || undefined}
+          products={products}
+          blendTemplates={blendTemplates}
+          categories={categories}
+          onSubmit={handleSubmit}
+          onCancel={handleCloseForm}
+          loading={loading}
+          canManagePricing={canSetPricing}
+        />
+      </EditorialModal>
 
-      {/* Bundle View Dialog */}
-      <Dialog open={!!viewingBundle} onOpenChange={() => setViewingBundle(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Bundle Details</DialogTitle>
-          </DialogHeader>
-          {viewingBundle && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h3 className="font-semibold text-lg">{viewingBundle.name}</h3>
-                  <p className="text-gray-600">{viewingBundle.description}</p>
-                  <div className="mt-2 space-y-1">
-                    <p><strong>Category:</strong> {viewingBundle.category || 'None'}</p>
-                    <p><strong>Status:</strong> {viewingBundle.isActive ? 'Active' : 'Inactive'}</p>
-                    {viewingBundle.isPromoted && (
-                      <p><strong>Promotion:</strong> {viewingBundle.promotionText}</p>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-green-600">
-                    S${viewingBundle.bundlePrice?.toFixed(2)}
-                  </div>
-                  <div className="text-sm text-gray-500 line-through">
-                    S${viewingBundle.individualTotalPrice?.toFixed(2)}
-                  </div>
-                  <div className="text-sm text-red-500">
-                    Save {viewingBundle.savingsPercentage}% (S${viewingBundle.savings?.toFixed(2)})
-                  </div>
-                </div>
-              </div>
-
+      <EditorialModal
+        open={!!viewingBundle}
+        onOpenChange={(open) => !open && setViewingBundle(null)}
+        kicker="Bundle"
+        title={viewingBundle?.name || 'Bundle details'}
+        description={viewingBundle?.description}
+        size="xl"
+      >
+        {viewingBundle && (
+          <div className="space-y-7">
+            <div className="grid grid-cols-2 gap-10 border-b border-[#E5E7EB] pb-7">
               <div>
-                <h4 className="font-semibold mb-3">Bundle Contents</h4>
-                <div className="space-y-2">
-                  {viewingBundle.bundleProducts?.map((product, index) => (
-                    <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                      <div>
-                        <span className="font-medium">{product.name}</span>
-                        <span className="text-gray-500 ml-2">×{product.quantity}</span>
-                      </div>
-                      <div className="text-right">
-                        <div>S${(product.quantity * product.individualPrice).toFixed(2)}</div>
-                        <div className="text-sm text-gray-500">
-                          S${product.individualPrice} each
-                        </div>
-                      </div>
+                <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Category</p>
+                <p className="text-sm text-[#0A0A0A] mt-1">{viewingBundle.category || '—'}</p>
+                <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280] mt-4">Status</p>
+                <p className="text-sm text-[#0A0A0A] mt-1">{viewingBundle.isActive ? 'Active' : 'Inactive'}</p>
+                {viewingBundle.isPromoted && (
+                  <>
+                    <p className="text-[10px] uppercase tracking-[0.28em] text-[#EA580C] mt-4">Promotion</p>
+                    <p className="text-sm text-[#0A0A0A] mt-1">{viewingBundle.promotionText}</p>
+                  </>
+                )}
+              </div>
+              <div className="text-right">
+                <p className="font-light text-[44px] leading-none tabular-nums text-[#16A34A]">
+                  S${viewingBundle.bundlePrice?.toFixed(2)}
+                </p>
+                <p className="text-sm text-[#9CA3AF] line-through tabular-nums mt-2">
+                  S${viewingBundle.individualTotalPrice?.toFixed(2)}
+                </p>
+                <p className="text-xs text-[#DC2626] italic mt-1 font-light">
+                  Save {viewingBundle.savingsPercentage}% (S${viewingBundle.savings?.toFixed(2)})
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280] mb-4">Contents</p>
+              <div className="space-y-2">
+                {viewingBundle.bundleProducts?.map((product, index) => (
+                  <div key={index} className="flex justify-between items-center py-3 border-b border-[#E5E7EB]">
+                    <div>
+                      <span className="text-sm text-[#0A0A0A] font-medium">{product.name}</span>
+                      <span className="text-xs text-[#9CA3AF] ml-3 italic font-light">×{product.quantity}</span>
                     </div>
+                    <div className="text-right">
+                      <p className="text-sm tabular-nums text-[#0A0A0A]">S${(product.quantity * product.individualPrice).toFixed(2)}</p>
+                      <p className="text-[11px] text-[#9CA3AF] tabular-nums">S${product.individualPrice} each</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {viewingBundle.tags && viewingBundle.tags.length > 0 && (
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280] mb-3">Tags</p>
+                <div className="flex flex-wrap gap-3">
+                  {viewingBundle.tags.map(tag => (
+                    <span key={tag} className="text-[11px] uppercase tracking-[0.22em] text-[#0A0A0A] border border-[#0A0A0A] px-3 py-1">
+                      {tag}
+                    </span>
                   ))}
                 </div>
               </div>
-
-              {viewingBundle.tags && viewingBundle.tags.length > 0 && (
-                <div>
-                  <h4 className="font-semibold mb-2">Tags</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {viewingBundle.tags.map(tag => (
-                      <span key={tag} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+            )}
+          </div>
+        )}
+      </EditorialModal>
+    </EditorialPage>
   )
 }

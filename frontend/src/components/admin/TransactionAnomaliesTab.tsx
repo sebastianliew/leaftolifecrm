@@ -17,15 +17,10 @@ import {
   TableRow
 } from '@/components/ui/table';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+} from '@/components/ui/editorial';
 import {
   Search,
   AlertTriangle,
@@ -712,51 +707,61 @@ export default function TransactionAnomaliesTab() {
         </CardContent>
       </Card>
 
-      {/* Clear Confirmation Dialog */}
-      <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Mark Anomaly as Cleared?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will mark the selected {selectedAnomalies.length > 1 ? `${selectedAnomalies.length} anomalies` : 'anomaly'} as verified false positive{selectedAnomalies.length > 1 ? 's' : ''}.
-              They will be skipped in future scans.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="py-4">
-            <label className="text-sm font-medium">Reason for clearing:</label>
-            <textarea
-              className="w-full mt-2 p-2 border rounded-md"
-              rows={3}
-              placeholder="e.g., Old pricing data, product price recently updated"
-              value={clearReason}
-              onChange={(e) => setClearReason(e.target.value)}
-            />
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setClearReason('')}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={markAsCleared} disabled={!clearReason.trim()}>
-              Mark as Cleared
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <EditorialModal
+        open={showClearDialog}
+        onOpenChange={setShowClearDialog}
+        kicker="Anomalies"
+        kickerTone="warning"
+        title="Mark anomaly as cleared?"
+        description={`This will mark the selected ${selectedAnomalies.length > 1 ? `${selectedAnomalies.length} anomalies` : 'anomaly'} as verified false positive${selectedAnomalies.length > 1 ? 's' : ''}. They will be skipped in future scans.`}
+      >
+        <div>
+          <label className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Reason for clearing</label>
+          <textarea
+            className="w-full mt-2 bg-transparent border-0 border-b border-[#E5E7EB] focus:border-[#0A0A0A] focus:outline-none focus:ring-0 px-0 py-2 text-sm text-[#0A0A0A] resize-none"
+            rows={3}
+            placeholder="e.g., Old pricing data, product price recently updated"
+            value={clearReason}
+            onChange={(e) => setClearReason(e.target.value)}
+          />
+        </div>
+        <EditorialModalFooter>
+          <EditorialButton
+            variant="ghost"
+            onClick={() => {
+              setClearReason('')
+              setShowClearDialog(false)
+            }}
+          >
+            Cancel
+          </EditorialButton>
+          <EditorialButton
+            variant="primary"
+            arrow
+            onClick={markAsCleared}
+            disabled={!clearReason.trim()}
+          >
+            Mark as cleared
+          </EditorialButton>
+        </EditorialModalFooter>
+      </EditorialModal>
 
-      {/* Fix Confirmation Dialog */}
-      <AlertDialog open={showFixDialog} onOpenChange={setShowFixDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Apply Fixes to Selected Anomalies?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will attempt to fix {selectedAnomalies.length} selected anomalies.
-              Some fixes may require manual review.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={applyFixes}>Apply Fixes</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <EditorialModal
+        open={showFixDialog}
+        onOpenChange={setShowFixDialog}
+        kicker="Anomalies"
+        title="Apply fixes?"
+        description={`This will attempt to fix ${selectedAnomalies.length} selected anomalies. Some fixes may require manual review.`}
+      >
+        <EditorialModalFooter>
+          <EditorialButton variant="ghost" onClick={() => setShowFixDialog(false)}>
+            Cancel
+          </EditorialButton>
+          <EditorialButton variant="primary" arrow onClick={applyFixes}>
+            Apply fixes
+          </EditorialButton>
+        </EditorialModalFooter>
+      </EditorialModal>
     </div>
   );
 }

@@ -4,12 +4,12 @@ import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { EditorialModal } from "@/components/ui/editorial"
 import { Package } from "lucide-react"
 import { formatContainerBreakdown } from "@/lib/pricing"
 import { useToast } from "@/hooks/use-toast"
@@ -196,15 +196,14 @@ export function AddProductModal({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Add New Product</DialogTitle>
-          <DialogDescription>
-            Fill in the product details. Fields marked with * are required.
-          </DialogDescription>
-        </DialogHeader>
-
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && handleClose()}
+      kicker="Inventory"
+      title="New product"
+      description="Capture the product details. Fields marked with * are required."
+      size="lg"
+    >
         <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
           {/* Product Name and Category */}
           <div className="grid grid-cols-2 gap-4">
@@ -681,7 +680,6 @@ export function AddProductModal({
             </Button>
           </div>
         </form>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   )
 }

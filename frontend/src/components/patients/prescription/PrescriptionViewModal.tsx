@@ -1,13 +1,13 @@
 "use client"
 
 import React from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { EditorialModal } from '@/components/ui/editorial'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { FiPrinter, FiEdit2, FiX } from 'react-icons/fi'
+import { FiPrinter, FiEdit2 } from 'react-icons/fi'
 import { format, parseISO } from 'date-fns'
 import type { Prescription } from '@/types/prescription'
 
@@ -39,37 +39,30 @@ export default function PrescriptionViewModal({
   )
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle>Prescription Details</DialogTitle>
-              <p className="text-sm text-gray-500 mt-1">
-                {prescription.patientName} - {prescription.date}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {onEdit && (
-                <Button onClick={onEdit} variant="outline" size="sm">
-                  <FiEdit2 className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
-              )}
-              {onPrint && (
-                <Button onClick={onPrint} variant="outline" size="sm">
-                  <FiPrinter className="h-4 w-4 mr-2" />
-                  Print
-                </Button>
-              )}
-              <Button onClick={onClose} variant="ghost" size="sm">
-                <FiX className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </DialogHeader>
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Prescription"
+      title="Prescription details"
+      description={`${prescription.patientName} · ${prescription.date}`}
+      size="xl"
+    >
+      <div className="flex items-center justify-end gap-2 mb-4 -mt-2">
+        {onEdit && (
+          <Button onClick={onEdit} variant="outline" size="sm">
+            <FiEdit2 className="h-4 w-4 mr-2" />
+            Edit
+          </Button>
+        )}
+        {onPrint && (
+          <Button onClick={onPrint} variant="outline" size="sm">
+            <FiPrinter className="h-4 w-4 mr-2" />
+            Print
+          </Button>
+        )}
+      </div>
 
-        <ScrollArea className="flex-1">
+        <ScrollArea className="max-h-[60vh]">
           <div className="space-y-6 p-1">
             {/* Summary Card */}
             <Card>
@@ -239,7 +232,6 @@ export default function PrescriptionViewModal({
             )}
           </div>
         </ScrollArea>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   )
 }

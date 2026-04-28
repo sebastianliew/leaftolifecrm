@@ -1,14 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { EditorialModal } from '@/components/ui/editorial';
 import { Button } from '@/components/ui/button';
 import { Search, Package } from 'lucide-react';
 import { ProductTemplate } from '@/types/inventory';
@@ -49,15 +43,14 @@ export function TemplateProductSelector({
   }, [searchQuery, products]);
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden">
-        <DialogHeader>
-          <DialogTitle>Select Product to Restock</DialogTitle>
-          <DialogDescription>
-            Search and select a product from your inventory to add more stock
-          </DialogDescription>
-        </DialogHeader>
-        
+    <EditorialModal
+      open={isOpen}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Restock"
+      title="Select product"
+      description="Search inventory by name, SKU, category, or brand."
+      size="xl"
+    >
         <div className="space-y-4 overflow-hidden">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
@@ -134,7 +127,6 @@ export function TemplateProductSelector({
             )}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   );
 }

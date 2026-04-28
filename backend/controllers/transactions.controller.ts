@@ -360,6 +360,19 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
       return;
     }
 
+    // Customer-credit ledger is not implemented (see wiki/deduction-surfaces.md
+    // §D1). The schema and UI expose `offset_from_credit` as a payment method,
+    // but no writer ever decrements a balance. Until a credit ledger ships,
+    // reject the method up front rather than silently accepting a free sale.
+    if (transactionData.paymentMethod === 'offset_from_credit') {
+      res.status(400).json({
+        error: 'Customer credit feature is not yet implemented',
+        code: 'CREDIT_LEDGER_NOT_CONFIGURED',
+        message: 'Choose a different payment method. The store-credit ledger has open product decisions (see wiki/deduction-surfaces.md §D1).'
+      });
+      return;
+    }
+
     // Validate all items have valid names (prevent "Unknown Item" entries)
     const invalidItems = transactionData.items.filter((item: { name?: string }) =>
       !item.name || item.name.trim() === '' || item.name === 'Unknown Item'
@@ -619,7 +632,20 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
       const recalcItemDiscounts = transactionData.items.reduce(
         (sum: number, item: { discountAmount?: number }) => sum + (item.discountAmount ?? 0), 0
       );
-      const recalcTotal = recalcSubtotal - recalcItemDiscounts - (transactionData.discountAmount ?? 0);
+      const billDiscount = transactionData.discountAmount ?? 0;
+      const recalcTotal = recalcSubtotal - recalcItemDiscounts - billDiscount;
+
+      // A bill discount that exceeds the discounted subtotal would make the
+      // total negative — reject up front rather than persisting a refund-
+      // shaped sale.
+      if (recalcTotal < 0) {
+        res.status(400).json({
+          error: 'Bill discount exceeds the discounted subtotal',
+          code: 'TOTAL_NEGATIVE',
+          message: `Subtotal $${recalcSubtotal.toFixed(2)} − item discounts $${recalcItemDiscounts.toFixed(2)} − bill discount $${billDiscount.toFixed(2)} = $${recalcTotal.toFixed(2)}. Total cannot be negative.`,
+        });
+        return;
+      }
 
       transactionData.subtotal = Math.round(recalcSubtotal * 100) / 100;
       transactionData.totalAmount = Math.round(recalcTotal * 100) / 100;
@@ -629,22 +655,30 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
     // PHASE 1: Create and save transaction with inventory deduction (atomic)
     // Uses MongoDB session for atomicity - if inventory deduction fails,
     // transaction is rolled back to maintain data consistency.
+    //
+    // Wrapped in `session.withTransaction(...)` which transparently retries on
+    // TransientTransactionError (e.g. WriteConflict from concurrent sessions
+    // touching the same Product document) until the session deadline. Each
+    // retry re-runs the body from scratch — the atomic counter on
+    // transactionNumber tolerates wasted increments fine.
     // ========================================================================
-    const session = await mongoose.startSession();
-    let savedTransaction;
-    let transactionId;
-    const oversoldItems: Array<{
+    let savedTransaction: any;
+    let transactionId: any;
+    let oversoldItems: Array<{
       productId: string;
       productName: string;
       deficit: number;
       currentStock: number;
     }> = [];
 
+    const session = await mongoose.startSession();
     try {
-      session.startTransaction();
+      await session.withTransaction(async () => {
+        // Reset per-attempt outputs in case withTransaction retries.
+        oversoldItems = [];
 
-      // Set initial type to COMPLETED for non-draft transactions, otherwise DRAFT
-      const transactionType = transactionData.status !== 'draft' ? 'COMPLETED' : 'DRAFT';
+        // Set initial type to COMPLETED for non-draft transactions, otherwise DRAFT
+        const transactionType = transactionData.status !== 'draft' ? 'COMPLETED' : 'DRAFT';
 
       // ================================================================
       // Capture cost prices at point of sale for accurate margin tracking
@@ -753,7 +787,9 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
           const pid = String(movement.productId);
           if (seen.has(pid)) continue;
           seen.add(pid);
-          const prod = await Product.findById(pid).lean() as Record<string, unknown> | null;
+          // Read inside the session — without it, mongo isolation hides the
+          // in-progress decrement and the post-commit deficit goes unreported.
+          const prod = await Product.findById(pid).session(session).lean() as Record<string, unknown> | null;
           if (prod && ((prod.currentStock as number) ?? 0) < 0) {
             const deficit = Math.abs((prod.currentStock as number) ?? 0);
             oversoldItems.push({
@@ -774,11 +810,11 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
         console.log('[Transaction] Skipping inventory deduction for draft transaction');
       }
 
-      await session.commitTransaction();
+        // withTransaction commits on resolution / aborts on throw; do not
+        // commit here.
+      });
       console.log('[Transaction] Session committed successfully');
-
     } catch (sessionError) {
-      await session.abortTransaction();
       console.error('[Transaction] Session aborted due to error:', sessionError);
       throw sessionError;
     } finally {
@@ -895,6 +931,17 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
       return;
     }
 
+    // Mirror the create-path guard: reject offset_from_credit until the ledger
+    // is implemented. See wiki/deduction-surfaces.md §D1.
+    if (updateData.paymentMethod === 'offset_from_credit') {
+      res.status(400).json({
+        error: 'Customer credit feature is not yet implemented',
+        code: 'CREDIT_LEDGER_NOT_CONFIGURED',
+        message: 'Choose a different payment method. The store-credit ledger has open product decisions (see wiki/deduction-surfaces.md §D1).'
+      });
+      return;
+    }
+
     // Strip server-managed fields when the client sends them empty/falsy.
     // The transaction form initializes transactionNumber to '' as a placeholder
     // ("Will be generated server-side"); without this guard, converting a draft
@@ -917,6 +964,29 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
         res.status(400).json({
           error: `${invalidItems.length} item(s) have missing or invalid names`,
           details: 'Items must have valid product names'
+        });
+        return;
+      }
+    }
+
+    // Reject any update payload whose items + bill discount produce a
+    // negative total, regardless of whether this is a draft edit, conversion,
+    // or completed-txn edit. Mirrors the create-path guard.
+    if (updateData.items && Array.isArray(updateData.items) && updateData.discountAmount !== undefined) {
+      const subtotal = updateData.items.reduce(
+        (sum: number, item: { unitPrice?: number; quantity?: number }) =>
+          sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)), 0
+      );
+      const itemDiscounts = updateData.items.reduce(
+        (sum: number, item: { discountAmount?: number }) => sum + (item.discountAmount ?? 0), 0
+      );
+      const billDiscount = updateData.discountAmount ?? 0;
+      const projectedTotal = subtotal - itemDiscounts - billDiscount;
+      if (projectedTotal < 0) {
+        res.status(400).json({
+          error: 'Bill discount exceeds the discounted subtotal',
+          code: 'TOTAL_NEGATIVE',
+          message: `Subtotal $${subtotal.toFixed(2)} − item discounts $${itemDiscounts.toFixed(2)} − bill discount $${billDiscount.toFixed(2)} = $${projectedTotal.toFixed(2)}. Total cannot be negative.`,
         });
         return;
       }
@@ -950,6 +1020,77 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
         });
         return;
       }
+    }
+
+    // ========================================================================
+    // Role-based discount permission gate (mirrors createTransaction).
+    // Without this, a user can save a draft with no discount and then PUT it
+    // back with a discount that exceeds their role's maxDiscountPercent.
+    // ========================================================================
+    if (req.user && updateData.items && Array.isArray(updateData.items)) {
+      // Bill-level discount
+      if (updateData.discountAmount && updateData.discountAmount > 0) {
+        const subtotal = updateData.items.reduce(
+          (sum: number, item: { unitPrice?: number; quantity?: number }) =>
+            sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)), 0
+        );
+        const discountPercent = subtotal > 0 ? (updateData.discountAmount / subtotal) * 100 : 0;
+
+        const billDiscountCheck = permissionService.checkDiscountPermission(
+          { role: req.user.role, featurePermissions: req.user.featurePermissions },
+          discountPercent,
+          updateData.discountAmount,
+          'bill'
+        );
+
+        if (!billDiscountCheck.allowed) {
+          res.status(403).json({ error: billDiscountCheck.reason || 'Bill discount not permitted' });
+          return;
+        }
+
+        const billEligibility = await DiscountValidationService.validateBillDiscount(
+          updateData.discountAmount,
+          updateData.items
+        );
+        if (!billEligibility.valid) {
+          res.status(400).json({ error: billEligibility.error, code: 'BILL_DISCOUNT_INELIGIBLE_ITEMS' });
+          return;
+        }
+      }
+
+      // Item-level discounts
+      for (const item of updateData.items) {
+        if (item.discountAmount && item.discountAmount > 0) {
+          const itemTotal = (item.unitPrice ?? 0) * (item.quantity ?? 0);
+          const itemDiscountPercent = itemTotal > 0 ? (item.discountAmount / itemTotal) * 100 : 0;
+
+          const productDiscountCheck = permissionService.checkDiscountPermission(
+            { role: req.user.role, featurePermissions: req.user.featurePermissions },
+            itemDiscountPercent,
+            item.discountAmount,
+            'product'
+          );
+
+          if (!productDiscountCheck.allowed) {
+            res.status(403).json({
+              error: productDiscountCheck.reason || 'Product discount not permitted',
+              item: item.name
+            });
+            return;
+          }
+        }
+      }
+    }
+
+    // Reject redundant cancellation BEFORE the wasCancelled rewrite below.
+    // Without this guard the rewrite to status='draft' would mask the dupe and
+    // surprise callers by silently un-cancelling.
+    if (existingTransaction.status === 'cancelled' && updateData.status === 'cancelled') {
+      res.status(409).json({
+        error: 'Transaction is already cancelled',
+        message: 'This transaction has already been cancelled.'
+      });
+      return;
     }
 
     // Detect cancelled transaction being edited - restore to draft
@@ -1026,7 +1167,18 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
           const recalcItemDiscounts = updateData.items.reduce(
             (sum: number, item: { discountAmount?: number }) => sum + (item.discountAmount ?? 0), 0
           );
-          const recalcTotal = recalcSubtotal - recalcItemDiscounts - (updateData.discountAmount ?? 0);
+          const billDiscount = updateData.discountAmount ?? 0;
+          const recalcTotal = recalcSubtotal - recalcItemDiscounts - billDiscount;
+
+          if (recalcTotal < 0) {
+            res.status(400).json({
+              error: 'Bill discount exceeds the discounted subtotal',
+              code: 'TOTAL_NEGATIVE',
+              message: `Subtotal $${recalcSubtotal.toFixed(2)} − item discounts $${recalcItemDiscounts.toFixed(2)} − bill discount $${billDiscount.toFixed(2)} = $${recalcTotal.toFixed(2)}. Total cannot be negative.`,
+            });
+            return;
+          }
+
           updateData.subtotal = Math.round(recalcSubtotal * 100) / 100;
           updateData.totalAmount = Math.round(recalcTotal * 100) / 100;
         }
@@ -1058,15 +1210,6 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
     const wasCompleted = existingTransaction.status === 'completed';
     const isBeingCancelled = updateData.status === 'cancelled';
     const needsInventoryReversal = wasCompleted && isBeingCancelled;
-
-    // Prevent cancelling an already-cancelled transaction
-    if (existingTransaction.status === 'cancelled' && isBeingCancelled) {
-      res.status(409).json({
-        error: 'Transaction is already cancelled',
-        message: 'This transaction has already been cancelled.'
-      });
-      return;
-    }
 
     // Detect item quantity changes on a completed transaction — need inventory delta adjustment
     const isCompletedItemUpdate =
@@ -1153,35 +1296,31 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
     if (needsInventoryDeduction) {
       console.log('[Transaction] Draft being converted to completed, processing inventory:', id);
 
+      const inventorySession = await mongoose.startSession();
+      let inventoryMovements: any[] = [];
       try {
-        const inventorySession = await mongoose.startSession();
-        try {
-          inventorySession.startTransaction();
-
+        // withTransaction handles TransientTransactionError retries so PUTs
+        // racing against the same product don't silently skip the deduction.
+        await inventorySession.withTransaction(async () => {
+          inventoryMovements = [];
           const inventoryResult = await transactionInventoryService.processTransactionInventory(
             updatedTransaction,
             req.user?.id || 'system',
-            inventorySession
+            inventorySession,
           );
-
-          await inventorySession.commitTransaction();
-          console.log(`[Transaction] Inventory processed for draft conversion: ${inventoryResult.movements.length} movements`);
-
+          inventoryMovements = inventoryResult.movements;
           if (inventoryResult.errors.length > 0) {
             console.warn('[Transaction] Inventory processing had errors:', inventoryResult.errors);
           }
-
-          await collectOversoldFrom(inventoryResult.movements);
-        } catch (invError) {
-          await inventorySession.abortTransaction();
-          console.error('[Transaction] Inventory processing failed for draft conversion:', invError);
-          // Sell-through policy: stock-shortage errors no longer surface.
-          // Other errors are logged and skipped — inventory reconciles later.
-        } finally {
-          inventorySession.endSession();
-        }
-      } catch (sessionError) {
-        console.error('[Transaction] Failed to create inventory session:', sessionError);
+        });
+        console.log(`[Transaction] Inventory processed for draft conversion: ${inventoryMovements.length} movements`);
+        await collectOversoldFrom(inventoryMovements);
+      } catch (invError) {
+        console.error('[Transaction] Inventory processing failed for draft conversion:', invError);
+        // Sell-through policy: stock-shortage errors no longer surface.
+        // Other errors are logged and skipped — inventory reconciles later.
+      } finally {
+        inventorySession.endSession();
       }
     }
 
@@ -1189,45 +1328,36 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
     if (needsInventoryReversal) {
       console.log('[Transaction] Completed transaction being cancelled, reversing inventory:', id);
 
+      const reversalSession = await mongoose.startSession();
       try {
-        const reversalSession = await mongoose.startSession();
-        try {
-          reversalSession.startTransaction();
-
+        await reversalSession.withTransaction(async () => {
           const reversalResult = await transactionInventoryService.reverseTransactionInventory(
             existingTransaction.transactionNumber,
             req.user?.id || 'system',
-            reversalSession
+            reversalSession,
           );
-
-          await reversalSession.commitTransaction();
           console.log(`[Transaction] Inventory reversed: ${reversalResult.reversedCount}/${reversalResult.originalMovementCount} movements`);
-
           if (reversalResult.errors.length > 0) {
             console.warn('[Transaction] Inventory reversal had errors:', reversalResult.errors);
           }
           if (reversalResult.warnings.length > 0) {
             console.log('[Transaction] Inventory reversal warnings:', reversalResult.warnings);
           }
-        } catch (reversalError) {
-          await reversalSession.abortTransaction();
-          console.error('[Transaction] Inventory reversal failed:', reversalError);
-          // Continue - cancellation succeeds, inventory can be reconciled manually
-        } finally {
-          reversalSession.endSession();
-        }
-      } catch (sessionError) {
-        console.error('[Transaction] Failed to create reversal session:', sessionError);
+        });
+      } catch (reversalError) {
+        console.error('[Transaction] Inventory reversal failed:', reversalError);
+        // Continue - cancellation succeeds, inventory can be reconciled manually
+      } finally {
+        reversalSession.endSession();
       }
     }
 
     // Apply inventory deltas for item changes on completed transactions
     if (isCompletedItemUpdate && inventoryDeltas.length > 0) {
       console.log(`[Transaction] Applying inventory deltas for completed txn edit: ${inventoryDeltas.length} product(s) changed`);
+      const deltaSession = await mongoose.startSession();
       try {
-        const deltaSession = await mongoose.startSession();
-        try {
-          deltaSession.startTransaction();
+        await deltaSession.withTransaction(async () => {
           for (const delta of inventoryDeltas) {
             const product = await Product.findById(delta.productId).session(deltaSession);
             if (!product) {
@@ -1252,17 +1382,13 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
             await movement.updateProductStock(deltaSession);
             console.log(`[Transaction] Delta applied: ${delta.productName} ${movementType} ${convertedQty}`);
           }
-          await deltaSession.commitTransaction();
-        } catch (deltaErr) {
-          await deltaSession.abortTransaction();
-          console.error('[Transaction] Inventory delta adjustment failed:', deltaErr);
-          // Sell-through policy: stock-shortage errors no longer surface;
-          // any error here is non-fatal — transaction already saved.
-        } finally {
-          deltaSession.endSession();
-        }
-      } catch (sessionErr) {
-        console.error('[Transaction] Failed to create delta session:', sessionErr);
+        });
+      } catch (deltaErr) {
+        console.error('[Transaction] Inventory delta adjustment failed:', deltaErr);
+        // Sell-through policy: stock-shortage errors no longer surface;
+        // any error here is non-fatal — transaction already saved.
+      } finally {
+        deltaSession.endSession();
       }
     }
 
@@ -1876,8 +2002,21 @@ export const saveDraft = async (req: AuthenticatedRequest, res: Response): Promi
       draftId: draftId // Store the client-side draft ID for reference
     };
 
-    // Use atomic findOneAndUpdate with upsert to prevent race conditions
-    // This ensures only one draft is created even with concurrent requests
+    // Pre-generate a transactionNumber so the upsert never lands on
+    // `transactionNumber: null`. The schema's unique index treats null as a
+    // value (not sparse), so without this, two concurrent autosaves with
+    // different draftIds would race and one would 11000 on the null. The
+    // sequence number is consumed eagerly — gaps from upserts that updated an
+    // existing draft are fine; the counter is monotonic, not contiguous.
+    const date = new Date();
+    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
+    const counterId = `txn-${dateStr}`;
+    const seq = await getNextSequence(counterId);
+    const generatedTxnNumber = `TXN-${dateStr}-${String(seq).padStart(4, '0')}`;
+
+    // Use atomic findOneAndUpdate with upsert to prevent race conditions.
+    // The transactionNumber goes into $setOnInsert so repeat autosaves
+    // against the same draftId keep their original number.
     const savedTransaction = await Transaction.findOneAndUpdate(
       { draftId, createdBy: req.user.id },
       {
@@ -1886,21 +2025,12 @@ export const saveDraft = async (req: AuthenticatedRequest, res: Response): Promi
           updatedAt: new Date()
         },
         $setOnInsert: {
-          createdAt: new Date()
+          createdAt: new Date(),
+          transactionNumber: generatedTxnNumber,
         }
       },
       { upsert: true, new: true, runValidators: true }
     );
-
-    // Generate transaction number for new drafts (pre-save hook doesn't run with findOneAndUpdate)
-    if (!savedTransaction.transactionNumber) {
-      const date = new Date();
-      const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-      const counterId = `txn-${dateStr}`;
-      const seq = await getNextSequence(counterId);
-      savedTransaction.transactionNumber = `TXN-${dateStr}-${String(seq).padStart(4, '0')}`;
-      await savedTransaction.save();
-    }
 
     res.status(200).json({
       success: true,
@@ -1991,10 +2121,12 @@ export const duplicateTransaction = async (req: AuthenticatedRequest, res: Respo
       return;
     }
 
-    // Fetch the original transaction
+    // Fetch the original transaction. Soft-deleted records are treated as not
+    // found — duplicating an archived record would resurrect deleted data into
+    // a fresh draft that no longer references the original audit trail.
     const original = await Transaction.findById(id);
 
-    if (!original) {
+    if (!original || original.isDeleted) {
       res.status(404).json({ error: 'Transaction not found' });
       return;
     }

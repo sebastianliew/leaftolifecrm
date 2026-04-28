@@ -4,10 +4,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useTransactions, useDeleteTransaction, useUpdateTransaction, useDuplicateTransaction } from '@/hooks/queries/use-transaction-queries'
 import { TransactionTable } from './TransactionTable'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+import { EditorialModal, EditorialModalFooter, EditorialButton, EditorialNote } from '@/components/ui/editorial'
 import { SimpleTransactionForm } from './SimpleTransactionForm'
 import { TransactionDeleteDialog } from './transaction-delete-dialog'
 import { TransactionDuplicateDialog } from './transaction-duplicate-dialog'
@@ -474,13 +471,13 @@ export function TransactionList() {
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-full max-w-sm" />
-        <div className="space-y-2">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
+      <div className="mt-12 space-y-2 animate-pulse">
+        <div className="h-10 w-full max-w-sm bg-[#F3F4F6]" />
+        <div className="space-y-1">
+          <div className="h-12 w-full bg-[#F3F4F6]" />
+          <div className="h-12 w-full bg-[#F3F4F6]" />
+          <div className="h-12 w-full bg-[#F3F4F6]" />
+          <div className="h-12 w-full bg-[#F3F4F6]" />
         </div>
       </div>
     )
@@ -489,16 +486,15 @@ export function TransactionList() {
   if (error) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to load transactions'
     const isAuthError = errorMessage.includes('Access token required') || errorMessage.includes('401')
-    
+
     return (
-      <Alert variant="destructive">
-        <AlertDescription>
-          {isAuthError 
-            ? 'Authentication required. Please log in to continue.' 
-            : `${errorMessage}. Please try again.`
-          }
-        </AlertDescription>
-      </Alert>
+      <div className="mt-8">
+        <EditorialNote tone="danger" kicker="Error">
+          {isAuthError
+            ? 'Authentication required. Please log in to continue.'
+            : `${errorMessage}. Please try again.`}
+        </EditorialNote>
+      </div>
     )
   }
 
@@ -529,27 +525,28 @@ export function TransactionList() {
       />
 
       {/* Edit Transaction Dialog */}
-      <Dialog open={!!editingTransaction} onOpenChange={() => setEditingTransactionId(null)}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingTransaction?.status === 'draft' || editingTransaction?.status === 'cancelled'
-                ? `Edit ${editingTransaction.status === 'cancelled' ? 'Cancelled Transaction' : 'Draft'}`
-                : 'Edit Transaction'}
-            </DialogTitle>
-          </DialogHeader>
-          {editingTransaction && (
-            <SimpleTransactionForm
-              products={products}
-              initialData={editingTransaction}
-              onSubmit={handleUpdateTransaction}
-              onSaveDraft={editingTransaction.status === 'draft' || editingTransaction.status === 'cancelled' ? handleUpdateDraft : undefined}
-              onCancel={() => setEditingTransactionId(null)}
-              loading={updateTransactionMutation.isPending}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      <EditorialModal
+        open={!!editingTransaction}
+        onOpenChange={(open) => !open && setEditingTransactionId(null)}
+        kicker="Transactions"
+        title={
+          editingTransaction?.status === 'draft' || editingTransaction?.status === 'cancelled'
+            ? `Edit ${editingTransaction.status === 'cancelled' ? 'cancelled transaction' : 'draft'}`
+            : 'Edit transaction'
+        }
+        size="2xl"
+      >
+        {editingTransaction && (
+          <SimpleTransactionForm
+            products={products}
+            initialData={editingTransaction}
+            onSubmit={handleUpdateTransaction}
+            onSaveDraft={editingTransaction.status === 'draft' || editingTransaction.status === 'cancelled' ? handleUpdateDraft : undefined}
+            onCancel={() => setEditingTransactionId(null)}
+            loading={updateTransactionMutation.isPending}
+          />
+        )}
+      </EditorialModal>
 
       {/* Delete Transaction Dialog */}
       <TransactionDeleteDialog
@@ -570,29 +567,23 @@ export function TransactionList() {
       />
 
       {/* Cancel Draft Dialog */}
-      <Dialog open={!!cancellingTransaction} onOpenChange={(open) => !open && setCancellingTransaction(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Cancel Draft</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to cancel this draft? The draft will be marked as cancelled
-              and can be found using the &quot;Cancelled&quot; status filter.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCancellingTransaction(null)}>
-              No, Keep Draft
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmCancelDraft}
-              disabled={updateTransactionMutation.isPending}
-            >
-              {updateTransactionMutation.isPending ? 'Cancelling...' : 'Yes, Cancel Draft'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <EditorialModal
+        open={!!cancellingTransaction}
+        onOpenChange={(open) => !open && setCancellingTransaction(null)}
+        kicker="Cancel draft"
+        kickerTone="warning"
+        title="Cancel this draft?"
+        description="The draft will be marked as cancelled. You can still find it using the Cancelled status filter."
+      >
+        <EditorialModalFooter>
+          <EditorialButton variant="ghost" onClick={() => setCancellingTransaction(null)}>
+            Keep draft
+          </EditorialButton>
+          <EditorialButton variant="primary" arrow onClick={handleConfirmCancelDraft} disabled={updateTransactionMutation.isPending}>
+            {updateTransactionMutation.isPending ? 'Cancelling…' : 'Cancel draft'}
+          </EditorialButton>
+        </EditorialModalFooter>
+      </EditorialModal>
     </>
   )
 }

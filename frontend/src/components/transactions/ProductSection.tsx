@@ -5,8 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { FaShoppingCart, FaSearch, FaBox, FaFlask } from "react-icons/fa"
+import { EditorialModal } from "@/components/ui/editorial"
 import type { Product } from "@/types/inventory"
 
 interface ProductSectionProps {
@@ -62,68 +62,67 @@ export function ProductSection({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-2">
-          <Dialog open={productModalOpen} onOpenChange={setProductModalOpen}>
-            <DialogTrigger asChild>
-              <Button 
-                type="button" 
-                variant="outline" 
-                className="flex-1" 
-                disabled={disabled}
-              >
-                <FaSearch className="w-4 h-4 mr-2" />
-                Search Products
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-3xl max-h-[600px] overflow-hidden flex flex-col">
-              <DialogHeader>
-                <DialogTitle>Search Products</DialogTitle>
-              </DialogHeader>
-              <div className="p-4">
-                <Input
-                  placeholder="Search by name, SKU, or category..."
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  className="mb-4"
-                />
-              </div>
-              <div className="flex-1 overflow-y-auto px-4 pb-4">
-                <div className="space-y-2">
-                  {filteredProducts.map((product) => {
-                    const totalStock = getProductStock(product)
-                    return (
-                      <div
-                        key={product._id}
-                        className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                          totalStock > 0 ? "hover:bg-accent" : "opacity-50 cursor-not-allowed"
-                        }`}
-                        onClick={() => totalStock > 0 && selectProduct(product)}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <p className="font-medium">{product.name}</p>
-                            <p className="text-sm text-muted-foreground">
-                              SKU: {product.sku} | Category: {String(product.category)}
-                            </p>
-                            <div className="flex gap-2 mt-2 flex-wrap">
-                              <div className="text-sm">
-                                <span className="font-medium">Price:</span> ${product.sellingPrice} | <span className="font-medium">Stock:</span> {product.currentStock}
-                              </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            disabled={disabled}
+            onClick={() => setProductModalOpen(true)}
+          >
+            <FaSearch className="w-4 h-4 mr-2" />
+            Search Products
+          </Button>
+          <EditorialModal
+            open={productModalOpen}
+            onOpenChange={setProductModalOpen}
+            kicker="Product"
+            title="Search products"
+            description="Search by product name, SKU, or category."
+            size="xl"
+          >
+            <Input
+              placeholder="Search by name, SKU, or category..."
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              className="mb-4"
+            />
+            <div className="max-h-[450px] overflow-y-auto">
+              <div className="space-y-2">
+                {filteredProducts.map((product) => {
+                  const totalStock = getProductStock(product)
+                  return (
+                    <div
+                      key={product._id}
+                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                        totalStock > 0 ? "hover:bg-accent" : "opacity-50 cursor-not-allowed"
+                      }`}
+                      onClick={() => totalStock > 0 && selectProduct(product)}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <p className="font-medium">{product.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            SKU: {product.sku} | Category: {String(product.category)}
+                          </p>
+                          <div className="flex gap-2 mt-2 flex-wrap">
+                            <div className="text-sm">
+                              <span className="font-medium">Price:</span> ${product.sellingPrice} | <span className="font-medium">Stock:</span> {product.currentStock}
                             </div>
                           </div>
-                          <Badge variant={getStockBadgeVariant(product.currentStock)}>
-                            Stock: {product.currentStock}
-                          </Badge>
                         </div>
+                        <Badge variant={getStockBadgeVariant(product.currentStock)}>
+                          Stock: {product.currentStock}
+                        </Badge>
                       </div>
-                    )
-                  })}
-                  {filteredProducts.length === 0 && (
-                    <p className="text-center text-muted-foreground py-4">No products found</p>
-                  )}
-                </div>
+                    </div>
+                  )
+                })}
+                {filteredProducts.length === 0 && (
+                  <p className="text-center text-muted-foreground py-4">No products found</p>
+                )}
               </div>
-            </DialogContent>
-          </Dialog>
+            </div>
+          </EditorialModal>
 
           <Button
             type="button"

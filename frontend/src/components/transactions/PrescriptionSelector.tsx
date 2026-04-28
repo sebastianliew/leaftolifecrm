@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { EditorialModal } from '@/components/ui/editorial';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -239,15 +239,14 @@ export default function PrescriptionSelector({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FiClock className="h-5 w-5 text-purple-600" />
-            Copy from Prescription - {patientName}
-          </DialogTitle>
-        </DialogHeader>
-
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Prescription"
+      title={`Copy from ${patientName}`}
+      description="Pick a prior prescription to copy remedies from."
+      size="2xl"
+    >
         <div className="space-y-6">
           {!showRemedyDetails ? (
             <>
@@ -466,7 +465,6 @@ export default function PrescriptionSelector({
             </>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   );
 }

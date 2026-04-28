@@ -1,43 +1,57 @@
 "use client"
 
-import { Button } from "@/components/ui/button";
-import { FaPlus } from 'react-icons/fa';
+import { HiPlus, HiFunnel } from 'react-icons/hi2'
+import {
+  EditorialMasthead,
+  EditorialButton,
+} from '@/components/ui/editorial'
 
 interface PageHeaderProps {
-  onCreateTemplate?: () => void;
-  onToggleFilters: () => void;
-  showFilters: boolean;
-  canCreate: boolean;
+  onCreateTemplate?: () => void
+  onToggleFilters: () => void
+  showFilters: boolean
+  canCreate: boolean
+  total?: number
 }
 
-export function PageHeader({ 
-  onCreateTemplate, 
-  onToggleFilters, 
+export function PageHeader({
+  onCreateTemplate,
+  onToggleFilters,
   showFilters,
-  canCreate 
+  canCreate,
+  total,
 }: PageHeaderProps) {
   return (
-    <div className="flex justify-between items-center">
-      <div>
-        <h1 className="text-3xl font-bold">Blend Templates</h1>
-        <p className="text-gray-600 mt-2">
-          Create and manage reusable blend formulations for consistent mixing
-        </p>
-      </div>
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          onClick={onToggleFilters}
+    <EditorialMasthead
+      kicker="Blend templates"
+      title="Formulary"
+      subtitle={
+        total !== undefined ? (
+          <>
+            <span className="tabular-nums">{total}</span> template{total === 1 ? '' : 's'} on file
+          </>
+        ) : (
+          'Reusable blend formulations for consistent mixing'
+        )
+      }
+    >
+      <EditorialButton
+        variant={showFilters ? 'ghost-active' : 'ghost'}
+        icon={<HiFunnel className="h-3 w-3" />}
+        onClick={onToggleFilters}
+      >
+        Filter
+      </EditorialButton>
+      {canCreate && onCreateTemplate && (
+        <EditorialButton
+          variant="primary"
+          icon={<HiPlus className="h-3 w-3" />}
+          arrow
+          onClick={onCreateTemplate}
         >
-          {showFilters ? 'Hide Filters' : 'Show Filters'}
-        </Button>
-        {canCreate && onCreateTemplate && (
-          <Button onClick={onCreateTemplate}>
-            <FaPlus className="mr-2 h-4 w-4" />
-            Create Template
-          </Button>
-        )}
-      </div>
-    </div>
-  );
+          New template
+        </EditorialButton>
+      )}
+    </EditorialMasthead>
+  )
 }

@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { EditorialModal } from "@/components/ui/editorial"
 import { Badge } from "@/components/ui/badge"
 import { FaSearch } from "react-icons/fa"
 import type { Product } from "@/types/inventory"
@@ -71,12 +71,14 @@ export function SimpleProductSelector({ open, onClose, onSelectProduct, products
   }
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle>Select Product</DialogTitle>
-        </DialogHeader>
-        
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Product"
+      title="Select product"
+      description="Search by product name or SKU."
+      size="lg"
+    >
         <div className="space-y-4">
           <div className="relative">
             <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -135,7 +137,6 @@ export function SimpleProductSelector({ open, onClose, onSelectProduct, products
             )}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   )
 }

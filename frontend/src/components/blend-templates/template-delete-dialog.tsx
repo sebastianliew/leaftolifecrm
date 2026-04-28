@@ -1,15 +1,10 @@
 "use client"
 
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+} from "@/components/ui/editorial"
 import type { BlendTemplate } from '@/types/blend'
 
 interface TemplateDeleteDialogProps {
@@ -24,36 +19,31 @@ export function TemplateDeleteDialog({ template, open, onOpenChange, onConfirm, 
   if (!template) return null
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete Blend Template</AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to delete the template{" "}
-            <strong>
-              {template.name}
-            </strong>?
-            {template.usageCount > 0 && (
-              <>
-                <br />
-                <br />
-                <span className="text-amber-600">
-                  Warning: This template has been used {template.usageCount} time{template.usageCount !== 1 ? 's' : ''}.
-                </span>
-              </>
-            )}
-            <br />
-            <br />
-            This action cannot be undone. The template will be permanently removed.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} disabled={loading} className="bg-red-600 hover:bg-red-700">
-            {loading ? "Deleting..." : "Delete Template"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <EditorialModal
+      open={open}
+      onOpenChange={onOpenChange}
+      kicker="Delete template"
+      kickerTone="danger"
+      title={`Remove ${template.name}?`}
+      description="This action cannot be undone. The template will be permanently removed."
+    >
+      {template.usageCount > 0 && (
+        <div className="border-l-2 border-[#EA580C] bg-[#FFF7ED] px-5 py-4 mb-6">
+          <p className="text-[13px] text-[#0A0A0A] leading-relaxed">
+            This template has been used <span className="tabular-nums font-medium">{template.usageCount}</span>{' '}
+            time{template.usageCount !== 1 ? 's' : ''}. Existing transactions will retain a snapshot, but
+            this template will no longer be usable in new sales.
+          </p>
+        </div>
+      )}
+      <EditorialModalFooter>
+        <EditorialButton variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+          Cancel
+        </EditorialButton>
+        <EditorialButton variant="primary" arrow onClick={onConfirm} disabled={loading}>
+          {loading ? 'Deleting…' : 'Delete template'}
+        </EditorialButton>
+      </EditorialModalFooter>
+    </EditorialModal>
   )
 }

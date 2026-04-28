@@ -1,13 +1,12 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { EditorialModal } from "@/components/ui/editorial"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { HiOutlinePencilSquare } from "react-icons/hi2"
 import type { TransactionItem } from "@/types/transaction"
 import { formatCurrency } from "@/utils/currency"
 import { useUnitsQuery } from "@/hooks/queries/use-units-query"
@@ -151,14 +150,14 @@ export function MiscellaneousSelector({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <HiOutlinePencilSquare className="w-5 h-5" />
-            {editingItem ? 'Edit Miscellaneous Item' : 'Add Miscellaneous Item'}
-          </DialogTitle>
-        </DialogHeader>
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Miscellaneous"
+      title={editingItem ? 'Edit miscellaneous item' : 'Add miscellaneous item'}
+      description="Enter the description, quantity, and pricing for this line."
+      size="lg"
+    >
         
         {/* Discount Notice */}
         <div className="bg-blue-50 border border-blue-200 p-3 rounded-md">
@@ -297,7 +296,6 @@ export function MiscellaneousSelector({
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   )
 }

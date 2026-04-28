@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { EditorialModal, EditorialModalFooter } from '@/components/ui/editorial'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -692,15 +692,14 @@ export default function PrescriptionCreateModal({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Create New Prescription</DialogTitle>
-          <DialogDescription>
-            {patient.firstName} {patient.lastName}
-          </DialogDescription>
-        </DialogHeader>
-
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Prescription"
+      title="New prescription"
+      description={`${patient.firstName} ${patient.lastName}`}
+      size="2xl"
+    >
         {/* Progress Bar */}
         <div className="space-y-2">
           <Progress value={(currentStep / STEPS.length) * 100} className="h-2" />
@@ -733,7 +732,7 @@ export default function PrescriptionCreateModal({
           {renderStepContent()}
         </div>
 
-        <DialogFooter className="gap-2">
+        <EditorialModalFooter>
           <Button
             variant="outline"
             onClick={currentStep === 1 ? onClose : handleBack}
@@ -745,7 +744,7 @@ export default function PrescriptionCreateModal({
               </>
             )}
           </Button>
-          
+
           {currentStep < STEPS.length ? (
             <Button onClick={handleNext}>
               Next
@@ -756,8 +755,7 @@ export default function PrescriptionCreateModal({
               {isLoading ? 'Saving...' : 'Save Prescription'}
             </Button>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </EditorialModalFooter>
+    </EditorialModal>
   )
 }

@@ -3,10 +3,10 @@
 import { useState, useRef, useCallback, memo, useEffect } from "react"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+} from "@/components/ui/editorial"
 import {
   HiMagnifyingGlass,
   HiPencil,
@@ -922,61 +922,51 @@ export default function InventoryPage() {
       />
 
       {/* Stock Owed Reconciliation Modal */}
-      <Dialog open={showOwedModal} onOpenChange={setShowOwedModal}>
-        <DialogContent
-          className="sm:max-w-lg p-0 border-none bg-white shadow-[0_30px_80px_-20px_rgba(0,0,0,0.25)]"
-          style={{ borderRadius: 0, fontFamily: "'Poppins', ui-sans-serif, system-ui, sans-serif" }}
-        >
-          <DialogTitle className="sr-only">Inventory Reconciliation Needed</DialogTitle>
-          <div className="px-10 pt-10 pb-8">
-            <p className="text-[10px] uppercase tracking-[0.4em] text-[#EA580C]">Reconciliation</p>
-            <h2 className="font-light text-[32px] leading-[1.1] mt-3 text-[#0A0A0A]">
-              Inventory needs reconciling.
-            </h2>
+      <EditorialModal
+        open={showOwedModal}
+        onOpenChange={setShowOwedModal}
+        kicker="Reconciliation"
+        kickerTone="warning"
+        title="Inventory needs reconciling."
+      >
+        <div className="flex items-baseline gap-3">
+          <span className="font-light text-[56px] leading-none tabular-nums text-[#EA580C]">
+            {stats?.stockOwed ?? 0}
+          </span>
+          <span className="text-sm text-[#6B7280] italic font-light">
+            item{(stats?.stockOwed ?? 0) === 1 ? "" : "s"} owed from oversold sales
+          </span>
+        </div>
+        {canViewCostPrices && (stats?.totalOwedValue ?? 0) > 0 && (
+          <p className="text-[11px] uppercase tracking-[0.28em] text-[#6B7280] mt-3">
+            Est. value <span className="tabular-nums text-[#0A0A0A] normal-case tracking-normal text-sm ml-1">{formatCurrency(stats?.totalOwedValue ?? 0)}</span>
+          </p>
+        )}
 
-            <div className="mt-6 flex items-baseline gap-3">
-              <span className="font-light text-[56px] leading-none tabular-nums text-[#EA580C]">
-                {stats?.stockOwed ?? 0}
-              </span>
-              <span className="text-sm text-[#6B7280] italic font-light">
-                item{(stats?.stockOwed ?? 0) === 1 ? "" : "s"} owed from oversold sales
-              </span>
-            </div>
-            {canViewCostPrices && (stats?.totalOwedValue ?? 0) > 0 && (
-              <p className="text-[11px] uppercase tracking-[0.28em] text-[#6B7280] mt-3">
-                Est. value <span className="tabular-nums text-[#0A0A0A] normal-case tracking-normal text-sm ml-1">{formatCurrency(stats?.totalOwedValue ?? 0)}</span>
-              </p>
-            )}
+        <div className="mt-7 border-l-2 border-[#EA580C] bg-[#FFF7ED] px-5 py-4">
+          <p className="text-[13px] text-[#0A0A0A] leading-relaxed">
+            Reports stay accurate only when these items are restocked back to their real physical count.
+            Open <span className="text-[#EA580C]">Owed items</span> to reconcile now.
+          </p>
+        </div>
 
-            <div className="mt-7 border-l-2 border-[#EA580C] bg-[#FFF7ED] px-5 py-4">
-              <p className="text-[13px] text-[#0A0A0A] leading-relaxed">
-                Reports stay accurate only when these items are restocked back to their real physical count.
-                Open <span className="text-[#EA580C]">Owed items</span> to reconcile now.
-              </p>
-            </div>
-
-            <div className="mt-8 flex items-center justify-end gap-6">
-              <button
-                onClick={() => setShowOwedModal(false)}
-                className="text-[11px] uppercase tracking-[0.28em] text-[#6B7280] hover:text-[#0A0A0A] transition-colors"
-              >
-                Remind me later
-              </button>
-              <button
-                onClick={() => {
-                  setStockStatusFilter("owed")
-                  setCurrentPage(1)
-                  setShowOwedModal(false)
-                }}
-                className="group inline-flex items-center gap-2 bg-[#0A0A0A] text-white px-7 py-3 text-[11px] uppercase tracking-[0.28em] hover:bg-black transition-colors"
-              >
-                Show owed items
-                <span className="text-base normal-case tracking-normal opacity-80 group-hover:translate-x-0.5 transition-transform">→</span>
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+        <EditorialModalFooter>
+          <EditorialButton variant="ghost" onClick={() => setShowOwedModal(false)}>
+            Remind me later
+          </EditorialButton>
+          <EditorialButton
+            variant="primary"
+            arrow
+            onClick={() => {
+              setStockStatusFilter("owed")
+              setCurrentPage(1)
+              setShowOwedModal(false)
+            }}
+          >
+            Show owed items
+          </EditorialButton>
+        </EditorialModalFooter>
+      </EditorialModal>
     </div>
   )
 }

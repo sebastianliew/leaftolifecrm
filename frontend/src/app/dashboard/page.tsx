@@ -1,352 +1,300 @@
 "use client"
 
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { HiUsers, HiChartBar, HiMagnifyingGlass, HiCube, HiBuildingOffice, HiTag, HiReceiptRefund, HiCurrencyDollar } from "react-icons/hi2"
-import { Shield } from "lucide-react"
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/hooks/useAuth"
+import {
+  EditorialPage,
+  EditorialPageSkeleton,
+  EditorialErrorScreen,
+  EditorialMasthead,
+  EditorialStats,
+  EditorialStat,
+  EditorialSection,
+  EditorialPill,
+} from "@/components/ui/editorial"
 
-// Define DashboardStats interface
 interface DashboardStats {
-  totalProducts?: number;
-  productGrowth?: number;
-  activePatients?: number;
-  patientGrowth?: number;
-  expiredProducts?: number;
-  expiringSoonProducts?: number;
-  totalValue?: number;
+  totalProducts?: number
+  productGrowth?: number
+  activePatients?: number
+  patientGrowth?: number
+  expiredProducts?: number
+  expiringSoonProducts?: number
+  totalValue?: number
 }
 
+type IndexItem = {
+  href: string
+  label: string
+  hint: string
+  roles?: ReadonlyArray<string>
+}
+
+type IndexSection = {
+  heading: string
+  items: ReadonlyArray<IndexItem>
+}
+
+const INDEX: ReadonlyArray<IndexSection> = [
+  {
+    heading: "Materia medica",
+    items: [
+      { href: "/inventory", label: "View the dispensary", hint: "every tincture, herb & blend" },
+      { href: "/inventory", label: "Receive a new product", hint: "log incoming stock" },
+      { href: "/inventory", label: "Search the cabinet", hint: "by name, batch or supplier" },
+      { href: "/blend-templates", label: "Blend templates", hint: "house formulas" },
+      { href: "/reports", label: "Inventory reports", hint: "movement & valuation", roles: ["super_admin", "admin", "manager"] },
+    ],
+  },
+  {
+    heading: "Practice & people",
+    items: [
+      { href: "/patients", label: "Patient register", hint: "active records" },
+      { href: "/patients", label: "Open a consultation", hint: "begin a new note" },
+      { href: "/dashboard/appointments", label: "Today's appointments", hint: "the day's roster" },
+      { href: "/appointments", label: "Schedule a visit", hint: "book new" },
+    ],
+  },
+  {
+    heading: "Counter & ledger",
+    items: [
+      { href: "/transactions", label: "Sales journal", hint: "all transactions" },
+      { href: "/transactions", label: "Ring a sale", hint: "new transaction" },
+      { href: "/refunds", label: "Refunds & returns", hint: "ledger reversals" },
+      { href: "/suppliers", label: "Suppliers", hint: "trade partners" },
+      { href: "/brands", label: "Brand directory", hint: "labels we stock" },
+    ],
+  },
+  {
+    heading: "House & settings",
+    items: [
+      { href: "/settings/consultation", label: "Consultation settings", hint: "fees & defaults" },
+      { href: "/users", label: "Practitioners & staff", hint: "roles & access", roles: ["super_admin", "admin"] },
+      { href: "/profile", label: "Your profile", hint: "personal record" },
+      { href: "/history", label: "Activity log", hint: "what happened, when" },
+    ],
+  },
+]
+
+function useNow() {
+  const [now, setNow] = useState<Date | null>(null)
+  useEffect(() => {
+    setNow(new Date())
+    const id = setInterval(() => setNow(new Date()), 30_000)
+    return () => clearInterval(id)
+  }, [])
+  return now
+}
+
+function greeting(d: Date | null) {
+  if (!d) return "Welcome"
+  const h = d.getHours()
+  if (h < 5) return "Still up"
+  if (h < 12) return "Good morning"
+  if (h < 17) return "Good afternoon"
+  if (h < 21) return "Good evening"
+  return "Working late"
+}
+
+function toRoman(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return ""
+  const map: Array<[number, string]> = [
+    [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"],
+    [100, "C"], [90, "XC"], [50, "L"], [40, "XL"],
+    [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"],
+  ]
+  let out = ""
+  let v = Math.floor(n)
+  for (const [k, s] of map) {
+    while (v >= k) { out += s; v -= k }
+  }
+  return out
+}
+
+const ROMAN_NUMERALS = ['i.', 'ii.', 'iii.', 'iv.']
+
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isRootSession, setIsRootSession] = useState(false);
-  const [rootUserInfo, setRootUserInfo] = useState<{username: string, role: string} | null>(null);
-  const { user, loading: authLoading, isAuthenticated } = useAuth();
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [loading, setLoading] = useState(true)
+  const { user, loading: authLoading, isAuthenticated } = useAuth()
+  const now = useNow()
 
   useEffect(() => {
-    // Check for root session
-    const rootInfo = sessionStorage.getItem('rootUserInfo');
-    const rootSessionCookie = document.cookie.includes('rootSession=true');
-    
-    if (rootInfo || rootSessionCookie) {
-      setIsRootSession(true);
-      if (rootInfo) {
-        try {
-          setRootUserInfo(JSON.parse(rootInfo));
-        } catch {
-          // console.error('Failed to parse root user info');
-        }
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const fetchStats = async () => {
+    let cancelled = false
+    const run = async () => {
       try {
-        // Use Next.js API route instead of external backend
-        const response = await fetch('/api/dashboard/stats');
-        if (response.ok) {
-          const data = await response.json();
-          setStats(data);
+        const r = await fetch("/api/dashboard/stats")
+        if (r.ok) {
+          const data = await r.json()
+          if (!cancelled) setStats(data)
         }
       } catch {
-        // console.error('Failed to fetch dashboard stats:', error);
+        // silent — UI shows dashes
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false)
       }
-    };
+    }
+    run()
+    return () => { cancelled = true }
+  }, [])
 
-    fetchStats();
-  }, []);
-  
-  // Show loading while checking auth
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Loading...</div>
-      </div>
-    );
-  }
-  
-  // If not authenticated, show message
+  const expiringTotal = (stats?.expiredProducts ?? 0) + (stats?.expiringSoonProducts ?? 0)
+
+  const role = user?.role
+  const visibleSections = useMemo(() => {
+    return INDEX.map(s => ({
+      ...s,
+      items: s.items.filter(i => !i.roles || (role && i.roles.includes(role))),
+    })).filter(s => s.items.length > 0)
+  }, [role])
+
+  const issueNumber = useMemo(() => {
+    if (!now) return ""
+    const start = new Date("2022-01-01T00:00:00Z").getTime()
+    const diff = now.getTime() - start
+    const days = Math.max(1, Math.floor(diff / 86_400_000))
+    return toRoman(days)
+  }, [now])
+
+  if (authLoading) return <EditorialPageSkeleton />
+
   if (!isAuthenticated || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Authentication Required</h2>
-            <p className="mb-4">Please log in to access the dashboard.</p>
-            <Button asChild>
-              <Link href="/login">Go to Login</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
+      <EditorialErrorScreen
+        title="Sign in to consult the daybook."
+        description="This page is only visible to authenticated practitioners."
+        onRetry={() => (window.location.href = "/login")}
+      />
+    )
   }
 
+  const firstName = user?.name?.split(" ")[0] || user?.username || "Practitioner"
+  const longDate = now
+    ? now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : ""
+  const time = now ? now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "—"
+  const fmtMoney = (n: number) =>
+    n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="">
-        <div className="max-w-[1600px] mx-auto px-6 sm:px-8 lg:px-12">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Inventory Management System</h1>
-              <div className="flex items-center gap-4">
-                <p className="text-gray-600">Comprehensive inventory and patient management</p>
-                {isRootSession && (
-                  <Badge variant="destructive" className="flex items-center gap-1">
-                    <Shield className="h-3 w-3" />
-                    <span>Root Session</span>
-                    {rootUserInfo && (
-                      <span className="ml-1">({rootUserInfo.username})</span>
-                    )}
-                  </Badge>
-                )}
+    <EditorialPage>
+      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.32em] text-[#6B7280] mb-2">
+        <span>
+          The Daybook{issueNumber && <> · No. {issueNumber}</>}
+        </span>
+        <span suppressHydrationWarning>
+          {time} <span className="text-[#D1D5DB] mx-2">·</span> {longDate}
+        </span>
+      </div>
+
+      <EditorialMasthead
+        kicker={greeting(now)}
+        title={firstName}
+        subtitle={
+          <>
+            A quiet round through the dispensary &amp; the day&rsquo;s register.
+            {role === "super_admin" && (
+              <span className="ml-3"><EditorialPill tone="warning">Super admin</EditorialPill></span>
+            )}
+            {role === "admin" && (
+              <span className="ml-3"><EditorialPill>Admin</EditorialPill></span>
+            )}
+          </>
+        }
+      />
+
+      {role !== "staff" && (
+        <EditorialStats>
+          <EditorialStat
+            index="i."
+            label="On the shelves"
+            value={loading ? "…" : (stats?.totalProducts ?? 0).toLocaleString("en-GB")}
+            caption={
+              loading
+                ? 'tallying'
+                : stats?.productGrowth !== undefined
+                  ? `${stats.productGrowth >= 0 ? '↑' : '↓'} ${Math.abs(stats.productGrowth)}% vs last moon`
+                  : 'no comparison yet'
+            }
+          />
+          <EditorialStat
+            index="ii."
+            label="Patients in care"
+            value={loading ? "…" : (stats?.activePatients ?? 0).toLocaleString("en-GB")}
+            caption={
+              loading
+                ? 'tallying'
+                : stats?.patientGrowth !== undefined
+                  ? `${stats.patientGrowth >= 0 ? '↑' : '↓'} ${Math.abs(stats.patientGrowth)}% vs last moon`
+                  : 'no comparison yet'
+            }
+          />
+          <EditorialStat
+            index="iii."
+            label="Asking after the apothecary"
+            value={loading ? "…" : expiringTotal.toString()}
+            caption={
+              loading
+                ? 'tallying'
+                : expiringTotal > 0
+                  ? `${stats?.expiredProducts ?? 0} expired · ${stats?.expiringSoonProducts ?? 0} soon`
+                  : 'all is well stocked'
+            }
+            tone={expiringTotal > 0 ? 'warning' : 'ink'}
+          />
+          <EditorialStat
+            index="iv."
+            label="Worth on hand"
+            value={loading ? "…" : `$${fmtMoney(stats?.totalValue ?? 0)}`}
+            caption="cost-priced, positive stock"
+          />
+        </EditorialStats>
+      )}
+
+      <EditorialSection
+        title="An index of things one might do today"
+        description="Filed by department · numbered as one finds them in the cabinet."
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10">
+          {visibleSections.map((section, sIdx) => (
+            <div key={section.heading}>
+              <div className="flex items-center gap-3 pb-3 border-b border-[#0A0A0A] mb-4">
+                <span className="text-[10px] uppercase tracking-[0.32em] text-[#6B7280]">
+                  {ROMAN_NUMERALS[sIdx] || `${sIdx + 1}.`}
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.32em] text-[#0A0A0A]">{section.heading}</span>
               </div>
+              <ul className="space-y-1">
+                {section.items.map((item, iIdx) => (
+                  <li key={item.href + item.label}>
+                    <Link
+                      href={item.href}
+                      className="group flex items-baseline gap-3 py-2 hover:bg-[#FAFAFA] transition-colors"
+                    >
+                      <span className="text-[10px] tabular-nums text-[#9CA3AF] w-6 shrink-0">
+                        {String(iIdx + 1).padStart(2, "0")}
+                      </span>
+                      <span className="text-[14px] text-[#0A0A0A]">{item.label}</span>
+                      <span className="flex-1 border-b border-dotted border-[#E5E7EB] mb-1 mx-2" aria-hidden="true" />
+                      <span className="text-[11px] italic font-light text-[#6B7280] shrink-0">{item.hint}</span>
+                      <span className="text-base normal-case tracking-normal text-[#9CA3AF] group-hover:text-[#0A0A0A] group-hover:translate-x-0.5 transition-all">
+                        →
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <div className="flex gap-4">
-              <Button variant="outline" asChild>
-                <Link href="/patients">
-                  <HiUsers className="w-4 h-4 mr-2" />
-                  New Patient
-                </Link>
-              </Button>
-            </div>
-          </div>
+          ))}
         </div>
-      </header>
+      </EditorialSection>
 
-      <main className="max-w-[1600px] mx-auto px-6 sm:px-8 lg:px-12 py-8">
-        {/* Quick Stats */}
-        {user?.role !== 'staff' && (
-          <div className="grid grid-cols-4 gap-4 mb-8">
-          <Card className="cursor-pointer transition-all hover:shadow-md">
-            <CardContent className="p-6">
-              <div className="flex flex-col items-center text-center">
-                <div className="text-24px font-bold mb-2">
-                  {loading ? "..." : stats?.totalProducts?.toLocaleString('en-GB') || "0"}
-                </div>
-                <div className="flex flex-col">
-                  <h3 className="text-sm font-medium">Total Products</h3>
-                  <p className="text-xs text-muted-foreground">
-                    {loading ? "Loading..." : 
-                      stats?.productGrowth !== undefined ? 
-                        `${stats.productGrowth >= 0 ? '+' : ''}${stats.productGrowth}% from last month` : 
-                        "No growth data"}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="cursor-pointer transition-all hover:shadow-md">
-            <CardContent className="p-6">
-              <div className="flex flex-col items-center text-center">
-                <div className="text-24px font-bold mb-2">
-                  {loading ? "..." : stats?.activePatients?.toLocaleString('en-GB') || "0"}
-                </div>
-                <div className="flex flex-col">
-                  <h3 className="text-sm font-medium">Active Patients</h3>
-                  <p className="text-xs text-muted-foreground">
-                    {loading ? "Loading..." : 
-                      stats?.patientGrowth !== undefined ? 
-                        `${stats.patientGrowth >= 0 ? '+' : ''}${stats.patientGrowth}% from last month` : 
-                        "No growth data"}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className={`cursor-pointer transition-all hover:shadow-md ${
-            (stats?.expiredProducts && stats.expiredProducts > 0) ||
-            (stats?.expiringSoonProducts && stats.expiringSoonProducts > 0)
-              ? "bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50 border-red-200"
-              : ""
-          }`}>
-            <CardContent className="p-6">
-              <div className="flex flex-col space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium">Stock Alerts</h3>
-                  <div className="text-xs text-muted-foreground">
-                    {loading ? "Loading..." :
-                      ((stats?.expiredProducts || 0) + (stats?.expiringSoonProducts || 0)) > 0
-                        ? "Requires attention"
-                        : "All good"}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Expired</span>
-                    <span className={`text-sm font-bold ${stats?.expiredProducts && stats.expiredProducts > 0 ? 'text-red-600' : 'text-gray-500'}`}>
-                      {loading ? "..." : stats?.expiredProducts || "0"}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Expiring Soon</span>
-                    <span className={`text-sm font-bold ${stats?.expiringSoonProducts && stats.expiringSoonProducts > 0 ? 'text-orange-600' : 'text-gray-500'}`}>
-                      {loading ? "..." : stats?.expiringSoonProducts || "0"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {user?.role !== 'staff' && (
-            <Card className="cursor-pointer transition-all hover:shadow-md">
-              <CardContent className="p-6">
-                <div className="flex flex-col items-center text-center">
-                  <div className="text-24px font-bold text-medsy-green break-words leading-tight mb-2">
-                    {loading ? "..." : `$${stats?.totalValue?.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) || "0.00"}`}
-                  </div>
-                  <div className="flex flex-col">
-                    <h3 className="text-sm font-medium">Total Value</h3>
-                    <p className="text-xs text-muted-foreground">Current inventory value</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          {/* Inventory Management Cards */}
-          <Link href="/inventory" className="flex flex-col items-center text-center space-y-3 p-4 rounded-lg cursor-pointer transition-all hover:scale-105">
-            <div className="p-4 bg-blue-100 rounded-full">
-              <HiCube className="w-8 h-8 text-blue-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-xs">View Products</h3>
-              <p className="text-xs text-muted-foreground">Browse inventory</p>
-            </div>
-          </Link>
-
-          <Link href="/inventory" className="flex flex-col items-center text-center space-y-3 p-4 rounded-lg cursor-pointer transition-all hover:scale-105">
-            <div className="p-4 bg-green-100 rounded-full">
-              <HiCube className="w-8 h-8 text-green-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-xs">Add Product</h3>
-              <p className="text-xs text-muted-foreground">New inventory item</p>
-            </div>
-          </Link>
-
-          <Link href="/inventory" className="flex flex-col items-center text-center space-y-3 p-4 rounded-lg cursor-pointer transition-all hover:scale-105">
-            <div className="p-4 bg-purple-100 rounded-full">
-              <HiMagnifyingGlass className="w-8 h-8 text-purple-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-xs">Search Inventory</h3>
-              <p className="text-xs text-muted-foreground">Find products</p>
-            </div>
-          </Link>
-
-          {user?.role === 'super_admin' && (
-            <Link href="/reports" className="flex flex-col items-center text-center space-y-3 p-4 rounded-lg cursor-pointer transition-all hover:scale-105">
-              <div className="p-4 bg-orange-100 rounded-full">
-                <HiChartBar className="w-8 h-8 text-orange-600" />
-              </div>
-              <div>
-                <h3 className="font-medium text-xs">Inventory Reports</h3>
-                <p className="text-xs text-muted-foreground">Analytics & insights</p>
-              </div>
-            </Link>
-          )}
-
-          {/* Suppliers & Brands Cards */}
-          <Link href="/suppliers" className="flex flex-col items-center text-center space-y-3 p-4 rounded-lg cursor-pointer transition-all hover:scale-105">
-            <div className="p-4 bg-indigo-100 rounded-full">
-              <HiBuildingOffice className="w-8 h-8 text-indigo-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-xs">View Suppliers</h3>
-              <p className="text-xs text-muted-foreground">Manage suppliers</p>
-            </div>
-          </Link>
-
-          <Link href="/brands" className="flex flex-col items-center text-center space-y-3 p-4 rounded-lg cursor-pointer transition-all hover:scale-105">
-            <div className="p-4 bg-pink-100 rounded-full">
-              <HiTag className="w-8 h-8 text-pink-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-xs">View Brands</h3>
-              <p className="text-xs text-muted-foreground">Product brands</p>
-            </div>
-          </Link>
-
-          {/* Transaction Cards */}
-          <Link href="/transactions" className="flex flex-col items-center text-center space-y-3 p-4 rounded-lg cursor-pointer transition-all hover:scale-105">
-            <div className="p-4 bg-teal-100 rounded-full">
-              <HiReceiptRefund className="w-8 h-8 text-teal-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-xs">View Transactions</h3>
-              <p className="text-xs text-muted-foreground">Transaction history</p>
-            </div>
-          </Link>
-
-          <Link href="/transactions" className="flex flex-col items-center text-center space-y-3 p-4 rounded-lg cursor-pointer transition-all hover:scale-105">
-            <div className="p-4 bg-cyan-100 rounded-full">
-              <HiReceiptRefund className="w-8 h-8 text-cyan-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-xs">New Transaction</h3>
-              <p className="text-xs text-muted-foreground">Create transaction</p>
-            </div>
-          </Link>
-
-          {/* Consultation Cards */}
-          <Link href="/patients" className="flex flex-col items-center text-center space-y-3 p-4 rounded-lg cursor-pointer transition-all hover:scale-105">
-            <div className="p-4 bg-green-100 rounded-full">
-              <HiCurrencyDollar className="w-8 h-8 text-green-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-xs">New Consultation</h3>
-              <p className="text-xs text-muted-foreground">Start consultation</p>
-            </div>
-          </Link>
-
-          <Link href="/settings/consultation" className="flex flex-col items-center text-center space-y-3 p-4 rounded-lg cursor-pointer transition-all hover:scale-105">
-            <div className="p-4 bg-gray-100 rounded-full">
-              <HiCurrencyDollar className="w-8 h-8 text-gray-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-xs">Manage Settings</h3>
-              <p className="text-xs text-muted-foreground">Consultation config</p>
-            </div>
-          </Link>
-
-          {/* Appointment Cards */}
-          <Link href="/dashboard/appointments" className="flex flex-col items-center text-center space-y-3 p-4 rounded-lg cursor-pointer transition-all hover:scale-105">
-            <div className="p-4 bg-blue-100 rounded-full">
-              <HiUsers className="w-8 h-8 text-blue-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-xs">View Appointments</h3>
-              <p className="text-xs text-muted-foreground">Appointment list</p>
-            </div>
-          </Link>
-
-          <Link href="/appointments" className="flex flex-col items-center text-center space-y-3 p-4 rounded-lg cursor-pointer transition-all hover:scale-105">
-            <div className="p-4 bg-emerald-100 rounded-full">
-              <HiUsers className="w-8 h-8 text-emerald-600" />
-            </div>
-            <div>
-              <h3 className="font-medium text-xs">Schedule New</h3>
-              <p className="text-xs text-muted-foreground">Book appointment</p>
-            </div>
-          </Link>
-        </div>
-      </main>
-    </div>
+      <footer className="mt-12 pt-6 border-t border-[#E5E7EB] text-[10px] uppercase tracking-[0.32em] text-[#6B7280]">
+        <p className="text-center">
+          Signed in as {user?.username || user?.email || "—"}
+        </p>
+      </footer>
+    </EditorialPage>
   )
 }

@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { DateInput } from "@/components/ui/date-input";
 // Separator component removed - not used
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { EditorialModal } from "@/components/ui/editorial";
 import { FaPlus, FaTimes, FaSearch, FaBox } from "react-icons/fa";
 import { ImSpinner8 } from "react-icons/im";
 import type { Bundle, BundleFormData, BundleProduct, BundlePricingCalculation } from '@/types/bundle';
@@ -573,18 +573,18 @@ export function BundleForm({
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Bundle Products</span>
-            <Dialog open={showProductDialog} onOpenChange={setShowProductDialog}>
-              <DialogTrigger asChild>
-                <Button type="button" size="sm">
-                  <FaPlus className="w-4 h-4 mr-2" />
-                  Add Product
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Add Product to Bundle</DialogTitle>
-                </DialogHeader>
-                
+            <Button type="button" size="sm" onClick={() => setShowProductDialog(true)}>
+              <FaPlus className="w-4 h-4 mr-2" />
+              Add Product
+            </Button>
+            <EditorialModal
+              open={showProductDialog}
+              onOpenChange={setShowProductDialog}
+              kicker="Bundle"
+              title="Add product to bundle"
+              description="Pick a single product or a blend template to include."
+              size="xl"
+            >
                 <div className="space-y-4">
                   <div className="flex gap-3">
                     <div className="flex-1 relative">
@@ -649,8 +649,7 @@ export function BundleForm({
                     )}
                   </div>
                 </div>
-              </DialogContent>
-            </Dialog>
+            </EditorialModal>
           </CardTitle>
         </CardHeader>
         <CardContent>

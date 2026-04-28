@@ -1,11 +1,10 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { EditorialModal } from "@/components/ui/editorial"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { HiCurrencyDollar } from "react-icons/hi2"
 import { useConsultationSettings } from "@/hooks/useConsultationSettings"
 import type { TransactionItem } from "@/types/transaction"
 import { formatCurrency, CURRENCY_CODE } from "@/utils/currency"
@@ -179,31 +178,26 @@ export function ConsultationSelector({
 
   if (isLoading) {
     return (
-      <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <HiCurrencyDollar className="w-5 h-5" />
-              Select Consultation Fee
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex justify-center py-8">
-            <p className="text-gray-500">Loading consultation settings...</p>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <EditorialModal
+        open={open}
+        onOpenChange={(o) => !o && onClose()}
+        kicker="Consultation"
+        title="Select consultation fee"
+      >
+        <p className="text-sm italic font-light text-[#6B7280] py-8 text-center">Loading consultation settings…</p>
+      </EditorialModal>
     )
   }
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <HiCurrencyDollar className="w-5 h-5" />
-            {editingItem ? 'Edit Consultation Fee' : 'Select Consultation Fee'}
-          </DialogTitle>
-        </DialogHeader>
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Consultation"
+      title={editingItem ? 'Edit consultation fee' : 'Select consultation fee'}
+      description="Set the fee, applicable discount, and final amount for this consultation."
+      size="lg"
+    >
         
         {/* Discount Notice */}
         <div className="bg-blue-50 border border-blue-200 p-3 rounded-md">
@@ -297,7 +291,6 @@ export function ConsultationSelector({
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   )
 }

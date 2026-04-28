@@ -1,8 +1,8 @@
 "use client"
 
 import React, { useState } from 'react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { EditorialModal } from "@/components/ui/editorial"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { FaSearch } from 'react-icons/fa'
@@ -53,11 +53,14 @@ export const ProductSelectorDialog = React.memo(function ProductSelectorDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>Select Product as Ingredient</DialogTitle>
-        </DialogHeader>
+    <EditorialModal
+      open={open}
+      onOpenChange={onOpenChange}
+      kicker="Blend"
+      title="Add ingredient"
+      description="Pick a liquid product to blend with."
+      size="xl"
+    >
         <div className="space-y-4">
           <div className="relative">
             <FaSearch className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
@@ -113,7 +116,6 @@ export const ProductSelectorDialog = React.memo(function ProductSelectorDialog({
             </div>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   )
 })

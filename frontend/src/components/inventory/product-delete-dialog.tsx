@@ -1,15 +1,10 @@
 "use client"
 
 import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Button } from "@/components/ui/button"
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+} from "@/components/ui/editorial"
 import type { Product } from "@/types/inventory"
 import type { ReferenceConflictDetails } from "@/lib/errors/api-error"
 
@@ -20,7 +15,6 @@ interface ProductDeleteDialogProps {
   onConfirm: () => void
   onDeactivateInstead?: () => void
   loading?: boolean
-  /** Set when deletion was blocked due to a reference conflict */
   conflictDetails?: ReferenceConflictDetails | null
 }
 
@@ -35,74 +29,65 @@ export function ProductDeleteDialog({
 }: ProductDeleteDialogProps) {
   if (!product) return null
 
-  // ── Conflict state: deletion blocked, offer deactivate instead ──
   if (conflictDetails) {
     const refLabel = conflictDetails.type === 'blend_template' ? 'blend template' : 'bundle'
 
     return (
-      <AlertDialog open={open} onOpenChange={onOpenChange}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cannot Delete Product</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3 text-sm text-gray-600">
-                <p>
-                  <strong className="text-gray-900">{product.name}</strong> cannot be deleted
-                  because it is currently used in the active {refLabel}{" "}
-                  <strong className="text-gray-900">&ldquo;{conflictDetails.name}&rdquo;</strong>.
-                </p>
-                <p>
-                  To delete this product, first remove it from the {refLabel}, or deactivate
-                  the product to hide it from use without losing its history.
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2 sm:gap-0">
-            <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
-            {onDeactivateInstead && (
-              <Button
-                variant="outline"
-                onClick={onDeactivateInstead}
-                disabled={loading}
-                className="border-yellow-400 text-yellow-700 hover:bg-yellow-50"
-              >
-                {loading ? "Deactivating..." : "Deactivate Instead"}
-              </Button>
-            )}
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <EditorialModal
+        open={open}
+        onOpenChange={onOpenChange}
+        kicker="Cannot delete"
+        kickerTone="warning"
+        title={`${product.name} is in use`}
+        description={`This product is referenced by an active ${refLabel}.`}
+      >
+        <div className="space-y-4">
+          <div className="border-l-2 border-[#EA580C] bg-[#FFF7ED] px-5 py-4">
+            <p className="text-[13px] text-[#0A0A0A] leading-relaxed">
+              Currently used by the {refLabel}{' '}
+              <span className="font-medium">&ldquo;{conflictDetails.name}&rdquo;</span>.
+            </p>
+            <p className="text-[13px] text-[#0A0A0A] leading-relaxed mt-3">
+              To delete, first remove it from the {refLabel}. Or deactivate the product to hide it from
+              future use without losing its history.
+            </p>
+          </div>
+        </div>
+
+        <EditorialModalFooter>
+          <EditorialButton variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+            Cancel
+          </EditorialButton>
+          {onDeactivateInstead && (
+            <EditorialButton variant="primary" arrow onClick={onDeactivateInstead} disabled={loading}>
+              {loading ? 'Deactivating…' : 'Deactivate instead'}
+            </EditorialButton>
+          )}
+        </EditorialModalFooter>
+      </EditorialModal>
     )
   }
 
-  // ── Normal delete confirmation ──
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete Product</AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to delete{" "}
-            <strong>{product.name}</strong>{" "}
-            (SKU: {product.sku})?
-            <br />
-            <br />
-            This action cannot be undone. The product will be permanently removed from your
-            inventory, including all stock information and transaction history.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
-          <Button
-            onClick={onConfirm}
-            disabled={loading}
-            className="bg-red-600 hover:bg-red-700 text-white"
-          >
-            {loading ? "Deleting..." : "Delete Product"}
-          </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <EditorialModal
+      open={open}
+      onOpenChange={onOpenChange}
+      kicker="Delete product"
+      kickerTone="danger"
+      title={`Remove ${product.name}?`}
+      description="This action cannot be undone. The product will be permanently removed from inventory, including stock and transaction history."
+    >
+      {product.sku && (
+        <p className="text-[11px] text-[#9CA3AF] font-mono tracking-wide">SKU · {product.sku}</p>
+      )}
+      <EditorialModalFooter>
+        <EditorialButton variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+          Cancel
+        </EditorialButton>
+        <EditorialButton variant="primary" arrow onClick={onConfirm} disabled={loading}>
+          {loading ? 'Deleting…' : 'Delete product'}
+        </EditorialButton>
+      </EditorialModalFooter>
+    </EditorialModal>
   )
 }

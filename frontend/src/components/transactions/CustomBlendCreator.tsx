@@ -8,10 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { EditorialModal } from "@/components/ui/editorial";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { FaPlus, FaTrash, FaSearch, FaCheck, FaTimes, FaExclamationTriangle, FaCalculator, FaFlask, FaClipboardList } from 'react-icons/fa';
+import { FaPlus, FaTrash, FaSearch, FaCheck, FaTimes, FaExclamationTriangle, FaCalculator, FaClipboardList } from 'react-icons/fa';
 import { ImSpinner8 } from 'react-icons/im';
 import type { Product } from '@/types/inventory';
 import type { UnitOfMeasurement } from '@/types/inventory';
@@ -561,14 +561,14 @@ export function CustomBlendCreator({
   );
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-screen overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FaFlask className="h-5 w-5" />
-            {editingBlend ? 'Edit' : 'Create'} Custom Blend
-          </DialogTitle>
-        </DialogHeader>
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Custom blend"
+      title={editingBlend ? 'Edit custom blend' : 'Create custom blend'}
+      description="Compose a one-off blend from the available ingredients."
+      size="2xl"
+    >
 
         <div className="space-y-6">
           {/* Basic Information */}
@@ -613,17 +613,18 @@ export function CustomBlendCreator({
                   <FaClipboardList className="h-4 w-4 text-green-600" />
                   <CardTitle className="text-lg">Recipe Ingredients</CardTitle>
                 </div>
-                <Dialog open={showProductDialog} onOpenChange={setShowProductDialog}>
-                  <DialogTrigger asChild>
-                    <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700">
-                      <FaPlus className="mr-2 h-4 w-4" />
-                      Add Ingredient
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-4xl">
-                    <DialogHeader>
-                      <DialogTitle>Select Product as Ingredient</DialogTitle>
-                    </DialogHeader>
+                <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => setShowProductDialog(true)}>
+                  <FaPlus className="mr-2 h-4 w-4" />
+                  Add Ingredient
+                </Button>
+                <EditorialModal
+                  open={showProductDialog}
+                  onOpenChange={setShowProductDialog}
+                  kicker="Blend"
+                  title="Add ingredient"
+                  description="Pick a product to add as a recipe ingredient."
+                  size="xl"
+                >
                     <div className="space-y-4">
                       <div className="relative">
                         <FaSearch className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
@@ -680,8 +681,7 @@ export function CustomBlendCreator({
                         </div>
                       </div>
                     </div>
-                  </DialogContent>
-                </Dialog>
+                </EditorialModal>
               </div>
             </CardHeader>
             <CardContent>
@@ -785,17 +785,18 @@ export function CustomBlendCreator({
                   <FaClipboardList className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No ingredients added yet</h3>
                   <p className="text-gray-500 mb-4">Start building your custom blend by adding ingredients</p>
-                  <Dialog open={showProductDialog} onOpenChange={setShowProductDialog}>
-                    <DialogTrigger asChild>
-                      <Button type="button" className="bg-green-600 hover:bg-green-700">
-                        <FaPlus className="mr-2 h-4 w-4" />
-                        Add Your First Ingredient
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-4xl">
-                      <DialogHeader>
-                        <DialogTitle>Select Product as Ingredient</DialogTitle>
-                      </DialogHeader>
+                  <Button type="button" className="bg-green-600 hover:bg-green-700" onClick={() => setShowProductDialog(true)}>
+                    <FaPlus className="mr-2 h-4 w-4" />
+                    Add Your First Ingredient
+                  </Button>
+                  <EditorialModal
+                    open={showProductDialog}
+                    onOpenChange={setShowProductDialog}
+                    kicker="Blend"
+                    title="Add ingredient"
+                    description="Pick a product to add as a recipe ingredient."
+                    size="xl"
+                  >
                       <div className="space-y-4">
                         <div className="relative">
                           <FaSearch className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
@@ -843,8 +844,7 @@ export function CustomBlendCreator({
                           </div>
                         </div>
                       </div>
-                    </DialogContent>
-                  </Dialog>
+                  </EditorialModal>
                 </div>
               )}
               
@@ -1068,7 +1068,6 @@ export function CustomBlendCreator({
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   );
 }

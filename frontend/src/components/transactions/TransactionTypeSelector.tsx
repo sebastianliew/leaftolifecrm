@@ -1,9 +1,8 @@
 "use client"
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { FaBox, FaFlask, FaCubes, FaStethoscope } from "react-icons/fa"
 import { HiOutlinePencilSquare } from "react-icons/hi2"
+import { EditorialModal } from "@/components/ui/editorial"
 
 interface TransactionTypeSelectorProps {
   open: boolean
@@ -13,81 +12,38 @@ interface TransactionTypeSelectorProps {
 
 export function TransactionTypeSelector({ open, onClose, onSelectType }: TransactionTypeSelectorProps) {
   const transactionTypes = [
-    {
-      id: 'product',
-      title: 'Sell Product',
-      description: 'Sell individual products from inventory',
-      icon: FaBox,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-50 hover:bg-blue-100',
-      disabled: false
-    },
-    {
-      id: 'blend',
-      title: 'Create Blend',
-      description: 'Mix custom or pre-defined blends',
-      icon: FaFlask,
-      color: 'text-purple-600',
-      bgColor: 'bg-purple-50 hover:bg-purple-100',
-      disabled: false
-    },
-    {
-      id: 'bundle',
-      title: 'Sell Bundle',
-      description: 'Pre-packaged product bundles',
-      icon: FaCubes,
-      color: 'text-green-600',
-      bgColor: 'bg-green-50 hover:bg-green-100',
-      disabled: false
-    },
-    {
-      id: 'consultation',
-      title: 'Consultation',
-      description: 'Professional consultation services',
-      icon: FaStethoscope,
-      color: 'text-orange-600',
-      bgColor: 'bg-orange-50 hover:bg-orange-100',
-      disabled: false
-    },
-    {
-      id: 'miscellaneous',
-      title: 'Miscellaneous',
-      description: 'Other items (supplies, fees, services)',
-      icon: HiOutlinePencilSquare,
-      color: 'text-gray-600',
-      bgColor: 'bg-gray-50 hover:bg-gray-100',
-      disabled: false
-    }
-  ]
+    { id: 'product', title: 'Product', description: 'Sell individual products from inventory.', icon: FaBox },
+    { id: 'blend', title: 'Blend', description: 'Mix custom or pre-defined blends.', icon: FaFlask },
+    { id: 'bundle', title: 'Bundle', description: 'Pre-packaged product bundles.', icon: FaCubes },
+    { id: 'consultation', title: 'Consultation', description: 'Professional consultation services.', icon: FaStethoscope },
+    { id: 'miscellaneous', title: 'Miscellaneous', description: 'Other items (supplies, fees, services).', icon: HiOutlinePencilSquare },
+  ] as const
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-semibold">What would you like to sell?</DialogTitle>
-        </DialogHeader>
-        
-        <div className="grid grid-cols-3 gap-4 mt-4">
-          {transactionTypes.map((type) => {
-            const Icon = type.icon
-            return (
-              <Card
-                key={type.id}
-                className={`cursor-pointer transition-all ${type.bgColor} ${
-                  type.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'
-                }`}
-                onClick={() => !type.disabled && onSelectType(type.id as 'product' | 'blend' | 'bundle' | 'consultation' | 'miscellaneous')}
-              >
-                <CardHeader className="text-center">
-                  <Icon className={`w-12 h-12 mx-auto mb-2 ${type.color}`} />
-                  <CardTitle className="text-lg">{type.title}</CardTitle>
-                  <CardDescription className="text-sm">{type.description}</CardDescription>
-                </CardHeader>
-              </Card>
-            )
-          })}
-        </div>
-      </DialogContent>
-    </Dialog>
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="New transaction"
+      title="What are you selling?"
+      description="Pick the line type to add — this scopes the next selector."
+      size="lg"
+    >
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {transactionTypes.map((type) => {
+          const Icon = type.icon
+          return (
+            <button
+              key={type.id}
+              onClick={() => onSelectType(type.id)}
+              className="text-left p-5 border border-[#E5E7EB] hover:border-[#0A0A0A] hover:bg-[#FAFAFA] transition-colors"
+            >
+              <Icon className="w-5 h-5 mb-3 text-[#0A0A0A]" />
+              <p className="text-[14px] text-[#0A0A0A] font-medium">{type.title}</p>
+              <p className="text-[11px] text-[#6B7280] italic font-light mt-1 leading-relaxed">{type.description}</p>
+            </button>
+          )
+        })}
+      </div>
+    </EditorialModal>
   )
 }

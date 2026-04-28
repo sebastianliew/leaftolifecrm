@@ -6,18 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
 import { DraftStorage, type DraftData } from '@/lib/client/draftStorage'
+import {
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+} from '@/components/ui/editorial'
 
 interface DraftManagerProps {
   userId: string
@@ -27,6 +21,7 @@ interface DraftManagerProps {
 
 export function DraftManager({ userId, onSelectDraft, onDeleteDraft }: DraftManagerProps) {
   const [drafts, setDrafts] = useState<DraftData[]>([])
+  const [draftToDelete, setDraftToDelete] = useState<string | null>(null)
 
   useEffect(() => {
     const loadDrafts = () => {
@@ -142,34 +137,14 @@ export function DraftManager({ userId, onSelectDraft, onDeleteDraft }: DraftMana
                         </div>
                       </div>
                       
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Draft</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete this draft? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => handleDeleteDraft(draft.draftId)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDraftToDelete(draft.draftId)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -178,6 +153,33 @@ export function DraftManager({ userId, onSelectDraft, onDeleteDraft }: DraftMana
           </div>
         </ScrollArea>
       </CardContent>
+
+      <EditorialModal
+        open={!!draftToDelete}
+        onOpenChange={(open) => !open && setDraftToDelete(null)}
+        kicker="Delete draft"
+        kickerTone="danger"
+        title="Remove this draft?"
+        description="The draft will be permanently deleted. This action cannot be undone."
+      >
+        <EditorialModalFooter>
+          <EditorialButton variant="ghost" onClick={() => setDraftToDelete(null)}>
+            Cancel
+          </EditorialButton>
+          <EditorialButton
+            variant="primary"
+            arrow
+            onClick={() => {
+              if (draftToDelete) {
+                handleDeleteDraft(draftToDelete)
+                setDraftToDelete(null)
+              }
+            }}
+          >
+            Delete draft
+          </EditorialButton>
+        </EditorialModalFooter>
+      </EditorialModal>
     </Card>
   )
 }

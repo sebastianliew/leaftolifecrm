@@ -1,15 +1,21 @@
 "use client"
 
 import { useState } from 'react'
-import { Table, TableBody, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { TransactionTableRow } from './TransactionTableRow'
 import { TransactionFilters, type TransactionFilterValues } from './TransactionFilters'
-import { PaginationControls } from '@/components/ui/pagination-controls'
-import { Search, Trash2, X } from 'lucide-react'
+import { HiFunnel } from 'react-icons/hi2'
 import type { Transaction } from '@/types/transaction'
+import {
+  EditorialSearch,
+  EditorialButton,
+  EditorialBulkBar,
+  EditorialTable,
+  EditorialTHead,
+  EditorialTh,
+  EditorialEmptyRow,
+  EditorialPagination,
+} from '@/components/ui/editorial'
 
 interface PaginationInfo {
   currentPage: number
@@ -52,7 +58,6 @@ export function TransactionTable({
   onCancelDraft,
   onGenerateInvoice,
   onBulkDelete,
-  searchTerm,
   onSearchChange,
   onSearchSubmit,
   filters,
@@ -65,9 +70,15 @@ export function TransactionTable({
   canEditTransactions = false,
   canEditDrafts = false,
   canDeleteTransactions = false,
-  canCreateTransactions = false
+  canCreateTransactions = false,
 }: TransactionTableProps) {
   const [selectedTransactions, setSelectedTransactions] = useState<string[]>([])
+  const [showFilters, setShowFilters] = useState(false)
+
+  const handleSearch = (term: string) => {
+    onSearchChange(term)
+    if (onSearchSubmit) onSearchSubmit()
+  }
 
   const handleSelectTransaction = (transactionId: string, checked: boolean) => {
     if (checked) {
@@ -95,142 +106,95 @@ export function TransactionTable({
   const isAllSelected = transactions.length > 0 && selectedTransactions.length === transactions.length
 
   return (
-    <div className="space-y-4">
-      {/* Search, Filters, and Bulk Actions */}
-      <div className="space-y-3">
-        {/* Single row: Search | Filters | Bulk Actions */}
-        <div className="flex items-center gap-3 flex-wrap">
-          {/* Search bar */}
-          <div className="relative w-full max-w-sm shrink-0">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search transactions... (Press Enter)"
-              value={searchTerm}
-              onChange={(e) => onSearchChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && onSearchSubmit) {
-                  onSearchSubmit()
-                }
-              }}
-              className="pl-10 pr-10"
-            />
-            {searchTerm && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 p-0"
-                onClick={() => {
-                  onSearchChange('')
-                  if (onSearchSubmit) onSearchSubmit()
-                }}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-
-          {/* Filters (pushed to the right) */}
-          {filters && onFiltersChange && onClearFilters && (
-            <div className="ml-auto">
-              <TransactionFilters
-                filters={filters}
-                onFiltersChange={onFiltersChange}
-                onClearFilters={onClearFilters}
-              />
-            </div>
-          )}
-
-          {/* Bulk actions (pushed to far right when items selected) */}
-          {selectedTransactions.length > 0 && (
-            <div className="flex items-center gap-2 ml-auto">
-              <span className="text-sm text-muted-foreground">
-                {selectedTransactions.length} selected
-              </span>
-              {onBulkDelete && canDeleteTransactions && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleBulkDelete}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete Selected
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Search results indicator */}
+    <>
+      <div className="flex items-center gap-7 mt-8 flex-wrap">
+        <EditorialSearch onSearch={handleSearch} placeholder="Search transactions..." />
+        {filters && onFiltersChange && (
+          <EditorialButton
+            variant={showFilters ? 'ghost-active' : 'ghost'}
+            icon={<HiFunnel className="h-3 w-3" />}
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            Filter
+          </EditorialButton>
+        )}
         {activeSearchTerm && pagination && (
-          <p className="text-sm text-muted-foreground">
-            Found {pagination.totalCount} result{pagination.totalCount !== 1 ? 's' : ''} for &quot;{activeSearchTerm}&quot;
+          <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280] ml-auto">
+            <span className="tabular-nums text-[#0A0A0A]">{pagination.totalCount}</span> result
+            {pagination.totalCount !== 1 ? 's' : ''} for &ldquo;{activeSearchTerm}&rdquo;
           </p>
         )}
       </div>
 
-      {/* Table */}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-12">
-                <Checkbox
-                  checked={isAllSelected}
-                  onCheckedChange={handleSelectAll}
-                  aria-label="Select all transactions"
-                />
-              </TableHead>
-              <TableHead>Transaction #</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead className="text-center">Items</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
-              <TableHead>Payment Status</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {transactions.length === 0 ? (
-              <TableRow>
-                <td colSpan={9} className="text-center py-8 text-muted-foreground">
-                  No transactions found
-                </td>
-              </TableRow>
-            ) : (
-              transactions.map((transaction) => (
-                <TransactionTableRow
-                  key={transaction._id}
-                  transaction={transaction}
-                  isSelected={selectedTransactions.includes(transaction._id)}
-                  onSelect={handleSelectTransaction}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                  onDuplicate={onDuplicate}
-                  onCancelDraft={onCancelDraft}
-                  onGenerateInvoice={onGenerateInvoice}
-                  canEdit={canEditTransactions}
-                  canEditDrafts={canEditDrafts}
-                  canDelete={canDeleteTransactions}
-                  canCreate={canCreateTransactions}
-                />
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-      
-      {/* Pagination */}
-      {pagination && onPageChange && onItemsPerPageChange && (
-        <PaginationControls
-          currentPage={pagination.currentPage}
-          totalPages={pagination.totalPages}
-          totalItems={pagination.totalCount}
-          itemsPerPage={pagination.limit}
-          onPageChange={onPageChange}
-          onItemsPerPageChange={onItemsPerPageChange}
+      {showFilters && filters && onFiltersChange && onClearFilters && (
+        <TransactionFilters
+          filters={filters}
+          onFiltersChange={onFiltersChange}
+          onClearFilters={onClearFilters}
         />
       )}
-    </div>
+
+      <EditorialBulkBar count={selectedTransactions.length}>
+        {onBulkDelete && canDeleteTransactions && (
+          <button
+            onClick={handleBulkDelete}
+            className="text-[11px] uppercase tracking-[0.28em] text-[#FCA5A5] hover:text-white transition-colors flex items-center gap-2"
+          >
+            Delete selected
+            <span className="text-base normal-case tracking-normal">→</span>
+          </button>
+        )}
+      </EditorialBulkBar>
+
+      <EditorialTable>
+        <EditorialTHead>
+          <EditorialTh className="w-8">
+            <Checkbox checked={isAllSelected} onCheckedChange={handleSelectAll} aria-label="Select all transactions" />
+          </EditorialTh>
+          <EditorialTh>Transaction #</EditorialTh>
+          <EditorialTh>Date</EditorialTh>
+          <EditorialTh>Customer</EditorialTh>
+          <EditorialTh>Type</EditorialTh>
+          <EditorialTh align="right">Items</EditorialTh>
+          <EditorialTh align="right">Amount</EditorialTh>
+          <EditorialTh>Payment</EditorialTh>
+          <EditorialTh align="right" className="w-12">Actions</EditorialTh>
+        </EditorialTHead>
+        <tbody>
+          {transactions.length === 0 ? (
+            <EditorialEmptyRow colSpan={9} description="No transactions match the current filters." />
+          ) : (
+            transactions.map((transaction) => (
+              <TransactionTableRow
+                key={transaction._id}
+                transaction={transaction}
+                isSelected={selectedTransactions.includes(transaction._id)}
+                onSelect={handleSelectTransaction}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onDuplicate={onDuplicate}
+                onCancelDraft={onCancelDraft}
+                onGenerateInvoice={onGenerateInvoice}
+                canEdit={canEditTransactions}
+                canEditDrafts={canEditDrafts}
+                canDelete={canDeleteTransactions}
+                canCreate={canCreateTransactions}
+              />
+            ))
+          )}
+        </tbody>
+      </EditorialTable>
+
+      {pagination && onPageChange && (
+        <EditorialPagination
+          total={pagination.totalCount}
+          page={pagination.currentPage}
+          limit={pagination.limit}
+          pages={pagination.totalPages}
+          onPageChange={onPageChange}
+          onLimitChange={onItemsPerPageChange}
+        />
+      )}
+    </>
   )
 }

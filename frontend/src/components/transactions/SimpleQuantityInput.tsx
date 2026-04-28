@@ -1,21 +1,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
+import {
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+} from "@/components/ui/editorial"
 import type { Product } from "@/types/inventory"
 import { computeUnitPrice, safeContainerCapacity } from "@/lib/pricing"
 import { getUomBehavior } from "@/lib/uom"
@@ -164,13 +158,15 @@ export function SimpleQuantityInput({ open, onClose, onConfirm, product, initial
   }
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Select Quantity</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4 mt-4">
+    <>
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Quantity"
+      title={initialQuantity !== undefined ? 'Edit item' : 'Select quantity'}
+      description={product.name}
+    >
+        <div className="space-y-4">
           {/* Product info card */}
           <div className="bg-gray-50 p-4 rounded-lg">
             <h4 className="font-medium">{product.name}</h4>
@@ -255,66 +251,53 @@ export function SimpleQuantityInput({ open, onClose, onConfirm, product, initial
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} className="flex-1">
-              Cancel
-            </Button>
-            <Button onClick={handleConfirm} className="flex-1">
-              {initialQuantity !== undefined ? 'Update Item' : 'Add to Cart'}
-            </Button>
-          </div>
         </div>
-      </DialogContent>
+      <EditorialModalFooter>
+        <EditorialButton variant="ghost" onClick={onClose}>
+          Cancel
+        </EditorialButton>
+        <EditorialButton variant="primary" arrow onClick={handleConfirm}>
+          {initialQuantity !== undefined ? 'Update item' : 'Add to cart'}
+        </EditorialButton>
+      </EditorialModalFooter>
+    </EditorialModal>
 
-      {/* Out-of-stock confirmation */}
-      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <span className="text-orange-500">&#9888;&#65039;</span>
-              Out-of-Stock Sale Warning
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will create negative inventory that needs to be reconciled later. Do you want to proceed?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-
-          <div className="space-y-4">
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="font-medium">Requested:</span>
-                  <div className="text-lg font-bold text-orange-700">
-                    {isLoose ? uomCfg.formatQty(quantity) : quantity} {quantityUnitLabel}
-                  </div>
-                </div>
-                <div>
-                  <span className="font-medium">Available:</span>
-                  <div className="text-lg font-bold text-green-700">
-                    {isLoose ? uomCfg.formatQty(availableStock) : availableStock} {quantityUnitLabel}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-2 pt-2 border-t border-orange-200">
-                <span className="font-medium">Shortage:</span>
-                <span className="ml-2 text-lg font-bold text-red-600">
-                  +{isLoose ? uomCfg.formatQty(quantity - availableStock) : String(quantity - availableStock)} over limit
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmOutOfStock}
-              className="bg-orange-600 hover:bg-orange-700"
-            >
-              Proceed with Sale
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </Dialog>
+    <EditorialModal
+      open={showConfirmDialog}
+      onOpenChange={setShowConfirmDialog}
+      kicker="Out-of-stock sale"
+      kickerTone="warning"
+      title="Proceed beyond available stock?"
+      description="This will create negative inventory that needs to be reconciled later."
+    >
+      <div className="grid grid-cols-2 gap-10 border-l-2 border-[#EA580C] bg-[#FFF7ED] px-5 py-4">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Requested</p>
+          <p className="font-light text-[28px] leading-none tabular-nums mt-2 text-[#EA580C]">
+            {isLoose ? uomCfg.formatQty(quantity) : quantity}
+            <span className="text-[11px] text-[#9CA3AF] ml-1.5">{quantityUnitLabel}</span>
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Available</p>
+          <p className="font-light text-[28px] leading-none tabular-nums mt-2 text-[#16A34A]">
+            {isLoose ? uomCfg.formatQty(availableStock) : availableStock}
+            <span className="text-[11px] text-[#9CA3AF] ml-1.5">{quantityUnitLabel}</span>
+          </p>
+        </div>
+      </div>
+      <p className="text-[11px] uppercase tracking-[0.28em] text-[#DC2626] mt-4">
+        Shortage · +{isLoose ? uomCfg.formatQty(quantity - availableStock) : String(quantity - availableStock)} over limit
+      </p>
+      <EditorialModalFooter>
+        <EditorialButton variant="ghost" onClick={() => setShowConfirmDialog(false)}>
+          Cancel
+        </EditorialButton>
+        <EditorialButton variant="primary" arrow onClick={handleConfirmOutOfStock}>
+          Proceed with sale
+        </EditorialButton>
+      </EditorialModalFooter>
+    </EditorialModal>
+    </>
   )
 }

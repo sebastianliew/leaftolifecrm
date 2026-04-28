@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { EditorialModal, EditorialModalFooter } from '@/components/ui/editorial'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FiCalendar, FiCopy, FiRepeat, FiAlertCircle } from 'react-icons/fi'
 import { format, addDays, addWeeks, addMonths, eachDayOfInterval, isWeekend } from 'date-fns'
@@ -248,16 +248,15 @@ export default function PrescriptionBulkOperations({
         Bulk Copy
       </Button>
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Bulk Copy Prescription</DialogTitle>
-            <DialogDescription>
-              Create multiple prescriptions based on the current one
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-6 py-4">
+      <EditorialModal
+        open={showDialog}
+        onOpenChange={setShowDialog}
+        kicker="Prescriptions"
+        title="Bulk copy"
+        description="Create multiple prescriptions from a single template."
+        size="xl"
+      >
+          <div className="space-y-6">
             {/* Template Selection */}
             <div className="space-y-3">
               <Label>Select Template</Label>
@@ -432,7 +431,7 @@ export default function PrescriptionBulkOperations({
             </Alert>
           </div>
 
-          <DialogFooter>
+          <EditorialModalFooter>
             <Button
               variant="outline"
               onClick={() => setShowDialog(false)}
@@ -453,9 +452,8 @@ export default function PrescriptionBulkOperations({
                 </>
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </EditorialModalFooter>
+      </EditorialModal>
     </>
   )
 }

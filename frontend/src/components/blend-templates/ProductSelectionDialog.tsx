@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, memo, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { EditorialModal } from "@/components/ui/editorial";
 import { Button } from "@/components/ui/button";
 import { FaSearch } from 'react-icons/fa';
 import { ImSpinner8 } from 'react-icons/im';
@@ -133,11 +133,14 @@ export function ProductSelectionDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
-        <DialogHeader>
-          <DialogTitle>Select Product as Ingredient</DialogTitle>
-        </DialogHeader>
+    <EditorialModal
+      open={open}
+      onOpenChange={onOpenChange}
+      kicker="Blend template"
+      title="Add ingredient"
+      description="Pick a product to add to this blend template."
+      size="xl"
+    >
         <div className="space-y-4">
           <div className="relative">
             <FaSearch className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
@@ -206,7 +209,6 @@ export function ProductSelectionDialog({
             </div>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   );
 }

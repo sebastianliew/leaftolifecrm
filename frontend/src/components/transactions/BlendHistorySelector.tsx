@@ -1,14 +1,14 @@
 "use client"
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EditorialModal } from "@/components/ui/editorial";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FaSearch, FaHistory, FaClock, FaUser, FaFlask, FaFire, FaHeart } from 'react-icons/fa';
+import { FaSearch, FaClock, FaUser, FaFlask, FaFire, FaHeart } from 'react-icons/fa';
 import { ImSpinner8 } from 'react-icons/im';
 
 export interface BlendHistoryIngredient {
@@ -149,16 +149,15 @@ export function BlendHistorySelector({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FaHistory className="w-5 h-5" />
-            Select Custom Blend to Repeat
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="flex flex-col space-y-4 flex-1 overflow-hidden">
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Blend history"
+      title="Repeat a custom blend"
+      description="Pick a previously made blend to use as a starting point."
+      size="xl"
+    >
+        <div className="flex flex-col space-y-4 overflow-hidden">
           {/* Search and Filters */}
           <div className="space-y-3">
             <div className="relative">
@@ -296,7 +295,6 @@ export function BlendHistorySelector({
             )}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   );
 } 

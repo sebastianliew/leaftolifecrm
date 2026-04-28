@@ -1,16 +1,14 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { FaTrash, FaShoppingCart, FaUserPlus, FaEdit } from "react-icons/fa"
 import { FiRefreshCw, FiAlertTriangle } from "react-icons/fi"
 import { ImSpinner8 } from "react-icons/im"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { EditorialButton, EditorialPill } from "@/components/ui/editorial"
 import type { TransactionFormData, TransactionItem, PaymentMethod, PaymentStatus } from "@/types/transaction"
 import type { Product } from "@/types/inventory"
 import type { Transaction } from "@/types/transaction"
@@ -1251,24 +1249,21 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-0">
       {/* Customer Information */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Customer Information</CardTitle>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowPatientSelector(true)}
-            >
-              <FaUserPlus className="w-4 h-4 mr-2" />
-              Select Patient
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
+      <section className="border-b border-[#E5E7EB] pb-8">
+        <header className="flex items-end justify-between gap-6 flex-wrap mb-6">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280]">i. Customer information</p>
+          <EditorialButton
+            variant="ghost"
+            type="button"
+            icon={<FaUserPlus className="h-3 w-3" />}
+            onClick={() => setShowPatientSelector(true)}
+          >
+            Select patient
+          </EditorialButton>
+        </header>
+        <div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="customerName">Name *</Label>
@@ -1301,107 +1296,98 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
             </div>
           </div>
           {selectedPatient?.memberBenefits?.discountPercentage && selectedPatient.memberBenefits.discountPercentage > 0 && (
-            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-green-800">
-                    <span className="font-medium">Member Discount: {selectedPatient.memberBenefits.discountPercentage}%</span>
-                    <span className="text-xs ml-2">(Applied automatically to eligible items)</span>
-                  </p>
-                </div>
+            <div className="mt-6 border-l-2 border-[#16A34A] bg-[#F0FDF4] px-5 py-4">
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-[13px] text-[#0A0A0A]">
+                  <span className="text-[10px] uppercase tracking-[0.28em] text-[#16A34A] mr-3">Member discount · {selectedPatient.memberBenefits.discountPercentage}%</span>
+                  <span className="italic font-light text-[#6B7280]">applied automatically to eligible items</span>
+                </p>
                 {selectedPatient.memberBenefits && selectedPatient.memberBenefits.membershipTier && (
-                  <Badge className="bg-purple-100 text-purple-800 text-xs">
+                  <EditorialPill tone="ok">
                     {selectedPatient.memberBenefits.membershipTier.toUpperCase()}
-                  </Badge>
+                  </EditorialPill>
                 )}
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {/* Cart Items */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Cart Items</CardTitle>
-            <Button 
-              type="button" 
-              onClick={() => {
-                setShowTypeSelector(true)
-              }}
-              size="sm"
-            >
-              Add Item
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
+      <section className="border-b border-[#E5E7EB] py-8">
+        <header className="flex items-end justify-between gap-6 flex-wrap mb-6">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280]">ii. Cart items</p>
+          <EditorialButton
+            variant="primary"
+            type="button"
+            arrow
+            onClick={() => setShowTypeSelector(true)}
+          >
+            Add item
+          </EditorialButton>
+        </header>
+        <div>
           {formData.items.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <FaShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p>Your cart is empty</p>
-              <p className="text-sm mt-1">Click &quot;Add Item&quot; to start</p>
+            <div className="text-center py-16">
+              <FaShoppingCart className="w-8 h-8 mx-auto mb-4 text-[#D1D5DB]" />
+              <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280]">Cart is empty</p>
+              <p className="text-sm italic font-light text-[#6B7280] mt-3">Click &ldquo;Add item&rdquo; to start.</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="divide-y divide-[#E5E7EB]">
               {formData.items.map((item) => {
                 const priceMismatch = getPriceMismatch(item);
                 const customBlendMismatch = getCustomBlendMismatch(item);
 
                 return (
-                <div key={item.id} className={`flex items-center gap-4 p-4 border rounded-lg ${
-                  (item.discountAmount || 0) > 0 ? 'bg-green-50 border-green-200' :
-                  (priceMismatch.hasMismatch || customBlendMismatch.hasMismatch) ? 'bg-amber-50 border-amber-200' : ''
+                <div key={item.id} className={`flex items-center gap-4 py-4 ${
+                  (item.discountAmount || 0) > 0 ? 'border-l-2 border-[#16A34A] pl-4' :
+                  (priceMismatch.hasMismatch || customBlendMismatch.hasMismatch) ? 'border-l-2 border-[#EA580C] pl-4' : ''
                 }`}>
                   <div className="flex-1">
-                    <h4 className="font-medium">
-                      {item.name}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <p className="text-[14px] text-[#0A0A0A] font-medium">{item.name}</p>
                       {item.saleType === 'volume' && (
-                        <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                          Sold in Parts
-                        </span>
+                        <EditorialPill tone="warning">Sold in parts</EditorialPill>
                       )}
-                    </h4>
+                    </div>
                     {item.sku && (
-                      <p className="text-sm text-gray-600">SKU: {item.sku}</p>
+                      <p className="text-[11px] text-[#9CA3AF] font-mono tracking-wide mt-0.5">SKU · {item.sku}</p>
                     )}
                     {item.description && (
-                      <p className="text-sm text-gray-600">{item.description}</p>
+                      <p className="text-[12px] text-[#6B7280] italic font-light mt-0.5">{item.description}</p>
                     )}
-                    {/* Price Mismatch Alert */}
                     {priceMismatch.hasMismatch && priceMismatch.currentPrice !== null && (
                       <div className="mt-2 flex items-center gap-2 flex-wrap">
-                        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300">
+                        <span className="inline-flex items-center text-[10px] uppercase tracking-[0.22em] text-[#EA580C]">
                           <FiAlertTriangle className="w-3 h-3 mr-1" />
-                          Price Changed
+                          Price changed
                         </span>
-                        <span className="text-xs text-amber-700">
-                          Current in Inventory: {formatCurrency(priceMismatch.currentPrice)}
+                        <span className="text-[11px] text-[#EA580C] tabular-nums">
+                          Now: {formatCurrency(priceMismatch.currentPrice)}
                           {priceMismatch.difference > 0
                             ? ` (+${formatCurrency(priceMismatch.difference)})`
                             : ` (${formatCurrency(priceMismatch.difference)})`}
                         </span>
                       </div>
                     )}
-                    {/* Custom Blend Ingredient Mismatch Alert */}
                     {customBlendMismatch.hasMismatch && (
                       <div className="mt-2 space-y-1">
-                        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-300">
+                        <span className="inline-flex items-center text-[10px] uppercase tracking-[0.22em] text-[#EA580C]">
                           <FiAlertTriangle className="w-3 h-3 mr-1" />
-                          Ingredient Prices Changed
+                          Ingredient prices changed
                         </span>
-                        <div className="text-xs text-amber-700 space-y-0.5">
+                        <div className="text-[11px] text-[#EA580C] space-y-0.5 tabular-nums">
                           {customBlendMismatch.changedIngredients.map((ing, idx) => (
                             <div key={idx}>
-                              {ing.name}: Current in Inventory: {formatCurrency(ing.currentCost)}
+                              {ing.name}: now {formatCurrency(ing.currentCost)}
                               {ing.difference > 0
                                 ? ` (+${formatCurrency(ing.difference)})`
                                 : ` (${formatCurrency(ing.difference)})`}
                             </div>
                           ))}
-                          <div className="font-medium pt-1 border-t border-amber-200 mt-1">
-                            Total Blend Cost: {formatCurrency(customBlendMismatch.newTotalIngredientCost)}
+                          <div className="font-medium pt-1 border-t border-[#FED7AA] mt-1">
+                            Total: {formatCurrency(customBlendMismatch.newTotalIngredientCost)}
                             {customBlendMismatch.totalDifference > 0
                               ? ` (+${formatCurrency(customBlendMismatch.totalDifference)})`
                               : ` (${formatCurrency(customBlendMismatch.totalDifference)})`}
@@ -1411,74 +1397,66 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                     )}
                   </div>
                   {!isConsultationItem(item) && (
-                    <div className="flex items-center gap-2">
-                      <Button
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
                         type="button"
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
+                        className="h-7 w-7 border border-[#E5E7EB] hover:border-[#0A0A0A] text-[#6B7280] hover:text-[#0A0A0A] transition-colors text-sm"
                         onClick={() => updateItemQuantity(item.id!, item.quantity - 1)}
                       >
-                        -
-                      </Button>
-                      <span className="w-20 text-center text-sm">
-                        {getDisplayQuantity(item.quantity, item.saleType, item.product?.containerCapacity)} {item.baseUnit || ''}
+                        −
+                      </button>
+                      <span className="w-20 text-center text-[12px] text-[#0A0A0A] tabular-nums">
+                        {getDisplayQuantity(item.quantity, item.saleType, item.product?.containerCapacity)}{' '}
+                        <span className="text-[#9CA3AF]">{item.baseUnit || ''}</span>
                       </span>
-                      <Button
+                      <button
                         type="button"
-                        variant="outline"
-                        size="icon"
-                        className="h-8 w-8"
+                        className="h-7 w-7 border border-[#E5E7EB] hover:border-[#0A0A0A] text-[#6B7280] hover:text-[#0A0A0A] transition-colors text-sm"
                         onClick={() => updateItemQuantity(item.id!, item.quantity + 1)}
                       >
                         +
-                      </Button>
+                      </button>
                     </div>
                   )}
                   {isConsultationItem(item) && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] uppercase tracking-[0.22em] text-[#6B7280]">Qty <span className="tabular-nums text-[#0A0A0A] normal-case tracking-normal text-sm ml-1">{item.quantity}</span></span>
                     </div>
                   )}
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     {(item.discountAmount || 0) > 0 ? (
                       <div>
-                        <p className="text-sm text-gray-500 line-through">
-                          Original: {formatCurrency(item.unitPrice * item.quantity)}
+                        <p className="text-[11px] text-[#9CA3AF] line-through tabular-nums">
+                          {formatCurrency(item.unitPrice * item.quantity)}
                         </p>
-                        <div className="flex flex-col items-end gap-1 my-1">
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded font-medium">
-                            {selectedPatient?.memberBenefits?.discountPercentage}% MEMBER DISCOUNT
-                          </span>
-                          <span className="text-xs text-green-700">
-                            Save {formatCurrency(item.discountAmount || 0)}
-                          </span>
-                        </div>
-                        <p className="font-medium text-green-700 text-lg">{formatCurrency(item.totalPrice)}</p>
+                        <p className="text-[10px] uppercase tracking-[0.22em] text-[#16A34A] mt-1">
+                          {selectedPatient?.memberBenefits?.discountPercentage}% member
+                        </p>
+                        <p className="text-[10px] text-[#16A34A] tabular-nums italic font-light">
+                          save {formatCurrency(item.discountAmount || 0)}
+                        </p>
+                        <p className="text-[16px] text-[#16A34A] tabular-nums mt-1">{formatCurrency(item.totalPrice)}</p>
                       </div>
                     ) : (
                       <div>
-                        <p className="font-medium">{formatCurrency(item.totalPrice)}</p>
-                        {/* Only show eligibility messages if patient has discount AND item has NO discount applied */}
+                        <p className="text-[14px] text-[#0A0A0A] tabular-nums">{formatCurrency(item.totalPrice)}</p>
                         {selectedPatient?.memberBenefits?.discountPercentage && (item.discountAmount || 0) === 0 && (
                           <>
-                            {/* Message for potentially eligible items (product or fixed_blend) */}
                             {(item.itemType === 'product' || item.itemType === 'fixed_blend') &&
                              !item.isService && item.saleType !== 'volume' && (
-                              <p className="text-xs text-gray-500 mt-1">
+                              <p className="text-[10px] uppercase tracking-[0.22em] text-[#9CA3AF] mt-1">
                                 {item.product?.discountFlags?.discountableForMembers === false
-                                  ? 'Product not eligible for discount'
-                                  : 'No discount applied'}
+                                  ? 'Not eligible'
+                                  : 'No discount'}
                               </p>
                             )}
-                            {/* Message for definitely ineligible items */}
                             {(item.isService ||
                               (item.itemType !== 'product' && item.itemType !== 'fixed_blend')) && (
-                              <p className="text-xs text-amber-600 mt-1">
-                                {item.itemType === 'bundle' ? 'Bundles have separate pricing' :
-                                 item.itemType === 'custom_blend' ? 'Custom blends not eligible' :
-                                 item.isService ? 'Services not eligible' :
-                                 'Not eligible for member discount'}
+                              <p className="text-[10px] uppercase tracking-[0.22em] text-[#EA580C] mt-1">
+                                {item.itemType === 'bundle' ? 'Bundle pricing' :
+                                 item.itemType === 'custom_blend' ? 'Custom blend' :
+                                 item.isService ? 'Service' :
+                                 'Not eligible'}
                               </p>
                             )}
                           </>
@@ -1486,119 +1464,103 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex items-center gap-3 shrink-0">
                     {isConsultationItem(item) && (
-                      <Button
+                      <button
                         type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="text-blue-600 hover:text-blue-800"
+                        className="text-[#6B7280] hover:text-[#0A0A0A] transition-colors"
                         onClick={() => handleEditConsultation(item)}
+                        title="Edit consultation"
                       >
-                        <FaEdit className="h-4 w-4" />
-                      </Button>
+                        <FaEdit className="h-3.5 w-3.5" />
+                      </button>
                     )}
                     {item.itemType === 'custom_blend' && (
-                      <Button
+                      <button
                         type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="text-blue-600 hover:text-blue-800"
+                        className="text-[#6B7280] hover:text-[#0A0A0A] transition-colors"
                         onClick={() => handleEditCustomBlend(item)}
                         title="Edit custom blend formula"
                       >
-                        <FaEdit className="h-4 w-4" />
-                      </Button>
+                        <FaEdit className="h-3.5 w-3.5" />
+                      </button>
                     )}
-                    {/* Custom Blend Price Refresh Button */}
                     {customBlendMismatch.hasMismatch && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button
+                            <button
                               type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="text-amber-600 hover:text-amber-800 hover:bg-amber-100"
+                              className="text-[#EA580C] hover:opacity-80 transition-opacity"
                               onClick={() => handleRefreshCustomBlendPrices(item.id!)}
                             >
-                              <FiRefreshCw className="h-4 w-4" />
-                            </Button>
+                              <FiRefreshCw className="h-3.5 w-3.5" />
+                            </button>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="max-w-xs text-center">
-                            <p>Upon refresh, the price of this item will reflect the currently set price in the inventory</p>
+                            <p>Refresh to use current inventory prices</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     )}
                     {item.itemType === 'fixed_blend' && (
-                      <Button
+                      <button
                         type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="text-blue-600 hover:text-blue-800"
+                        className="text-[#6B7280] hover:text-[#0A0A0A] transition-colors"
                         onClick={() => handleEditFixedBlend(item)}
                         title="Edit fixed blend"
                       >
-                        <FaEdit className="h-4 w-4" />
-                      </Button>
+                        <FaEdit className="h-3.5 w-3.5" />
+                      </button>
                     )}
-                    {/* Edit Item Button — for product items */}
                     {item.itemType === 'product' && (
-                      <Button
+                      <button
                         type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="text-gray-500 hover:text-gray-800"
+                        className="text-[#6B7280] hover:text-[#0A0A0A] transition-colors"
                         onClick={() => handleEditCartItem(item)}
+                        title="Edit item"
                       >
-                        <FaEdit className="h-4 w-4" />
-                      </Button>
+                        <FaEdit className="h-3.5 w-3.5" />
+                      </button>
                     )}
-                    {/* Price Refresh Button */}
                     {priceMismatch.hasMismatch && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <Button
+                            <button
                               type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="text-amber-600 hover:text-amber-800 hover:bg-amber-100"
+                              className="text-[#EA580C] hover:opacity-80 transition-opacity"
                               onClick={() => handleRefreshPrice(item.id!)}
                             >
-                              <FiRefreshCw className="h-4 w-4" />
-                            </Button>
+                              <FiRefreshCw className="h-3.5 w-3.5" />
+                            </button>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="max-w-xs text-center">
-                            <p>Upon refresh, the price of this item will reflect the currently set price in the inventory</p>
+                            <p>Refresh to use current inventory price</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     )}
-                    <Button
+                    <button
                       type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="text-red-600 hover:text-red-800"
+                      className="text-[#6B7280] hover:text-[#DC2626] transition-colors"
                       onClick={() => removeItem(item.id!)}
+                      title="Remove"
                     >
-                      <FaTrash className="h-4 w-4" />
-                    </Button>
+                      <FaTrash className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
               )})}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {/* Payment Details */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment Details</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <section className="border-b border-[#E5E7EB] py-8">
+        <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280] mb-6">iii. Payment details</p>
+        <div>
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -1644,9 +1606,10 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
             
             {/* Auto-update notice for draft transactions */}
             {initialData?.status === 'draft' && formData.paymentStatus === 'pending' && (
-              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-800">
-                  <span className="font-medium">Note:</span> Payment status will automatically be updated to &quot;Paid&quot; when you complete this transaction.
+              <div className="mt-2 border-l-2 border-[#0A0A0A] bg-[#FAFAFA] px-5 py-3">
+                <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280]">Note</p>
+                <p className="text-[13px] text-[#0A0A0A] mt-1">
+                  Payment status will be set to &ldquo;Paid&rdquo; automatically when you complete this transaction.
                 </p>
               </div>
             )}
@@ -1655,16 +1618,14 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               <div className="space-y-2">
                 <Label htmlFor="discountAmount" className="flex items-center justify-between">
                   <span>Discount</span>
-                  <Button
+                  <button
                     type="button"
-                    variant="outline"
-                    size="sm"
                     onClick={toggleDiscountMode}
-                    className="h-7 px-3 text-xs font-normal"
+                    className="text-[10px] uppercase tracking-[0.22em] text-[#6B7280] hover:text-[#0A0A0A] transition-colors"
                     title={`Click to enter discount as ${discountMode === 'amount' ? 'percentage' : 'amount'}`}
                   >
-                    {discountMode === 'amount' ? 'Switch to %' : 'Switch to SGD'}
-                  </Button>
+                    Switch to {discountMode === 'amount' ? '%' : 'SGD'}
+                  </button>
                 </Label>
                 <div className="flex items-center gap-1">
                   <Input
@@ -1697,63 +1658,63 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
             </div>
           </div>
 
-          <div className="mt-6 space-y-2 border-t pt-4">
-            <div className="flex justify-between">
-              <span>Subtotal:</span>
-              <span>{formatCurrency(formData.subtotal)}</span>
+          <dl className="mt-6 space-y-3 max-w-md ml-auto pt-4 border-t border-[#E5E7EB]">
+            <div className="flex justify-between items-baseline">
+              <dt className="text-[12px] text-[#6B7280]">Subtotal</dt>
+              <dd className="text-[14px] text-[#0A0A0A] tabular-nums">{formatCurrency(formData.subtotal)}</dd>
             </div>
             {formData.items.some(item => (item.discountAmount || 0) > 0) && (
-              <div className="flex justify-between text-green-600">
-                <span>Item Discounts:</span>
-                <span>-{formatCurrency(formData.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0))}</span>
+              <div className="flex justify-between items-baseline">
+                <dt className="text-[12px] text-[#16A34A]">Item discounts</dt>
+                <dd className="text-[14px] text-[#16A34A] tabular-nums">−{formatCurrency(formData.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0))}</dd>
               </div>
             )}
             {formData.discountAmount > 0 && (
-              <div className="flex justify-between text-red-600">
-                <span>Additional Discount:</span>
-                <span>-{formatCurrency(formData.discountAmount)}</span>
+              <div className="flex justify-between items-baseline">
+                <dt className="text-[12px] text-[#EA580C]">Additional discount</dt>
+                <dd className="text-[14px] text-[#EA580C] tabular-nums">−{formatCurrency(formData.discountAmount)}</dd>
               </div>
             )}
-            <div className="flex justify-between text-lg font-bold">
-              <span>Total:</span>
-              <span>{formatCurrency(formData.totalAmount)}</span>
+            <div className="flex justify-between items-baseline pt-3 border-t border-[#0A0A0A]">
+              <dt className="text-[10px] uppercase tracking-[0.32em] text-[#0A0A0A]">Total</dt>
+              <dd className="font-light text-[28px] leading-none tabular-nums text-[#0A0A0A]">{formatCurrency(formData.totalAmount)}</dd>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </dl>
+        </div>
+      </section>
 
       {/* Actions */}
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>
+      <div className="mt-8 flex items-center justify-end gap-6 flex-wrap">
+        <EditorialButton variant="ghost" type="button" onClick={onCancel} disabled={loading}>
           Cancel
-        </Button>
+        </EditorialButton>
         {onSaveDraft && (
-          <Button 
-            type="button" 
-            variant="secondary" 
-            onClick={handleSaveDraft} 
+          <EditorialButton
+            variant="ghost"
+            type="button"
+            onClick={handleSaveDraft}
             disabled={loading || formData.items.length === 0}
           >
             {loading ? (
               <>
-                <ImSpinner8 className="w-4 h-4 mr-2 animate-spin" />
-                {initialData ? "Updating Draft..." : "Saving Draft..."}
+                <ImSpinner8 className="w-3 h-3 mr-2 animate-spin" />
+                {initialData ? "Updating draft…" : "Saving draft…"}
               </>
             ) : (
-              initialData ? "Update Draft" : "Save as Draft"
+              initialData ? "Update draft" : "Save as draft"
             )}
-          </Button>
+          </EditorialButton>
         )}
-        <Button type="submit" disabled={loading || formData.items.length === 0}>
+        <EditorialButton variant="primary" arrow type="submit" disabled={loading || formData.items.length === 0}>
           {loading ? (
             <>
-              <ImSpinner8 className="w-4 h-4 mr-2 animate-spin" />
-              Processing...
+              <ImSpinner8 className="w-3 h-3 mr-2 animate-spin" />
+              Processing…
             </>
           ) : (
-            "Complete Transaction"
+            "Complete transaction"
           )}
-        </Button>
+        </EditorialButton>
       </div>
 
       {/* Modals */}

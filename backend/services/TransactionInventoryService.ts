@@ -409,9 +409,18 @@ export class TransactionInventoryService {
       return result;
     }
 
+    // A completed transaction can be edited multiple times after the initial
+    // sale. Each edit lays down EDIT-${txn} movements that adjust stock by
+    // the qty delta — these are *also* part of the transaction's net stock
+    // impact and must be reversed when the transaction is cancelled,
+    // otherwise edited-then-cancelled transactions leave a residue.
     const originals = await InventoryMovement.find({
-      reference: transactionNumber,
-      movementType: { $in: REVERSIBLE_TYPES }
+      $or: [
+        { reference: transactionNumber, movementType: { $in: REVERSIBLE_TYPES } },
+        // EDIT movements only ever come from updateTransaction's delta loop,
+        // which writes 'sale' for upward edits and 'return' for downward.
+        { reference: `EDIT-${transactionNumber}`, movementType: { $in: ['sale', 'return'] } },
+      ],
     }).session(session || null);
 
     result.originalMovementCount = originals.length;
@@ -422,9 +431,18 @@ export class TransactionInventoryService {
 
     for (const orig of originals) {
       try {
+        // Reversal must cancel the original direction, not always restore
+        // stock. Original DECREASE types (sale, blend, bundle_sale, etc.) get
+        // reversed with 'return' (an INCREASE). Original INCREASE types
+        // (a 'return' movement from a downward edit) get reversed with 'sale'
+        // (a DECREASE) so the cancellation actually unwinds them rather than
+        // double-restoring.
+        const wasIncrease = orig.movementType === 'return' || orig.movementType === 'adjustment';
+        const reversalType = wasIncrease ? 'sale' : 'return';
+
         const reversal = await createMovement({
           productId: orig.productId,
-          movementType: 'return',
+          movementType: reversalType,
           quantity: orig.quantity, convertedQuantity: orig.convertedQuantity,
           unitOfMeasurementId: orig.unitOfMeasurementId,
           baseUnit: orig.baseUnit,

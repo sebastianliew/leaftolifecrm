@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Plus } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { EditorialModal, EditorialButton } from '@/components/ui/editorial'
 import { SimpleTransactionForm } from './SimpleTransactionForm'
 import { useInventory } from '@/hooks/useInventory'
 import { useCreateTransaction, useUpdateTransaction } from '@/hooks/queries/use-transaction-queries'
@@ -184,28 +184,31 @@ export function CreateTransactionButton() {
 
   return (
     <>
-      <button 
+      <EditorialButton
+        variant="primary"
+        arrow
+        icon={<Plus className="h-3 w-3" />}
         onClick={() => setIsOpen(true)}
-        className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium"
       >
-        <Plus className="w-4 h-4" />
-        New Transaction
-      </button>
+        New transaction
+      </EditorialButton>
 
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Create New Transaction</DialogTitle>
-          </DialogHeader>
-          <SimpleTransactionForm
-            products={products}
-            onSubmit={handleSubmit}
-            onSaveDraft={handleSaveDraft}
-            onCancel={() => setIsOpen(false)}
-            loading={createTransactionMutation.isPending || isDraftSaving}
-          />
-        </DialogContent>
-      </Dialog>
+      <EditorialModal
+        open={isOpen}
+        onOpenChange={setIsOpen}
+        kicker="Transactions"
+        title="New transaction"
+        description="Build a new sale by adding products, blends, bundles, or services."
+        size="2xl"
+      >
+        <SimpleTransactionForm
+          products={products}
+          onSubmit={handleSubmit}
+          onSaveDraft={handleSaveDraft}
+          onCancel={() => setIsOpen(false)}
+          loading={createTransactionMutation.isPending || isDraftSaving}
+        />
+      </EditorialModal>
     </>
   )
 }

@@ -1,9 +1,6 @@
 "use client"
 
 import React from "react"
-import { TableCell, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
@@ -16,6 +13,12 @@ import Link from "next/link"
 import { MoreVertical, Ban, Copy } from "lucide-react"
 import { FaEye, FaEdit, FaReceipt, FaTrash } from "react-icons/fa"
 import type { Transaction } from "@/types/transaction"
+import {
+  EditorialTr,
+  EditorialTd,
+  EditorialPill,
+  EditorialMeta,
+} from "@/components/ui/editorial"
 
 interface TransactionTableRowProps {
   transaction: Transaction
@@ -32,56 +35,31 @@ interface TransactionTableRowProps {
   canCreate?: boolean
 }
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "paid":
-      return "bg-green-100 text-green-800"
-    case "pending":
-      return "bg-yellow-100 text-yellow-800"
-    case "partial":
-      return "bg-blue-100 text-blue-800"
-    case "overdue":
-    case "failed":
-      return "bg-red-100 text-red-800"
-    case "refunded":
-      return "bg-purple-100 text-purple-800"
-    default:
-      return "bg-gray-100 text-gray-800"
-  }
+const paymentToneMap: Record<string, "muted" | "ink" | "danger" | "warning" | "ok"> = {
+  paid: "ok",
+  pending: "warning",
+  partial: "warning",
+  overdue: "danger",
+  failed: "danger",
+  refunded: "ink",
 }
 
-const getTypeColor = (type: string, status?: string) => {
-  // Check status first for cancelled transactions
-  if (status === "cancelled") {
-    return "bg-red-100 text-red-800"
-  }
-  switch (type) {
-    case "DRAFT":
-      return "bg-yellow-100 text-yellow-800"
-    case "COMPLETED":
-      return "bg-green-100 text-green-800"
-    default:
-      return "bg-gray-100 text-gray-800"
-  }
+const typeToneMap = (type: string, status?: string): "muted" | "ink" | "danger" | "warning" | "ok" => {
+  if (status === "cancelled") return "danger"
+  if (type === "DRAFT") return "warning"
+  if (type === "COMPLETED") return "ok"
+  return "muted"
 }
 
-const getTypeLabel = (type: string, status?: string) => {
-  if (status === "cancelled") {
-    return "CANCELLED"
-  }
+const typeLabel = (type: string, status?: string) => {
+  if (status === "cancelled") return "CANCELLED"
   return type
 }
 
-const formatDate = (dateString: string) => {
-  return new Date(dateString).toLocaleDateString('en-GB')
-}
+const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString("en-GB")
 
-const formatCurrency = (amount: number | undefined | null) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'SGD'
-  }).format(amount ?? 0)
-}
+const formatCurrency = (amount: number | undefined | null) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "SGD" }).format(amount ?? 0)
 
 export const TransactionTableRow = React.memo(({
   transaction,
@@ -95,84 +73,83 @@ export const TransactionTableRow = React.memo(({
   canEdit = false,
   canEditDrafts = false,
   canDelete = false,
-  canCreate = false
+  canCreate = false,
 }: TransactionTableRowProps) => {
   const itemCount = (transaction.items || []).reduce((sum, item) => sum + (item.quantity ?? 0), 0)
-  
+  const paymentTone = paymentToneMap[transaction.paymentStatus || ""] || "muted"
+
   return (
-    <TableRow className="hover:bg-gray-50">
-      <TableCell className="w-12">
+    <EditorialTr>
+      <EditorialTd className="w-8 pr-2">
         <Checkbox
           checked={isSelected}
           onCheckedChange={(checked) => onSelect(transaction._id, checked as boolean)}
         />
-      </TableCell>
-      <TableCell className="font-medium">
+      </EditorialTd>
+      <EditorialTd size="md" className="font-mono tracking-wide">
         {transaction.transactionNumber}
-      </TableCell>
-      <TableCell>{formatDate(transaction.transactionDate)}</TableCell>
-      <TableCell>
-        <div>
-          <div className="font-medium">{transaction.customerName}</div>
-          {transaction.customerEmail && (
-            <div className="text-sm text-gray-500">{transaction.customerEmail}</div>
-          )}
-        </div>
-      </TableCell>
-      <TableCell>
-        <Badge className={getTypeColor(transaction.type, transaction.status)}>
-          {getTypeLabel(transaction.type, transaction.status)}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-center">{itemCount}</TableCell>
-      <TableCell className="text-right font-medium">
+      </EditorialTd>
+      <EditorialTd className="tabular-nums">{formatDate(transaction.transactionDate)}</EditorialTd>
+      <EditorialTd size="md" className="pr-4">
+        <p className="text-[14px] text-[#0A0A0A]">{transaction.customerName}</p>
+        {transaction.customerEmail && <EditorialMeta>{transaction.customerEmail}</EditorialMeta>}
+      </EditorialTd>
+      <EditorialTd>
+        <EditorialPill tone={typeToneMap(transaction.type, transaction.status)}>
+          {typeLabel(transaction.type, transaction.status)}
+        </EditorialPill>
+      </EditorialTd>
+      <EditorialTd align="right" className="tabular-nums">
+        {itemCount}
+      </EditorialTd>
+      <EditorialTd align="right" size="md" className="tabular-nums">
         {formatCurrency(transaction.totalAmount)}
-      </TableCell>
-      <TableCell>
-        <Badge className={getStatusColor(transaction.paymentStatus)}>
-          {transaction.paymentStatus}
-        </Badge>
-      </TableCell>
-      <TableCell>
+      </EditorialTd>
+      <EditorialTd>
+        <EditorialPill tone={paymentTone}>{transaction.paymentStatus}</EditorialPill>
+      </EditorialTd>
+      <EditorialTd align="right">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <MoreVertical className="h-4 w-4" />
-              <span className="sr-only">Actions</span>
-            </Button>
+            <button
+              className="text-[#6B7280] hover:text-[#0A0A0A] transition-colors opacity-40 group-hover:opacity-100"
+              aria-label="Actions"
+            >
+              <MoreVertical className="h-3.5 w-3.5" />
+            </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem asChild>
               <Link href={`/transactions/${transaction._id}`}>
-                <FaEye className="mr-2 h-4 w-4" />
+                <FaEye className="mr-2 h-3 w-3" />
                 View details
               </Link>
             </DropdownMenuItem>
-            {(canEdit || (canEditDrafts && (transaction.status === 'draft' || transaction.status === 'cancelled'))) && (
+            {(canEdit || (canEditDrafts && (transaction.status === "draft" || transaction.status === "cancelled"))) && (
               <DropdownMenuItem onClick={() => onEdit(transaction)}>
-                <FaEdit className="mr-2 h-4 w-4" />
+                <FaEdit className="mr-2 h-3 w-3" />
                 Edit
               </DropdownMenuItem>
             )}
             {canCreate && onDuplicate && (
               <DropdownMenuItem onClick={() => onDuplicate(transaction)}>
-                <Copy className="mr-2 h-4 w-4" />
+                <Copy className="mr-2 h-3 w-3" />
                 Duplicate
               </DropdownMenuItem>
             )}
             <DropdownMenuItem onClick={() => onGenerateInvoice(transaction._id)}>
-              <FaReceipt className="mr-2 h-4 w-4" />
+              <FaReceipt className="mr-2 h-3 w-3" />
               Generate invoice
             </DropdownMenuItem>
-            {transaction.status === 'draft' && onCancelDraft && (
+            {transaction.status === "draft" && onCancelDraft && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => onCancelDraft(transaction)}
-                  className="text-orange-600 focus:text-orange-600"
+                  className="text-[#EA580C] focus:text-[#EA580C]"
                 >
-                  <Ban className="mr-2 h-4 w-4" />
-                  Cancel Draft
+                  <Ban className="mr-2 h-3 w-3" />
+                  Cancel draft
                 </DropdownMenuItem>
               </>
             )}
@@ -181,34 +158,32 @@ export const TransactionTableRow = React.memo(({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => onDelete(transaction._id)}
-                  className="text-red-600 focus:text-red-600"
+                  className="text-[#DC2626] focus:text-[#DC2626]"
                 >
-                  <FaTrash className="mr-2 h-4 w-4" />
+                  <FaTrash className="mr-2 h-3 w-3" />
                   Delete
                 </DropdownMenuItem>
               </>
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-      </TableCell>
-    </TableRow>
+      </EditorialTd>
+    </EditorialTr>
   )
 }, (prevProps, nextProps) => {
-  // Custom comparison for performance
-  // Return true if props are equal (skip re-render), false if different (re-render)
   return prevProps.transaction._id === nextProps.transaction._id &&
-         prevProps.transaction.paymentStatus === nextProps.transaction.paymentStatus &&
-         prevProps.transaction.status === nextProps.transaction.status &&
-         prevProps.transaction.totalAmount === nextProps.transaction.totalAmount &&
-         prevProps.transaction.customerName === nextProps.transaction.customerName &&
-         prevProps.transaction.type === nextProps.transaction.type &&
-         prevProps.transaction.transactionDate === nextProps.transaction.transactionDate &&
-         prevProps.transaction.updatedAt === nextProps.transaction.updatedAt &&
-         prevProps.isSelected === nextProps.isSelected &&
-         prevProps.canEdit === nextProps.canEdit &&
-         prevProps.canEditDrafts === nextProps.canEditDrafts &&
-         prevProps.canDelete === nextProps.canDelete &&
-         prevProps.canCreate === nextProps.canCreate
+    prevProps.transaction.paymentStatus === nextProps.transaction.paymentStatus &&
+    prevProps.transaction.status === nextProps.transaction.status &&
+    prevProps.transaction.totalAmount === nextProps.transaction.totalAmount &&
+    prevProps.transaction.customerName === nextProps.transaction.customerName &&
+    prevProps.transaction.type === nextProps.transaction.type &&
+    prevProps.transaction.transactionDate === nextProps.transaction.transactionDate &&
+    prevProps.transaction.updatedAt === nextProps.transaction.updatedAt &&
+    prevProps.isSelected === nextProps.isSelected &&
+    prevProps.canEdit === nextProps.canEdit &&
+    prevProps.canEditDrafts === nextProps.canEditDrafts &&
+    prevProps.canDelete === nextProps.canDelete &&
+    prevProps.canCreate === nextProps.canCreate
 })
 
-TransactionTableRow.displayName = 'TransactionTableRow'
+TransactionTableRow.displayName = "TransactionTableRow"

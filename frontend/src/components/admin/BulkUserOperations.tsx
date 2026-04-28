@@ -18,17 +18,11 @@ import {
   SheetTitle,
   SheetDescription
 } from '@/components/ui/sheet';
-import { 
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import {
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+} from '@/components/ui/editorial';
 import { 
   Users,
   Settings,
@@ -97,6 +91,8 @@ export default function BulkUserOperations({
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('permissions');
   const [operationInProgress, setOperationInProgress] = useState<string | null>(null);
+  const [confirmRoleChange, setConfirmRoleChange] = useState(false);
+  const [confirmDeleteUsers, setConfirmDeleteUsers] = useState(false);
 
   // Form states for different operations
   const [permissionChanges, setPermissionChanges] = useState<Record<string, unknown>>({});
@@ -522,32 +518,38 @@ export default function BulkUserOperations({
                     </Select>
                   </div>
 
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button 
-                        disabled={!roleChange || loading}
-                        className="w-full"
+                  <Button
+                    disabled={!roleChange || loading}
+                    className="w-full"
+                    onClick={() => setConfirmRoleChange(true)}
+                  >
+                    <UserCheck className="h-4 w-4 mr-2" />
+                    Change Role to {roleChange || '...'}
+                  </Button>
+                  <EditorialModal
+                    open={confirmRoleChange}
+                    onOpenChange={setConfirmRoleChange}
+                    kicker="Confirm role change"
+                    kickerTone="warning"
+                    title="Apply role change?"
+                    description={`This will change the role of ${selectedUsers.length} user(s) to ${roleChange} and reset their permissions to role defaults.`}
+                  >
+                    <EditorialModalFooter>
+                      <EditorialButton variant="ghost" onClick={() => setConfirmRoleChange(false)}>
+                        Cancel
+                      </EditorialButton>
+                      <EditorialButton
+                        variant="primary"
+                        arrow
+                        onClick={() => {
+                          changeUserRoles()
+                          setConfirmRoleChange(false)
+                        }}
                       >
-                        <UserCheck className="h-4 w-4 mr-2" />
-                        Change Role to {roleChange || '...'}
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Confirm Role Change</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Are you sure you want to change the role of {selectedUsers.length} user(s) to {roleChange}? 
-                          This will reset their permissions to the role defaults.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={changeUserRoles}>
-                          Change Roles
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                        Change roles
+                      </EditorialButton>
+                    </EditorialModalFooter>
+                  </EditorialModal>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -602,33 +604,39 @@ export default function BulkUserOperations({
                     />
                   </div>
 
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="destructive"
-                        disabled={bulkDeleteConfirm !== 'DELETE' || loading}
-                        className="w-full"
+                  <Button
+                    variant="destructive"
+                    disabled={bulkDeleteConfirm !== 'DELETE' || loading}
+                    className="w-full"
+                    onClick={() => setConfirmDeleteUsers(true)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete {selectedUsers.length} User(s)
+                  </Button>
+                  <EditorialModal
+                    open={confirmDeleteUsers}
+                    onOpenChange={setConfirmDeleteUsers}
+                    kicker="Confirm deletion"
+                    kickerTone="danger"
+                    title={`Permanently delete ${selectedUsers.length} user(s)?`}
+                    description="This action cannot be undone. All user data will be removed from the system."
+                  >
+                    <EditorialModalFooter>
+                      <EditorialButton variant="ghost" onClick={() => setConfirmDeleteUsers(false)}>
+                        Cancel
+                      </EditorialButton>
+                      <EditorialButton
+                        variant="primary"
+                        arrow
+                        onClick={() => {
+                          deleteUsers()
+                          setConfirmDeleteUsers(false)
+                        }}
                       >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete {selectedUsers.length} User(s)
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Confirm User Deletion</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This action cannot be undone. This will permanently delete {selectedUsers.length} user(s) 
-                          and remove all their data from the system.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={deleteUsers} className="bg-red-600">
-                          Delete Users
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                        Delete users
+                      </EditorialButton>
+                    </EditorialModalFooter>
+                  </EditorialModal>
                 </CardContent>
               </Card>
             </TabsContent>

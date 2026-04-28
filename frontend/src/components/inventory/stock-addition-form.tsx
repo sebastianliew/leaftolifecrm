@@ -1,18 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { EditorialModal, EditorialModalFooter, EditorialButton } from '@/components/ui/editorial';
 import { ProductTemplate, StockAdditionData } from '@/types/inventory';
 import { formatCurrency } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -90,17 +82,15 @@ export function StockAdditionForm({
   if (!selectedProduct) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+    <EditorialModal
+      open={isOpen}
+      onOpenChange={(o) => !o && handleClose()}
+      kicker="Restock"
+      title="Add stock"
+      description={`Increase stock for ${selectedProduct.name}.`}
+    >
         <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>Add Stock</DialogTitle>
-            <DialogDescription>
-              Add stock to the selected product
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
+          <div className="space-y-4">
             <div className="bg-muted p-4 rounded-lg space-y-2">
               <div className="flex items-center gap-2">
                 <Package className="h-4 w-4 text-muted-foreground" />
@@ -178,16 +168,15 @@ export function StockAdditionForm({
             )}
           </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={handleClose}>
+          <EditorialModalFooter>
+            <EditorialButton variant="ghost" type="button" onClick={handleClose}>
               Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Adding Stock...' : 'Add Stock'}
-            </Button>
-          </DialogFooter>
+            </EditorialButton>
+            <EditorialButton variant="primary" arrow type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Adding…' : 'Add stock'}
+            </EditorialButton>
+          </EditorialModalFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   );
 }

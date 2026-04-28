@@ -5,7 +5,7 @@ import { DashboardAppointment, AppointmentStatus, AppointmentHistory } from '@/t
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { EditorialModal } from '@/components/ui/editorial';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/ui/alert';
 import { format } from 'date-fns';
@@ -427,11 +427,13 @@ export default function AppointmentDashboard() {
           </div>
         </div>
 
-      <Dialog open={showDetails} onOpenChange={setShowDetails}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Appointment Details</DialogTitle>
-          </DialogHeader>
+      <EditorialModal
+        open={showDetails}
+        onOpenChange={setShowDetails}
+        kicker="Appointment"
+        title="Details"
+        description={selectedAppointment?.patientId ? `${selectedAppointment.patientId}` : undefined}
+      >
           {selectedAppointment && (
             <div className="space-y-4">
               <div>
@@ -479,8 +481,7 @@ export default function AppointmentDashboard() {
               </div>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+      </EditorialModal>
 
         <AppointmentDeleteDialog
           appointment={appointmentToDelete}

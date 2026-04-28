@@ -1,16 +1,22 @@
 "use client"
 
 import React from 'react'
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { BrandForm } from "./brand-form"
 import type { BrandFormData, BrandStatus } from "@/types/brands"
-import { HiPencilAlt, HiTrash } from "react-icons/hi"
+import { HiPencil, HiTrash } from "react-icons/hi2"
+import {
+  EditorialTable,
+  EditorialTHead,
+  EditorialTh,
+  EditorialTr,
+  EditorialTd,
+  EditorialEmptyRow,
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+  EditorialMeta,
+} from "@/components/ui/editorial"
 
-// Type for brands returned by API
 type ApiBrand = {
   _id: string;
   name: string;
@@ -27,33 +33,28 @@ interface BrandListProps {
   isSubmitting: boolean
 }
 
-export function BrandList({ 
-  brands, 
-  loading, 
-  onUpdateBrand, 
-  onDeleteBrand, 
-  isSubmitting 
-}: BrandListProps) {
-  const [selectedBrand, setSelectedBrand] = React.useState<ApiBrand | null>(null)
-  const [isEditDialogOpen, setIsEditDialogOpen] = React.useState(false)
+const statusToneMap: Record<string, string> = {
+  active: 'text-[#16A34A]',
+  inactive: 'text-[#6B7280]',
+  discontinued: 'text-[#DC2626]',
+  pending_approval: 'text-[#EA580C]',
+}
 
-  const getStatusBadgeVariant = (status: BrandStatus) => {
-    switch (status) {
-      case 'active': return 'default'
-      case 'inactive': return 'secondary'
-      case 'discontinued': return 'destructive'
-      case 'pending_approval': return 'outline'
-      default: return 'secondary'
-    }
-  }
+export function BrandList({
+  brands,
+  loading,
+  onUpdateBrand,
+  onDeleteBrand,
+  isSubmitting,
+}: BrandListProps) {
+  const [editing, setEditing] = React.useState<ApiBrand | null>(null)
+  const [confirmDelete, setConfirmDelete] = React.useState<ApiBrand | null>(null)
 
   const handleUpdateBrand = async (data: BrandFormData) => {
-    if (!selectedBrand) return
-    
+    if (!editing) return
     try {
-      await onUpdateBrand(selectedBrand._id, data)
-      setIsEditDialogOpen(false)
-      setSelectedBrand(null)
+      await onUpdateBrand(editing._id, data)
+      setEditing(null)
     } catch (error) {
       console.error('Failed to update brand:', error)
     }
@@ -61,131 +62,119 @@ export function BrandList({
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center py-8">
-        <div className="text-gray-600">Loading brands...</div>
+      <div className="mt-12 text-center">
+        <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280]">Loading</p>
+        <p className="text-sm italic font-light text-[#6B7280] mt-3">Fetching the catalog…</p>
       </div>
     )
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>Code</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Contact</TableHead>
-          <TableHead>Active</TableHead>
-          <TableHead>Exclusive</TableHead>
-          <TableHead>Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {brands.length === 0 ? (
-          <TableRow>
-            <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-              No brands found. Click &quot;Add Brand&quot; to create your first brand.
-            </TableCell>
-          </TableRow>
-        ) : (
-          brands.map((brand) => (
-            <TableRow key={brand._id}>
-              <TableCell>
-                <div>
-                  <div className="font-medium">{brand.name}</div>
-                  {brand.description && (
-                    <div className="text-sm text-gray-500 truncate max-w-xs">
-                      {brand.description}
-                    </div>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                <code className="text-sm bg-gray-100 px-2 py-1 rounded">
-                  {brand._id.slice(-6)}
-                </code>
-              </TableCell>
-              <TableCell>
-                <Badge variant={getStatusBadgeVariant(brand.status || 'active')}>
-                  {(brand.status || 'active').replace('_', ' ')}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <div className="text-sm text-gray-500">
-                  No contact info
-                </div>
-              </TableCell>
-              <TableCell>
-                <Badge variant={brand.active ? "default" : "secondary"}>
-                  {brand.active ? "Yes" : "No"}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline">
-                  N/A
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <div className="flex gap-2">
-                  <Dialog open={isEditDialogOpen && selectedBrand?._id === brand._id} onOpenChange={(open) => {
-                    setIsEditDialogOpen(open)
-                    if (!open) setSelectedBrand(null)
-                  }}>
-                    <DialogTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedBrand(brand)}
+    <>
+      <EditorialTable>
+        <EditorialTHead>
+          <EditorialTh>Name</EditorialTh>
+          <EditorialTh>Code</EditorialTh>
+          <EditorialTh>Status</EditorialTh>
+          <EditorialTh>Active</EditorialTh>
+          <EditorialTh align="right" className="w-28">Actions</EditorialTh>
+        </EditorialTHead>
+        <tbody>
+          {brands.length === 0 ? (
+            <EditorialEmptyRow colSpan={5} description="No brands match the current filters." />
+          ) : (
+            brands.map((brand) => {
+              const status = brand.status || 'active'
+              const tone = statusToneMap[status] || 'text-[#6B7280]'
+              return (
+                <EditorialTr key={brand._id}>
+                  <EditorialTd size="lg" className="pr-4">
+                    <p className="text-[14px] text-[#0A0A0A] font-medium">{brand.name}</p>
+                    {brand.description && (
+                      <EditorialMeta className="italic font-light max-w-md truncate">{brand.description}</EditorialMeta>
+                    )}
+                  </EditorialTd>
+                  <EditorialTd className="font-mono tracking-wide">{brand._id.slice(-6)}</EditorialTd>
+                  <EditorialTd>
+                    <span className={`text-[10px] uppercase tracking-[0.28em] ${tone}`}>
+                      {status.replace('_', ' ')}
+                    </span>
+                  </EditorialTd>
+                  <EditorialTd>
+                    {brand.active ? (
+                      <span className="text-[10px] uppercase tracking-[0.28em] text-[#16A34A]">Yes</span>
+                    ) : (
+                      <span className="text-[10px] uppercase tracking-[0.28em] text-[#9CA3AF]">No</span>
+                    )}
+                  </EditorialTd>
+                  <EditorialTd align="right">
+                    <div className="flex items-center justify-end gap-3 opacity-40 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => setEditing(brand)}
+                        title={`Edit ${brand.name}`}
+                        className="text-[#6B7280] hover:text-[#0A0A0A] transition-colors"
                       >
-                        <HiPencilAlt className="w-4 h-4" />
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                      <DialogHeader>
-                        <DialogTitle>Edit Brand: {brand.name}</DialogTitle>
-                      </DialogHeader>
-                      <BrandForm
-                        brand={brand}
-                        onSubmit={handleUpdateBrand}
-                        onCancel={() => {
-                          setIsEditDialogOpen(false)
-                          setSelectedBrand(null)
-                        }}
-                        loading={isSubmitting}
-                      />
-                    </DialogContent>
-                  </Dialog>
+                        <HiPencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setConfirmDelete(brand)}
+                        title={`Delete ${brand.name}`}
+                        className="text-[#6B7280] hover:text-[#DC2626] transition-colors"
+                      >
+                        <HiTrash className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </EditorialTd>
+                </EditorialTr>
+              )
+            })
+          )}
+        </tbody>
+      </EditorialTable>
 
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <HiTrash className="w-4 h-4 text-red-600" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Brand</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Are you sure you want to delete &quot;{brand.name}&quot;? This action cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => onDeleteBrand(brand)}
-                          className="bg-red-600 hover:bg-red-700"
-                        >
-                          Delete
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))
+      <EditorialModal
+        open={!!editing}
+        onOpenChange={(open) => !open && setEditing(null)}
+        kicker="Brands"
+        title={editing ? `Edit ${editing.name}` : 'Edit brand'}
+        size="xl"
+      >
+        {editing && (
+          <BrandForm
+            brand={editing}
+            onSubmit={handleUpdateBrand}
+            onCancel={() => setEditing(null)}
+            loading={isSubmitting}
+          />
         )}
-      </TableBody>
-    </Table>
+      </EditorialModal>
+
+      <EditorialModal
+        open={!!confirmDelete}
+        onOpenChange={(open) => !open && setConfirmDelete(null)}
+        kicker="Delete brand"
+        kickerTone="danger"
+        title={confirmDelete ? `Remove ${confirmDelete.name}?` : 'Remove brand?'}
+        description="This action cannot be undone."
+      >
+        <EditorialModalFooter>
+          <EditorialButton variant="ghost" onClick={() => setConfirmDelete(null)}>
+            Cancel
+          </EditorialButton>
+          <EditorialButton
+            variant="primary"
+            arrow
+            onClick={async () => {
+              if (confirmDelete) {
+                await onDeleteBrand(confirmDelete)
+                setConfirmDelete(null)
+              }
+            }}
+          >
+            Delete
+          </EditorialButton>
+        </EditorialModalFooter>
+      </EditorialModal>
+    </>
   )
 }

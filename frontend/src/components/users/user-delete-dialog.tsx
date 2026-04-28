@@ -1,25 +1,20 @@
 "use client"
 
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+} from "@/components/ui/editorial"
 
 interface User {
-  _id: string;
-  username: string;
-  email: string;
-  role: 'admin' | 'manager' | 'staff' | 'super_admin';
-  firstName?: string;
-  lastName?: string;
-  displayName?: string;
-  isActive: boolean;
+  _id: string
+  username: string
+  email: string
+  role: 'admin' | 'manager' | 'staff' | 'super_admin'
+  firstName?: string
+  lastName?: string
+  displayName?: string
+  isActive: boolean
 }
 
 interface UserDeleteDialogProps {
@@ -30,47 +25,44 @@ interface UserDeleteDialogProps {
   loading?: boolean
 }
 
-export function UserDeleteDialog({ 
-  user, 
-  open, 
-  onOpenChange, 
-  onConfirm, 
-  loading = false 
+export function UserDeleteDialog({
+  user,
+  open,
+  onOpenChange,
+  onConfirm,
+  loading = false,
 }: UserDeleteDialogProps) {
   if (!user) return null
 
-  const displayName = user.displayName || 
-    `${user.firstName || ''} ${user.lastName || ''}`.trim() || 
-    user.username
+  const displayName = user.displayName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username
+  const isElevated = user.role === 'admin' || user.role === 'super_admin'
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete User</AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to delete the user &quot;{displayName}&quot; (@{user.username})?
-            <br />
-            <br />
-            <strong>This action cannot be undone.</strong> All user data, permissions, and associated records will be permanently removed from the system.
-          </AlertDialogDescription>
-          {user.role === 'admin' || user.role === 'super_admin' ? (
-            <div className="text-amber-600 font-medium mt-2">
-              Warning: This is an {user.role.replace('_', ' ')} user with elevated permissions.
-            </div>
-          ) : null}
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={onConfirm}
-            disabled={loading}
-            className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-          >
-            {loading ? "Deleting..." : "Delete User"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <EditorialModal
+      open={open}
+      onOpenChange={onOpenChange}
+      kicker="Delete user"
+      kickerTone="danger"
+      title={`Remove ${displayName}?`}
+      description="This action cannot be undone. All user data, permissions, and associated records will be permanently removed."
+    >
+      <p className="text-[11px] text-[#9CA3AF] font-mono tracking-wide">@{user.username}</p>
+      {isElevated && (
+        <div className="mt-6 border-l-2 border-[#EA580C] bg-[#FFF7ED] px-5 py-4">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-[#EA580C]">Warning</p>
+          <p className="text-[13px] text-[#0A0A0A] mt-2">
+            This is an {user.role.replace('_', ' ')} user with elevated permissions.
+          </p>
+        </div>
+      )}
+      <EditorialModalFooter>
+        <EditorialButton variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+          Cancel
+        </EditorialButton>
+        <EditorialButton variant="primary" arrow onClick={onConfirm} disabled={loading}>
+          {loading ? 'Deleting…' : 'Delete user'}
+        </EditorialButton>
+      </EditorialModalFooter>
+    </EditorialModal>
   )
 }

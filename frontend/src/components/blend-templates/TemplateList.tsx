@@ -1,412 +1,221 @@
 "use client"
 
-import { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-// Dialog components removed - not used
-import { TemplateDeleteDialog } from './template-delete-dialog';
-// Separator component removed - not used
-import { FaPlus, FaEdit, FaTrash, FaEye } from 'react-icons/fa';
-import { ImSpinner8 } from 'react-icons/im';
-import type { BlendTemplate, TemplateFilters } from '@/types/blend';
-import { useBlendTemplates } from '@/hooks/useBlendTemplates';
-import { useAuth } from '@/hooks/useAuth';
+import { useState, useEffect, useCallback } from 'react'
+import { TemplateDeleteDialog } from './template-delete-dialog'
+import { HiPencil, HiTrash, HiEye } from 'react-icons/hi2'
+import type { BlendTemplate, TemplateFilters } from '@/types/blend'
+import { useBlendTemplates } from '@/hooks/useBlendTemplates'
+import { useAuth } from '@/hooks/useAuth'
+import {
+  EditorialTable,
+  EditorialTHead,
+  EditorialTh,
+  EditorialTr,
+  EditorialTd,
+  EditorialEmptyRow,
+  EditorialMeta,
+} from '@/components/ui/editorial'
 
 interface TemplateListProps {
-  filters: TemplateFilters;
-  templates?: BlendTemplate[];
-  loading?: boolean;
-  error?: string | null;
-  onCreateTemplate?: () => void;
-  onEditTemplate?: (template: BlendTemplate) => void;
-  onViewTemplate: (template: BlendTemplate) => void;
-  onDeleteTemplate?: (id: string) => Promise<void>;
-  canDelete?: boolean;
+  filters: TemplateFilters
+  templates?: BlendTemplate[]
+  loading?: boolean
+  error?: string | null
+  onCreateTemplate?: () => void
+  onEditTemplate?: (template: BlendTemplate) => void
+  onViewTemplate: (template: BlendTemplate) => void
+  onDeleteTemplate?: (id: string) => Promise<void>
+  canDelete?: boolean
 }
 
-export function TemplateList({ 
+export function TemplateList({
   filters,
   templates: propTemplates,
   loading: propLoading,
   error: propError,
-  onCreateTemplate, 
-  onEditTemplate, 
+  onEditTemplate,
   onViewTemplate,
   onDeleteTemplate,
-  canDelete = false
+  canDelete = false,
 }: TemplateListProps) {
-  const { user } = useAuth();
-  const isSuperAdmin = user?.role === 'super_admin';
-  const isStaff = user?.role === 'staff';
-  
-  const { 
-    templates: hookTemplates, 
-    loading: hookLoading, 
-    error: hookError, 
-    getTemplates, 
-    deleteTemplate
-  } = useBlendTemplates();
+  const { user } = useAuth()
+  const isSuperAdmin = user?.role === 'super_admin'
+  const isStaff = user?.role === 'staff'
 
-  // Use props if provided, otherwise fall back to hook values
-  const templates = propTemplates ?? hookTemplates;
-  const loading = propLoading ?? hookLoading;
-  const error = propError ?? hookError;
+  const {
+    templates: hookTemplates,
+    loading: hookLoading,
+    error: hookError,
+    getTemplates,
+    deleteTemplate,
+  } = useBlendTemplates()
 
-  const [templateToDelete, setTemplateToDelete] = useState<BlendTemplate | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const templates = propTemplates ?? hookTemplates
+  const loading = propLoading ?? hookLoading
+  const error = propError ?? hookError
 
-  // Load templates with current filters only if not using prop templates
+  const [templateToDelete, setTemplateToDelete] = useState<BlendTemplate | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
   const loadTemplates = useCallback(async () => {
     if (!propTemplates) {
       try {
-        await getTemplates(filters);
+        await getTemplates(filters)
       } catch {
-        console.error('Failed to load templates');
+        console.error('Failed to load templates')
       }
     }
-  }, [getTemplates, filters, propTemplates]);
+  }, [getTemplates, filters, propTemplates])
 
-  // Load templates on component mount and when filters change only if not using prop templates
   useEffect(() => {
-    loadTemplates();
-  }, [loadTemplates]);
+    loadTemplates()
+  }, [loadTemplates])
 
-
-  // Handle delete confirmation
   const handleDeleteTemplate = async () => {
-    if (!templateToDelete) return;
-
-    setDeleting(true);
+    if (!templateToDelete) return
+    setDeleting(true)
     try {
-      // Use the prop callback if provided, otherwise use the hook's deleteTemplate
       if (onDeleteTemplate) {
-        await onDeleteTemplate(templateToDelete._id);
+        await onDeleteTemplate(templateToDelete._id)
       } else {
-        await deleteTemplate(templateToDelete._id);
+        await deleteTemplate(templateToDelete._id)
       }
-      setTemplateToDelete(null);
+      setTemplateToDelete(null)
     } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('Failed to delete template:', errorMessage);
-      // Error will be handled by parent component
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      console.error('Failed to delete template:', errorMessage)
     } finally {
-      setDeleting(false);
+      setDeleting(false)
     }
-  };
+  }
 
-  // Format date
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-GB');
-  };
+  const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-GB')
 
-  // Get status badge
-  const getStatusBadge = (template: BlendTemplate) => {
-    if (!template.isActive) {
-      return <Badge variant="secondary">Inactive</Badge>;
-    }
-    return <Badge variant="default">Active</Badge>;
-  };
-
-  // Get usage badge
-  const getUsageBadge = (usageCount: number) => {
-    if (usageCount === 0) {
-      return <Badge variant="outline">Unused</Badge>;
-    } else if (usageCount < 5) {
-      return <Badge variant="secondary">{usageCount} uses</Badge>;
-    } else {
-      return <Badge variant="default">{usageCount} uses</Badge>;
-    }
-  };
+  const colCount = 6 + (!isStaff ? 2 : 0) + (isSuperAdmin || isStaff ? 1 : 0) + (isSuperAdmin ? 1 : 0)
 
   return (
-    <div className="space-y-6">
-
-
-      {/* Error Display */}
+    <>
       {error && (
-        <Card className="border-red-200">
-          <CardContent className="pt-6">
-            <div className="text-red-600">
-              Error: {error}
-            </div>
-          </CardContent>
-        </Card>
+        <div className="mt-6 border-l-2 border-[#DC2626] bg-[#FEF2F2] px-5 py-4">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-[#DC2626]">Error</p>
+          <p className="text-[13px] text-[#0A0A0A] mt-2">{error}</p>
+        </div>
       )}
 
-      {/* Templates List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Templates ({templates.length})</CardTitle>
-          <CardDescription>
-            {loading ? 'Loading templates...' : `${templates.length} template(s) found`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <EditorialTable>
+        <EditorialTHead>
+          <EditorialTh>Name</EditorialTh>
+          {!isStaff && <EditorialTh align="right">Ingredients</EditorialTh>}
+          <EditorialTh>Unit</EditorialTh>
+          {!isStaff && <EditorialTh align="right">Cost</EditorialTh>}
+          {(isSuperAdmin || isStaff) && <EditorialTh align="right">Selling</EditorialTh>}
+          {isSuperAdmin && <EditorialTh align="right">Profit</EditorialTh>}
+          <EditorialTh align="right">Usage</EditorialTh>
+          <EditorialTh>Status</EditorialTh>
+          <EditorialTh align="right">Updated</EditorialTh>
+          <EditorialTh align="right" className="w-32">Actions</EditorialTh>
+        </EditorialTHead>
+        <tbody>
           {loading ? (
-            <div className="flex justify-center items-center py-8">
-              <ImSpinner8 className="h-8 w-8 animate-spin" />
-            </div>
-          ) : templates.length > 0 ? (
-            <>
-              {/* Mobile View */}
-              <div className="md:hidden space-y-4">
-                {templates.map(template => (
-                  <Card key={template._id} className="p-4">
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <h3 className="font-medium">{template.name}</h3>
-                          {template.description && (
-                            <p className="text-sm text-gray-500 mt-1">
-                              {template.description}
-                            </p>
-                          )}
-                        </div>
-                        <div className="ml-2">
-                          {getStatusBadge(template)}
-                        </div>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        {!isStaff && (
-                          <div>
-                            <span className="text-gray-500">Ingredients:</span>
-                            <Badge variant="secondary" className="ml-1">
-                              {template.ingredients.length}
-                            </Badge>
-                          </div>
-                        )}
-                        <div>
-                          <span className="text-gray-500">Unit:</span>
-                          <span className="ml-1">{template.unitName}</span>
-                        </div>
-                        {!isStaff && (
-                          <div>
-                            <span className="text-gray-500">Price:</span>
-                            <span className="ml-1 font-medium">S${template.totalCost?.toFixed(2) || '0.00'}</span>
-                          </div>
-                        )}
-                        <div>
-                          <span className="text-gray-500">Usage:</span>
-                          <span className="ml-1">{template.usageCount} times</span>
-                        </div>
-                      </div>
-                      
-                      {(isSuperAdmin || isStaff) && (
-                        <div className="grid grid-cols-2 gap-2 text-sm pt-2 border-t">
-                          <div>
-                            <span className="text-gray-500">Selling Price:</span>
-                            <span className="ml-1 font-medium">S${template.sellingPrice?.toFixed(2) || '0.00'}</span>
-                          </div>
-                          {!isStaff && (
-                            <div>
-                              <span className="text-gray-500">Profit:</span>
-                              <span className={`ml-1 font-medium ${
-                                template.profit > 0 ? 'text-green-600' : 'text-red-600'
-                              }`}>
-                                S${template.profit?.toFixed(2) || '0.00'}
-                                {template.profitMargin > 0 && (
-                                  <span className="text-xs text-gray-500 ml-1">
-                                    ({template.profitMargin?.toFixed(1)}%)
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      
-                      <div className="text-xs text-gray-500">
-                        Updated: {formatDate(template.updatedAt)}
-                        {template.lastUsed && (
-                          <span className="ml-2">Last used: {formatDate(template.lastUsed)}</span>
-                        )}
-                      </div>
-                      
-                      <div className="flex gap-2 pt-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onViewTemplate(template)}
-                          className="flex-1"
-                        >
-                          <FaEye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
-                        {onEditTemplate && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => onEditTemplate(template)}
-                            className="flex-1"
-                          >
-                            <FaEdit className="h-4 w-4 mr-1" />
-                            Edit
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setTemplateToDelete(template)}
-                            className="flex-1 text-red-600 hover:text-red-700"
-                          >
-                            <FaTrash className="h-4 w-4 mr-1" />
-                            Delete
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-              
-              {/* Desktop View */}
-              <Table className="hidden md:table">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  {!isStaff && <TableHead>Ingredients</TableHead>}
-                  <TableHead>Unit</TableHead>
-                  {!isStaff && <TableHead>Price</TableHead>}
-                  {(isSuperAdmin || isStaff) && (
-                    <TableHead>Selling Price</TableHead>
-                  )}
-                  {isSuperAdmin && (
-                    <TableHead>Profit</TableHead>
-                  )}
-                  <TableHead>Usage</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Updated</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {templates.map(template => (
-                  <TableRow key={template._id}>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{template.name}</div>
-                        {template.description && (
-                          <div className="text-sm text-gray-500 truncate max-w-xs">
-                            {template.description}
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    {!isStaff && (
-                      <TableCell>
-                        <Badge variant="secondary" className="whitespace-nowrap">
-                          {template.ingredients.length} ingredient{template.ingredients.length !== 1 ? 's' : ''}
-                        </Badge>
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      <div className="text-sm">
-                        {template.unitName}
-                      </div>
-                    </TableCell>
-                    {!isStaff && (
-                      <TableCell>
-                        <div className="text-sm font-medium">
-                          S${template.totalCost?.toFixed(2) || '0.00'}
-                        </div>
-                      </TableCell>
-                    )}
-                    {(isSuperAdmin || isStaff) && (
-                      <TableCell>
-                        <div className="text-sm font-medium">
-                          S${template.sellingPrice?.toFixed(2) || '0.00'}
-                        </div>
-                      </TableCell>
-                    )}
-                    {isSuperAdmin && (
-                      <TableCell>
-                        <div className={`text-sm font-medium ${
-                          template.profit > 0 ? 'text-green-600' : 'text-red-600'
-                        }`}>
-                          ${template.profit?.toFixed(2) || '0.00'}
-                          {template.profitMargin > 0 && (
-                            <span className="text-xs text-gray-500 ml-1">
-                              ({template.profitMargin?.toFixed(1)}%)
-                            </span>
-                          )}
-                        </div>
-                      </TableCell>
-                    )}
-                    <TableCell>
-                      {getUsageBadge(template.usageCount)}
-                    </TableCell>
-                    <TableCell>
-                      {getStatusBadge(template)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {formatDate(template.updatedAt)}
-                      </div>
-                      {template.lastUsed && (
-                        <div className="text-xs text-gray-500">
-                          Last used: {formatDate(template.lastUsed)}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onViewTemplate(template)}
-                        >
-                          <FaEye className="h-4 w-4" />
-                        </Button>
-                        {onEditTemplate && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => onEditTemplate(template)}
-                          >
-                            <FaEdit className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setTemplateToDelete(template)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <FaTrash className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            </>
+            <EditorialEmptyRow colSpan={colCount} title="Loading" description="Fetching templates…" />
+          ) : templates.length === 0 ? (
+            <EditorialEmptyRow
+              colSpan={colCount}
+              description={
+                filters.search || filters.category || filters.isActive !== undefined
+                  ? 'No templates match your filters.'
+                  : 'No blend templates have been created yet.'
+              }
+            />
           ) : (
-            <div className="text-center py-8">
-              <div className="text-gray-500 mb-4">
-                {filters.search || filters.category || filters.isActive !== undefined
-                  ? 'No templates match your filters'
-                  : 'No blend templates found'
-                }
-              </div>
-              {onCreateTemplate && (
-                <Button onClick={onCreateTemplate}>
-                  <FaPlus className="mr-2 h-4 w-4" />
-                  Create Your First Template
-                </Button>
-              )}
-            </div>
+            templates.map((template) => (
+              <EditorialTr key={template._id}>
+                <EditorialTd size="lg" className="pr-4">
+                  <p className="text-[14px] text-[#0A0A0A] font-medium">{template.name}</p>
+                  {template.description && (
+                    <EditorialMeta className="italic font-light max-w-md truncate">
+                      {template.description}
+                    </EditorialMeta>
+                  )}
+                </EditorialTd>
+                {!isStaff && (
+                  <EditorialTd align="right" className="tabular-nums">
+                    {template.ingredients.length}
+                  </EditorialTd>
+                )}
+                <EditorialTd>{template.unitName || '—'}</EditorialTd>
+                {!isStaff && (
+                  <EditorialTd align="right" size="md" className="tabular-nums">
+                    S${template.totalCost?.toFixed(2) || '0.00'}
+                  </EditorialTd>
+                )}
+                {(isSuperAdmin || isStaff) && (
+                  <EditorialTd align="right" size="md" className="tabular-nums">
+                    S${template.sellingPrice?.toFixed(2) || '0.00'}
+                  </EditorialTd>
+                )}
+                {isSuperAdmin && (
+                  <EditorialTd align="right" className="tabular-nums">
+                    <span className={template.profit > 0 ? 'text-[#16A34A]' : 'text-[#DC2626]'}>
+                      ${template.profit?.toFixed(2) || '0.00'}
+                    </span>
+                    {template.profitMargin > 0 && (
+                      <EditorialMeta className="tabular-nums">{template.profitMargin?.toFixed(1)}%</EditorialMeta>
+                    )}
+                  </EditorialTd>
+                )}
+                <EditorialTd align="right">
+                  <p className="tabular-nums text-[#0A0A0A]">{template.usageCount}</p>
+                  <EditorialMeta className="italic font-light">uses</EditorialMeta>
+                </EditorialTd>
+                <EditorialTd>
+                  <span
+                    className={`text-[10px] uppercase tracking-[0.28em] ${template.isActive ? 'text-[#16A34A]' : 'text-[#9CA3AF]'}`}
+                  >
+                    {template.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                </EditorialTd>
+                <EditorialTd align="right" className="tabular-nums">
+                  <p>{formatDate(template.updatedAt)}</p>
+                  {template.lastUsed && (
+                    <EditorialMeta className="italic font-light">last: {formatDate(template.lastUsed)}</EditorialMeta>
+                  )}
+                </EditorialTd>
+                <EditorialTd align="right">
+                  <div className="flex items-center justify-end gap-3 opacity-40 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => onViewTemplate(template)}
+                      title="View"
+                      className="text-[#6B7280] hover:text-[#0A0A0A] transition-colors"
+                    >
+                      <HiEye className="h-3.5 w-3.5" />
+                    </button>
+                    {onEditTemplate && (
+                      <button
+                        onClick={() => onEditTemplate(template)}
+                        title="Edit"
+                        className="text-[#6B7280] hover:text-[#0A0A0A] transition-colors"
+                      >
+                        <HiPencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        onClick={() => setTemplateToDelete(template)}
+                        title="Delete"
+                        className="text-[#6B7280] hover:text-[#DC2626] transition-colors"
+                      >
+                        <HiTrash className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </EditorialTd>
+              </EditorialTr>
+            ))
           )}
-        </CardContent>
-      </Card>
+        </tbody>
+      </EditorialTable>
 
-      {/* Delete Confirmation Dialog */}
       <TemplateDeleteDialog
         template={templateToDelete}
         open={!!templateToDelete}
@@ -414,6 +223,6 @@ export function TemplateList({
         onConfirm={handleDeleteTemplate}
         loading={deleting}
       />
-    </div>
-  );
-} 
+    </>
+  )
+}

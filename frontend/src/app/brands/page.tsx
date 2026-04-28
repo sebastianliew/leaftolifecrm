@@ -1,18 +1,24 @@
 "use client"
 
-import React, { useState } from 'react'
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useState, useCallback, useMemo } from 'react'
 import { useBrands, useCreateBrand, useUpdateBrand, useDeleteBrand } from "@/hooks/queries/use-common-queries"
 import { BrandForm } from "@/components/brands/brand-form"
 import { BrandList } from "@/components/brands/brand-list"
 import type { BrandFormData, BrandStatus } from "@/types/brands"
-import { HiPlus, HiSearch, HiFilter } from "react-icons/hi"
+import { HiPlus, HiFunnel } from "react-icons/hi2"
+import {
+  EditorialPage,
+  EditorialMasthead,
+  EditorialStats,
+  EditorialStat,
+  EditorialSearch,
+  EditorialButton,
+  EditorialFilterRow,
+  EditorialField,
+  EditorialSelect,
+  EditorialModal,
+} from "@/components/ui/editorial"
 
-// Type for brands returned by useBrands hook
 type ApiBrand = {
   _id: string;
   name: string;
@@ -30,22 +36,24 @@ export default function BrandsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<BrandStatus | 'all'>('all')
   const [isActiveFilter, setIsActiveFilter] = useState<boolean | 'all'>('all')
+  const [showFilters, setShowFilters] = useState(false)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Filter brands on client side since TanStack Query doesn't support server-side filtering
-  const filteredBrands = brands.filter((brand: ApiBrand) => {
-    if (searchTerm && !brand.name?.toLowerCase().includes(searchTerm.toLowerCase())) {
-      return false
-    }
-    if (statusFilter !== 'all' && brand.status !== statusFilter) {
-      return false
-    }
-    if (isActiveFilter !== 'all' && brand.active !== isActiveFilter) {
-      return false
-    }
-    return true
-  })
+  const filteredBrands = useMemo(() =>
+    brands.filter((brand: ApiBrand) => {
+      if (searchTerm && !brand.name?.toLowerCase().includes(searchTerm.toLowerCase())) return false
+      if (statusFilter !== 'all' && brand.status !== statusFilter) return false
+      if (isActiveFilter !== 'all' && brand.active !== isActiveFilter) return false
+      return true
+    }), [brands, searchTerm, statusFilter, isActiveFilter])
+
+  const totalBrands = brands.length
+  const activeBrands = brands.filter((b: ApiBrand) => b.active).length
+  const inactiveBrands = totalBrands - activeBrands
+  const pendingApproval = brands.filter((b: ApiBrand) => b.status === 'pending_approval').length
+
+  const handleSearch = useCallback((term: string) => setSearchTerm(term), [])
 
   const handleCreateBrand = async (data: BrandFormData) => {
     setIsSubmitting(true)
@@ -75,116 +83,99 @@ export default function BrandsPage() {
     }
   }
 
-
   return (
-    <div className="container mx-auto py-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">Brand Management</h1>
-          <p className="text-gray-600">Manage your product brands and suppliers</p>
-        </div>
-        
-        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <HiPlus className="w-4 h-4 mr-2" />
-              Add Brand
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create New Brand</DialogTitle>
-            </DialogHeader>
-            <BrandForm
-              onSubmit={handleCreateBrand}
-              onCancel={() => setIsCreateDialogOpen(false)}
-              loading={isSubmitting}
-            />
-          </DialogContent>
-        </Dialog>
-      </div>
+    <EditorialPage>
+      <EditorialMasthead
+        kicker="Brands"
+        title="Catalog"
+        subtitle={
+          <>
+            <span className="tabular-nums">{totalBrands}</span> brand{totalBrands === 1 ? '' : 's'} on file
+          </>
+        }
+      >
+        <EditorialSearch onSearch={handleSearch} placeholder="Search brands..." />
+        <EditorialButton
+          variant={showFilters ? 'ghost-active' : 'ghost'}
+          icon={<HiFunnel className="h-3 w-3" />}
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          Filter
+        </EditorialButton>
+        <EditorialButton
+          variant="primary"
+          icon={<HiPlus className="h-3 w-3" />}
+          arrow
+          onClick={() => setIsCreateDialogOpen(true)}
+        >
+          New brand
+        </EditorialButton>
+      </EditorialMasthead>
 
-      {/* Filters */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <HiFilter className="w-5 h-5" />
-            Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Search</label>
-              <div className="relative">
-                <HiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <Input
-                  placeholder="Search brands..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Status</label>
-              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as BrandStatus | 'all')}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="discontinued">Discontinued</SelectItem>
-                  <SelectItem value="pending_approval">Pending Approval</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Active Status</label>
-              <Select value={isActiveFilter.toString()} onValueChange={(value) => setIsActiveFilter(value === 'all' ? 'all' : value === 'true')}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="true">Active Only</SelectItem>
-                  <SelectItem value="false">Inactive Only</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="flex items-end">
-              <Button className="w-full" disabled>
-                <HiSearch className="w-4 h-4 mr-2" />
-                Filters Applied
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <EditorialStats>
+        <EditorialStat index="i." label="Total brands" value={totalBrands} caption={<><span className="tabular-nums">{activeBrands}</span> active</>} />
+        <EditorialStat index="ii." label="Inactive" value={inactiveBrands} caption="not in use" />
+        <EditorialStat
+          index="iii."
+          label="Pending approval"
+          value={pendingApproval}
+          caption={pendingApproval > 0 ? 'awaiting review' : 'all clear'}
+          tone={pendingApproval > 0 ? 'warning' : 'ink'}
+        />
+        <EditorialStat
+          index="iv."
+          label="Showing"
+          value={filteredBrands.length}
+          caption="after filters"
+        />
+      </EditorialStats>
 
-      {/* Brands Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Brands ({filteredBrands.length})</CardTitle>
-          <CardDescription>
-            Manage your brand portfolio and supplier relationships
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <BrandList 
-            brands={filteredBrands}
-            loading={loading}
-            onUpdateBrand={handleUpdateBrand}
-            onDeleteBrand={handleDeleteBrand}
-            isSubmitting={isSubmitting}
-          />
-        </CardContent>
-      </Card>
-    </div>
+      {showFilters && (
+        <EditorialFilterRow columns={3}>
+          <EditorialField label="Status">
+            <EditorialSelect value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as BrandStatus | 'all')}>
+              <option value="all">All statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="discontinued">Discontinued</option>
+              <option value="pending_approval">Pending approval</option>
+            </EditorialSelect>
+          </EditorialField>
+          <EditorialField label="Active state">
+            <EditorialSelect
+              value={isActiveFilter.toString()}
+              onChange={(e) => setIsActiveFilter(e.target.value === 'all' ? 'all' : e.target.value === 'true')}
+            >
+              <option value="all">All</option>
+              <option value="true">Active only</option>
+              <option value="false">Inactive only</option>
+            </EditorialSelect>
+          </EditorialField>
+        </EditorialFilterRow>
+      )}
+
+      <BrandList
+        brands={filteredBrands}
+        loading={loading}
+        onUpdateBrand={handleUpdateBrand}
+        onDeleteBrand={handleDeleteBrand}
+        isSubmitting={isSubmitting}
+      />
+
+      <EditorialModal
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+        kicker="Brands"
+        title="New brand"
+        description="Capture the supplier or label that distinguishes this product line."
+        size="xl"
+      >
+        <BrandForm
+          onSubmit={handleCreateBrand}
+          onCancel={() => setIsCreateDialogOpen(false)}
+          loading={isSubmitting}
+        />
+      </EditorialModal>
+    </EditorialPage>
   )
 }

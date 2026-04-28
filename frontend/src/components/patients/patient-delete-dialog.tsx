@@ -1,15 +1,10 @@
 "use client"
 
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+} from "@/components/ui/editorial"
 import type { Patient } from "@/types/patient"
 
 interface PatientDeleteDialogProps {
@@ -24,28 +19,22 @@ export function PatientDeleteDialog({ patient, open, onOpenChange, onConfirm, lo
   if (!patient) return null
 
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Deactivate Patient</AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to deactivate patient{" "}
-            <strong>
-              {patient.firstName} {patient.lastName}
-            </strong>
-            ?
-            <br />
-            <br />
-            The patient will be set to inactive and hidden from default views. Their data and transaction history will be preserved.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} disabled={loading} className="bg-red-600 hover:bg-red-700">
-            {loading ? "Deactivating..." : "Deactivate Patient"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <EditorialModal
+      open={open}
+      onOpenChange={onOpenChange}
+      kicker="Deactivate patient"
+      kickerTone="danger"
+      title={`Deactivate ${patient.firstName} ${patient.lastName}?`}
+      description="The patient will be set to inactive and hidden from default views. Their data and transaction history are preserved."
+    >
+      <EditorialModalFooter>
+        <EditorialButton variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+          Cancel
+        </EditorialButton>
+        <EditorialButton variant="primary" arrow onClick={onConfirm} disabled={loading}>
+          {loading ? "Deactivating…" : "Deactivate patient"}
+        </EditorialButton>
+      </EditorialModalFooter>
+    </EditorialModal>
   )
 }

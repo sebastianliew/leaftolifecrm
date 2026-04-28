@@ -1,15 +1,10 @@
 "use client"
 
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+} from "@/components/ui/editorial"
 
 interface AppointmentBulkDeleteDialogProps {
   open: boolean
@@ -19,39 +14,31 @@ interface AppointmentBulkDeleteDialogProps {
   loading?: boolean
 }
 
-export function AppointmentBulkDeleteDialog({ 
-  open, 
-  onOpenChange, 
-  onConfirm, 
+export function AppointmentBulkDeleteDialog({
+  open,
+  onOpenChange,
+  onConfirm,
   selectedCount,
-  loading 
+  loading,
 }: AppointmentBulkDeleteDialogProps) {
+  const plural = selectedCount !== 1
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete {selectedCount} Appointment{selectedCount !== 1 ? 's' : ''}</AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to delete{" "}
-            <strong>
-              {selectedCount} appointment{selectedCount !== 1 ? 's' : ''}
-            </strong>?
-            <br />
-            <br />
-            This action cannot be undone. The selected appointment{selectedCount !== 1 ? 's' : ''} will be permanently removed from the system and cancellation notifications will be sent to the patients.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>Cancel</AlertDialogCancel>
-          <AlertDialogAction 
-            onClick={onConfirm} 
-            disabled={loading} 
-            className="bg-red-600 hover:bg-red-700"
-          >
-            {loading ? "Deleting..." : `Delete ${selectedCount} Appointment${selectedCount !== 1 ? 's' : ''}`}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <EditorialModal
+      open={open}
+      onOpenChange={onOpenChange}
+      kicker="Bulk delete"
+      kickerTone="danger"
+      title={`Remove ${selectedCount} appointment${plural ? 's' : ''}?`}
+      description={`This action cannot be undone. The selected appointment${plural ? 's' : ''} will be permanently removed and cancellation notices sent to patients.`}
+    >
+      <EditorialModalFooter>
+        <EditorialButton variant="ghost" onClick={() => onOpenChange(false)} disabled={loading}>
+          Cancel
+        </EditorialButton>
+        <EditorialButton variant="primary" arrow onClick={onConfirm} disabled={loading}>
+          {loading ? 'Deleting…' : `Delete ${selectedCount} appointment${plural ? 's' : ''}`}
+        </EditorialButton>
+      </EditorialModalFooter>
+    </EditorialModal>
   )
 }

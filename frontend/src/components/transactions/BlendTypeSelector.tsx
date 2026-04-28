@@ -3,10 +3,10 @@
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EditorialModal } from "@/components/ui/editorial";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { FaFlask, FaWrench, FaBook, FaArrowRight, FaTimes } from 'react-icons/fa';
+import { FaWrench, FaBook, FaArrowRight, FaTimes } from 'react-icons/fa';
 
 interface BlendTypeSelectorProps {
   open: boolean;
@@ -22,15 +22,14 @@ export function BlendTypeSelector({
   onSelectCustomBlend
 }: BlendTypeSelectorProps) {
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FaFlask className="h-5 w-5" />
-            Choose Blend Type
-          </DialogTitle>
-        </DialogHeader>
-        
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Blend"
+      title="Choose blend type"
+      description="Pick how to compose this blend — fixed template or fully custom."
+      size="lg"
+    >
         <div className="space-y-6">
           <p className="text-gray-600">
             Select how you want to create your blend for this transaction:
@@ -141,7 +140,6 @@ export function BlendTypeSelector({
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   );
 } 

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from 'react'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { EditorialModal } from '@/components/ui/editorial'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -293,15 +293,14 @@ export default function PrescriptionHistory({
   )
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh]">
-        <DialogHeader>
-          <DialogTitle>Prescription History</DialogTitle>
-          <DialogDescription>
-            {patient.firstName} {patient.lastName} - {versions.length} prescriptions
-          </DialogDescription>
-        </DialogHeader>
-
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Prescriptions"
+      title="History"
+      description={`${patient.firstName} ${patient.lastName} · ${versions.length} prescriptions`}
+      size="2xl"
+    >
         {/* Filters and Search */}
         <div className="space-y-4">
           <div className="flex gap-2">
@@ -385,7 +384,6 @@ export default function PrescriptionHistory({
             </div>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   )
 }

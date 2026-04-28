@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EditorialModal } from "@/components/ui/editorial";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FaSearch, FaBox, FaTag, FaExclamationTriangle, FaCheckCircle } from "react-icons/fa";
+import { FaSearch, FaTag, FaExclamationTriangle, FaCheckCircle } from "react-icons/fa";
 import { useBundles } from "@/hooks/useBundles";
 import { useUnitsQuery } from "@/hooks/queries/use-units-query";
 import type { Bundle, BundleAvailability } from "@/types/bundle";
@@ -199,14 +199,14 @@ export function BundleSelector({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FaBox className="w-5 h-5" />
-            Select Bundle
-          </DialogTitle>
-        </DialogHeader>
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && handleClose()}
+      kicker="Bundle"
+      title="Select bundle"
+      description="Pick a pre-packaged bundle to add to this transaction."
+      size="2xl"
+    >
 
         {/* Discount Notice */}
         <div className="bg-blue-50 border border-blue-200 p-3 rounded-md">
@@ -507,7 +507,6 @@ export function BundleSelector({
             Cancel
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   );
 }

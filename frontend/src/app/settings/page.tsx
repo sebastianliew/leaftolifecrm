@@ -1,13 +1,44 @@
+import {
+  EditorialPage,
+  EditorialMasthead,
+} from "@/components/ui/editorial"
+
 export default function SettingsPage() {
+  const sections = [
+    {
+      href: "/settings/consultation",
+      title: "Consultation",
+      description: "Manage consultation prices and discount presets.",
+    },
+  ]
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Settings</h1>
-      <div className="grid gap-4">
-        <a href="/settings/consultation" className="p-4 border rounded-lg hover:bg-gray-50">
-          <h2 className="text-xl font-semibold">Consultation Settings</h2>
-          <p className="text-gray-600">Manage consultation prices and discount presets</p>
-        </a>
-      </div>
-    </div>
-  );
+    <EditorialPage>
+      <EditorialMasthead
+        kicker="Settings"
+        title="Configuration"
+        subtitle="Manage workspace-level configuration."
+      />
+
+      <section className="mt-12 space-y-2">
+        {sections.map((section) => (
+          <a
+            key={section.href}
+            href={section.href}
+            className="block p-6 border-b border-[#E5E7EB] hover:bg-[#FAFAFA] transition-colors group"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280]">{section.title}</p>
+                <p className="text-[14px] text-[#0A0A0A] mt-2 italic font-light">{section.description}</p>
+              </div>
+              <span className="text-base text-[#6B7280] group-hover:text-[#0A0A0A] group-hover:translate-x-0.5 transition-all">
+                →
+              </span>
+            </div>
+          </a>
+        ))}
+      </section>
+    </EditorialPage>
+  )
 }

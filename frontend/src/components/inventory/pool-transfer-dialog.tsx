@@ -1,24 +1,20 @@
 "use client"
 
 import { useState } from "react"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import type { Product } from "@/types/inventory/product.types"
 import { getUomBehavior, validateLooseQuantity } from "@/lib/uom"
+import {
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+  EditorialField,
+  EditorialInput,
+} from "@/components/ui/editorial"
 
 interface PoolTransferDialogProps {
   product: Product | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** amount is in base units (ml, g, pieces) — NOT containers */
   onConfirm: (action: "open" | "close", amount: number) => Promise<void>
   loading?: boolean
 }
@@ -67,46 +63,53 @@ export function PoolTransferDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Manage Loose Stock — {product.name}</DialogTitle>
-          <DialogDescription>
-            Move content into the loose pool to allow partial sales, or seal it back.
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* Current pool state */}
-        <div className="grid grid-cols-2 gap-3 p-4 bg-muted/40 rounded-lg text-sm">
+    <EditorialModal
+      open={open}
+      onOpenChange={handleClose}
+      kicker="Loose pool"
+      title={`Manage ${product.name}`}
+      description="Move sealed containers into the loose pool to allow partial sales, or seal it back."
+    >
+      <div className="space-y-7">
+        <div className="grid grid-cols-2 gap-10 border-b border-[#E5E7EB] pb-6">
           <div>
-            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Sealed</p>
-            <p className="font-semibold text-lg">{sealedStock} {unit}</p>
-            {cap > 1 && <p className="text-muted-foreground text-xs">{Math.floor(sealedStock / cap)} containers</p>}
+            <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Sealed</p>
+            <p className="font-light text-[36px] leading-none tabular-nums mt-2 text-[#0A0A0A]">
+              {sealedStock}
+              <span className="text-[12px] text-[#9CA3AF] ml-1.5">{unit}</span>
+            </p>
+            {cap > 1 && (
+              <p className="text-[11px] italic font-light text-[#9CA3AF] mt-2 tabular-nums">
+                {Math.floor(sealedStock / cap)} containers
+              </p>
+            )}
           </div>
           <div>
-            <p className="text-muted-foreground text-xs uppercase tracking-wide mb-0.5">Loose Pool</p>
-            <p className="font-semibold text-lg">{looseStock} {unit}</p>
-            {cap > 1 && <p className="text-muted-foreground text-xs">{(looseStock / cap).toFixed(1)} containers worth</p>}
+            <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Loose pool</p>
+            <p className="font-light text-[36px] leading-none tabular-nums mt-2 text-[#16A34A]">
+              {looseStock}
+              <span className="text-[12px] text-[#9CA3AF] ml-1.5">{unit}</span>
+            </p>
+            {cap > 1 && (
+              <p className="text-[11px] italic font-light text-[#9CA3AF] mt-2 tabular-nums">
+                {(looseStock / cap).toFixed(1)} containers worth
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Action toggle */}
-        <div className="flex rounded-md border overflow-hidden">
+        <div className="flex border-b border-[#E5E7EB]">
           <button
-            className={`flex-1 py-2 text-sm font-medium transition-colors ${
-              action === "open"
-                ? "bg-primary text-primary-foreground"
-                : "bg-background text-muted-foreground hover:bg-muted"
+            className={`flex-1 py-3 text-[11px] uppercase tracking-[0.28em] transition-colors ${
+              action === "open" ? "text-[#0A0A0A] border-b-2 border-[#0A0A0A] -mb-[1px]" : "text-[#6B7280] hover:text-[#0A0A0A]"
             }`}
             onClick={() => { setAction("open"); setAmount("") }}
           >
             Move to loose
           </button>
           <button
-            className={`flex-1 py-2 text-sm font-medium transition-colors ${
-              action === "close"
-                ? "bg-primary text-primary-foreground"
-                : "bg-background text-muted-foreground hover:bg-muted"
+            className={`flex-1 py-3 text-[11px] uppercase tracking-[0.28em] transition-colors ${
+              action === "close" ? "text-[#0A0A0A] border-b-2 border-[#0A0A0A] -mb-[1px]" : "text-[#6B7280] hover:text-[#0A0A0A]"
             }`}
             onClick={() => { setAction("close"); setAmount("") }}
           >
@@ -114,15 +117,9 @@ export function PoolTransferDialog({
           </button>
         </div>
 
-        {/* Amount input */}
-        <div className="space-y-2">
-          <Label>
-            {action === "open"
-              ? `How much to move to loose pool (${unit})`
-              : `How much to seal back (${unit})`}
-          </Label>
-          <div className="flex items-center gap-2">
-            <Input
+        <EditorialField label={action === "open" ? `Move to loose pool (${unit})` : `Seal back (${unit})`}>
+          <div className="flex items-end gap-3">
+            <EditorialInput
               type="number"
               min={uomCfg.allowsDecimal ? uomCfg.step : 1}
               max={maxAmount}
@@ -130,29 +127,30 @@ export function PoolTransferDialog({
               value={amount}
               onChange={(e) => setAmount(e.target.value === "" ? "" : Number(e.target.value))}
               placeholder={`max ${maxAmount} ${unit}`}
-              className="flex-1"
             />
-            <span className="text-sm font-medium text-muted-foreground w-12">{unit}</span>
+            <span className="text-[10px] uppercase tracking-[0.22em] text-[#6B7280] pb-2">{unit}</span>
           </div>
           {parsedAmount > 0 && cap > 1 && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[11px] italic font-light text-[#9CA3AF] mt-2 tabular-nums">
               ≈ {(parsedAmount / cap).toFixed(2)} containers worth
             </p>
           )}
-        </div>
+        </EditorialField>
+      </div>
 
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={handleClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={loading || !parsedAmount || parsedAmount <= 0 || parsedAmount > maxAmount}
-          >
-            {loading ? "Saving..." : action === "open" ? "Move to Loose Pool" : "Seal Back"}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+      <EditorialModalFooter>
+        <EditorialButton variant="ghost" onClick={handleClose} disabled={loading}>
+          Cancel
+        </EditorialButton>
+        <EditorialButton
+          variant="primary"
+          arrow
+          onClick={handleConfirm}
+          disabled={loading || !parsedAmount || parsedAmount <= 0 || parsedAmount > maxAmount}
+        >
+          {loading ? "Saving…" : action === "open" ? "Move to loose pool" : "Seal back"}
+        </EditorialButton>
+      </EditorialModalFooter>
+    </EditorialModal>
   )
 }

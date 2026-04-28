@@ -2,12 +2,16 @@
 
 import { format } from "date-fns"
 import { CalendarIcon, X } from "lucide-react"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import type { PaymentStatus, TransactionStatus } from "@/types/transaction"
+import {
+  EditorialField,
+  EditorialSelect,
+  EditorialButton,
+} from "@/components/ui/editorial"
 
 export interface TransactionFilterValues {
   paymentStatus?: PaymentStatus | "all"
@@ -23,7 +27,7 @@ interface TransactionFiltersProps {
 }
 
 const PAYMENT_STATUS_OPTIONS: Array<{ value: PaymentStatus | "all"; label: string }> = [
-  { value: "all", label: "All Payment Status" },
+  { value: "all", label: "All payment status" },
   { value: "pending", label: "Pending" },
   { value: "paid", label: "Paid" },
   { value: "partial", label: "Partial" },
@@ -32,13 +36,13 @@ const PAYMENT_STATUS_OPTIONS: Array<{ value: PaymentStatus | "all"; label: strin
 ]
 
 const TRANSACTION_STATUS_OPTIONS: Array<{ value: TransactionStatus | "all"; label: string }> = [
-  { value: "all", label: "All Status" },
+  { value: "all", label: "All status" },
   { value: "pending", label: "Pending" },
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
   { value: "draft", label: "Draft" },
   { value: "refunded", label: "Refunded" },
-  { value: "partially_refunded", label: "Partially Refunded" },
+  { value: "partially_refunded", label: "Partially refunded" },
 ]
 
 export function TransactionFilters({
@@ -52,140 +56,104 @@ export function TransactionFilters({
     filters.dateFrom ||
     filters.dateTo
 
-  const handlePaymentStatusChange = (value: string) => {
-    onFiltersChange({
-      ...filters,
-      paymentStatus: value as PaymentStatus | "all",
-    })
-  }
-
-  const handleStatusChange = (value: string) => {
-    onFiltersChange({
-      ...filters,
-      status: value as TransactionStatus | "all",
-    })
-  }
-
-  const handleDateFromChange = (date: Date | undefined) => {
-    onFiltersChange({
-      ...filters,
-      dateFrom: date,
-    })
-  }
-
-  const handleDateToChange = (date: Date | undefined) => {
-    onFiltersChange({
-      ...filters,
-      dateTo: date,
-    })
-  }
-
   return (
-    <div className="flex flex-wrap gap-3 items-center">
-      {/* Payment Status Filter */}
-      <Select
-        value={filters.paymentStatus || "all"}
-        onValueChange={handlePaymentStatusChange}
-      >
-        <SelectTrigger className="w-[160px]">
-          <SelectValue placeholder="Payment Status" />
-        </SelectTrigger>
-        <SelectContent>
-          {PAYMENT_STATUS_OPTIONS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      {/* Transaction Status Filter */}
-      <Select
-        value={filters.status || "all"}
-        onValueChange={handleStatusChange}
-      >
-        <SelectTrigger className="w-[160px]">
-          <SelectValue placeholder="Status" />
-        </SelectTrigger>
-        <SelectContent>
-          {TRANSACTION_STATUS_OPTIONS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      {/* Date From Picker */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            className={cn(
-              "w-[140px] justify-start text-left font-normal",
-              !filters.dateFrom && "text-muted-foreground"
-            )}
-          >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            {filters.dateFrom ? format(filters.dateFrom, "dd MMM yyyy") : "From"}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={filters.dateFrom}
-            onSelect={handleDateFromChange}
-            disabled={(date) => {
-              if (date > new Date()) return true
-              if (filters.dateTo && date > filters.dateTo) return true
-              return false
-            }}
-            initialFocus
-          />
-        </PopoverContent>
-      </Popover>
-
-      {/* Date To Picker */}
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            className={cn(
-              "w-[140px] justify-start text-left font-normal",
-              !filters.dateTo && "text-muted-foreground"
-            )}
-          >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            {filters.dateTo ? format(filters.dateTo, "dd MMM yyyy") : "To"}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={filters.dateTo}
-            onSelect={handleDateToChange}
-            disabled={(date) => {
-              if (date > new Date()) return true
-              if (filters.dateFrom && date < filters.dateFrom) return true
-              return false
-            }}
-            initialFocus
-          />
-        </PopoverContent>
-      </Popover>
-
-      {/* Clear Filters Button */}
-      {hasActiveFilters && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onClearFilters}
-          className="h-10 px-3"
+    <section className="border-b border-[#E5E7EB] py-6 grid grid-cols-1 md:grid-cols-4 gap-10">
+      <EditorialField label="Payment status">
+        <EditorialSelect
+          value={filters.paymentStatus || "all"}
+          onChange={(e) => onFiltersChange({ ...filters, paymentStatus: e.target.value as PaymentStatus | "all" })}
         >
-          <X className="mr-1 h-4 w-4" />
-          Clear
-        </Button>
-      )}
-    </div>
+          {PAYMENT_STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </EditorialSelect>
+      </EditorialField>
+
+      <EditorialField label="Status">
+        <EditorialSelect
+          value={filters.status || "all"}
+          onChange={(e) => onFiltersChange({ ...filters, status: e.target.value as TransactionStatus | "all" })}
+        >
+          {TRANSACTION_STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </EditorialSelect>
+      </EditorialField>
+
+      <EditorialField label="Date from">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              className={cn(
+                "w-full justify-start text-left font-normal bg-transparent border-0 border-b border-[#E5E7EB] rounded-none px-0 py-2 h-auto hover:bg-transparent hover:border-[#0A0A0A]",
+                !filters.dateFrom && "text-[#9CA3AF]"
+              )}
+            >
+              <CalendarIcon className="mr-2 h-3 w-3 text-[#6B7280]" />
+              <span className="text-sm">
+                {filters.dateFrom ? format(filters.dateFrom, "dd MMM yyyy") : "From"}
+              </span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={filters.dateFrom}
+              onSelect={(date) => onFiltersChange({ ...filters, dateFrom: date })}
+              disabled={(date) => {
+                if (date > new Date()) return true
+                if (filters.dateTo && date > filters.dateTo) return true
+                return false
+              }}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+      </EditorialField>
+
+      <EditorialField label="Date to">
+        <div className="flex items-center gap-3">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                className={cn(
+                  "flex-1 justify-start text-left font-normal bg-transparent border-0 border-b border-[#E5E7EB] rounded-none px-0 py-2 h-auto hover:bg-transparent hover:border-[#0A0A0A]",
+                  !filters.dateTo && "text-[#9CA3AF]"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-3 w-3 text-[#6B7280]" />
+                <span className="text-sm">
+                  {filters.dateTo ? format(filters.dateTo, "dd MMM yyyy") : "To"}
+                </span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={filters.dateTo}
+                onSelect={(date) => onFiltersChange({ ...filters, dateTo: date })}
+                disabled={(date) => {
+                  if (date > new Date()) return true
+                  if (filters.dateFrom && date < filters.dateFrom) return true
+                  return false
+                }}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
+          {hasActiveFilters && (
+            <EditorialButton variant="ghost" icon={<X className="h-3 w-3" />} onClick={onClearFilters}>
+              Clear
+            </EditorialButton>
+          )}
+        </div>
+      </EditorialField>
+    </section>
   )
 }

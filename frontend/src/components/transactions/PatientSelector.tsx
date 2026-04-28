@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useEffect, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FaSearch, FaUser, FaCheck } from 'react-icons/fa';
+import { FaSearch, FaCheck } from 'react-icons/fa';
+import { EditorialModal } from "@/components/ui/editorial";
 import { ImSpinner8 } from 'react-icons/im';
 import { usePatients } from '@/hooks/usePatients';
 import type { Patient } from '@/types/patient';
@@ -93,15 +93,14 @@ export function PatientSelector({ open, onClose, onSelectPatient }: PatientSelec
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FaUser className="h-5 w-5" />
-            Select Patient
-          </DialogTitle>
-        </DialogHeader>
-
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && handleClose()}
+      kicker="Patient"
+      title="Select a patient"
+      description="Search by name, email, phone, or patient ID."
+      size="xl"
+    >
         <div className="space-y-4">
           {/* Search Input */}
           <div className="relative">
@@ -214,7 +213,6 @@ export function PatientSelector({ open, onClose, onSelectPatient }: PatientSelec
             </div>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   );
 }

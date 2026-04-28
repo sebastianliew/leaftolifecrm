@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FaUser, FaSearch, FaCrown, FaUserTie, FaUserCheck } from 'react-icons/fa';
+import { EditorialModal } from "@/components/ui/editorial";
 import { ImSpinner8 } from 'react-icons/im';
 import { useUsersQuery } from '@/hooks/queries/use-users-query';
 
@@ -103,16 +103,15 @@ export function UserSelector({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <FaUser className="w-5 h-5" />
-            Select User Account
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="flex flex-col space-y-4 flex-1 overflow-hidden">
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="User"
+      title="Switch user account"
+      description="Pick the staff member who should be attached to this transaction."
+      size="lg"
+    >
+        <div className="flex flex-col space-y-4 overflow-hidden">
           {/* Current User Display */}
           {currentUser && (
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -216,7 +215,6 @@ export function UserSelector({
             )}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   );
-} 
+}

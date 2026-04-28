@@ -1,62 +1,41 @@
-'use client';
+'use client'
 
-import { History, Package } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
-import { RestockCart } from '../../../components/inventory/RestockCart';
+import { useState } from 'react'
+import { RestockCart } from '../../../components/inventory/RestockCart'
+import { EditorialPage, EditorialMasthead, EditorialButton } from '@/components/ui/editorial'
 
 export default function RestockDashboard() {
+  const [tab, setTab] = useState<'cart' | 'history'>('cart')
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Inventory Restock</h1>
-          <p className="text-muted-foreground">
-            Build a restock cart and process products in bulk.
+    <EditorialPage>
+      <EditorialMasthead
+        kicker="Inventory · Restock"
+        title="Replenishment"
+        subtitle="Build a restock cart and process products in bulk."
+      >
+        <EditorialButton variant={tab === 'cart' ? 'ghost-active' : 'ghost'} onClick={() => setTab('cart')}>
+          Cart
+        </EditorialButton>
+        <EditorialButton variant={tab === 'history' ? 'ghost-active' : 'ghost'} onClick={() => setTab('history')}>
+          History
+        </EditorialButton>
+      </EditorialMasthead>
+
+      {tab === 'cart' && (
+        <section className="mt-8">
+          <RestockCart onProcessComplete={() => { /* no-op */ }} />
+        </section>
+      )}
+
+      {tab === 'history' && (
+        <section className="mt-8 text-center py-20">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280]">History</p>
+          <p className="text-sm italic font-light text-[#6B7280] mt-3">
+            Past restock operations and audit trails coming soon.
           </p>
-        </div>
-      </div>
-
-      <Tabs defaultValue="cart" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="cart">Cart</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="cart" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="w-5 h-5" />
-                Restock Cart
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <RestockCart onProcessComplete={() => { /* no-op */ }} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="history" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <History className="w-5 h-5" />
-                Restock History
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <History className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                <p className="text-muted-foreground">Restock history coming soon...</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  View past restock operations, batch processing results, and audit trails.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
+        </section>
+      )}
+    </EditorialPage>
+  )
 }

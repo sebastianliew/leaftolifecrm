@@ -6,8 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { HiCube } from "react-icons/hi2"
+import { EditorialModal } from '@/components/ui/editorial'
 import type { Product, UnitOfMeasurement } from '@/types/inventory'
 
 interface QuantitySelectorModalProps {
@@ -112,14 +111,14 @@ export function QuantitySelectorModal({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <HiCube className="w-5 h-5" />
-            Configure Quantities - {product?.name}
-          </DialogTitle>
-        </DialogHeader>
+    <EditorialModal
+      open={isOpen}
+      onOpenChange={(open) => !open && onClose()}
+      kicker="Sale details"
+      title={`Configure ${product?.name || 'product'}`}
+      description="Choose how to dispense this product — by individual units or by volume from the loose pool."
+      size="xl"
+    >
 
         <div className="grid grid-cols-2 gap-6 mb-6">
           <Card>
@@ -297,7 +296,6 @@ export function QuantitySelectorModal({
             Add to Transaction
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   )
 }

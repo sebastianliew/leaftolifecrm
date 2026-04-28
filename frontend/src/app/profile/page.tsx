@@ -2,29 +2,35 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { useToast } from "@/components/ui/toast"
 import { useAuth } from "@/hooks/useAuth"
 import { fetchAPI } from "@/lib/query-client"
-import { User, KeyRound, Mail, Shield, CheckCircle2, Loader2 } from "lucide-react"
+import { CheckCircle2 } from "lucide-react"
+import {
+  EditorialPage,
+  EditorialPageSkeleton,
+  EditorialMasthead,
+  EditorialButton,
+  EditorialSection,
+  EditorialField,
+  EditorialInput,
+  EditorialDefList,
+  EditorialPill,
+  EditorialNote,
+} from "@/components/ui/editorial"
 
 const ROLE_LABELS: Record<string, string> = {
-  super_admin: "Super Admin",
+  super_admin: "Super admin",
   admin: "Admin",
   manager: "Manager",
   staff: "Staff",
 }
 
-const ROLE_COLORS: Record<string, string> = {
-  super_admin: "bg-red-100 text-red-800 border-red-200",
-  admin: "bg-purple-100 text-purple-800 border-purple-200",
-  manager: "bg-blue-100 text-blue-800 border-blue-200",
-  staff: "bg-green-100 text-green-800 border-green-200",
+const ROLE_TONE: Record<string, "muted" | "ink" | "ok" | "warning" | "danger"> = {
+  super_admin: "warning",
+  admin: "ink",
+  manager: "ink",
+  staff: "muted",
 }
 
 export default function ProfilePage() {
@@ -42,22 +48,11 @@ export default function ProfilePage() {
   const [passwordSuccess, setPasswordSuccess] = useState(false)
 
   useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login")
-    }
-    if (user) {
-      setDisplayName(user.name || user.username || "")
-    }
+    if (!authLoading && !user) router.push("/login")
+    if (user) setDisplayName(user.name || user.username || "")
   }, [user, authLoading, router])
 
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-      </div>
-    )
-  }
-
+  if (authLoading) return <EditorialPageSkeleton statColumns={2} />
   if (!user) return null
 
   const handleSaveProfile = async () => {
@@ -117,138 +112,107 @@ export default function ProfilePage() {
     }
   }
 
+  const initial = (user.name || user.username || "?")[0].toUpperCase()
+
   return (
-    <div className="container mx-auto p-6 max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">My Profile</h1>
-        <p className="text-muted-foreground mt-1">Manage your account details and password</p>
-      </div>
+    <EditorialPage>
+      <EditorialMasthead
+        kicker="Profile"
+        title="My account"
+        subtitle="Manage your account details and password."
+      />
 
-      {/* Account Info */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <User className="h-4 w-4" />
-            Account Information
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="h-14 w-14 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 text-xl font-bold">
-              {(user.name || user.username || "?")[0].toUpperCase()}
-            </div>
-            <div>
-              <p className="font-semibold text-lg">{user.name || user.username}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <Badge className={`text-xs border ${ROLE_COLORS[user.role] || "bg-gray-100 text-gray-700"}`}>
-                  <Shield className="h-3 w-3 mr-1" />
-                  {ROLE_LABELS[user.role] || user.role}
-                </Badge>
-                {user.isActive && (
-                  <Badge className="text-xs bg-green-100 text-green-700 border-green-200">Active</Badge>
-                )}
-              </div>
+      <EditorialSection index="i." title="Account information">
+        <div className="flex items-center gap-6 mb-8 pb-8 border-b border-[#E5E7EB]">
+          <div className="h-16 w-16 border border-[#0A0A0A] flex items-center justify-center font-light text-[28px] text-[#0A0A0A]">
+            {initial}
+          </div>
+          <div>
+            <p className="font-light text-[28px] leading-none text-[#0A0A0A]">{user.name || user.username}</p>
+            <div className="flex items-center gap-3 mt-3">
+              <EditorialPill tone={ROLE_TONE[user.role] || 'muted'}>
+                {ROLE_LABELS[user.role] || user.role}
+              </EditorialPill>
+              {user.isActive && <EditorialPill tone="ok">Active</EditorialPill>}
             </div>
           </div>
+        </div>
 
-          <Separator />
+        <EditorialDefList
+          cols={2}
+          items={[
+            { label: 'Email', value: user.email },
+            { label: 'Username', value: <span className="font-mono tracking-wide">{user.username}</span> },
+          ]}
+        />
 
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Email</Label>
-            <div className="flex items-center gap-2 text-sm">
-              <Mail className="h-4 w-4 text-muted-foreground" />
-              {user.email}
-            </div>
+        <div className="mt-10 pt-8 border-t border-[#E5E7EB] max-w-md">
+          <EditorialField label="Display name">
+            <EditorialInput
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Your display name"
+            />
+          </EditorialField>
+          <div className="mt-4">
+            <EditorialButton
+              variant="primary"
+              arrow
+              onClick={handleSaveProfile}
+              disabled={saving || displayName.trim() === (user.name || user.username || "")}
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </EditorialButton>
           </div>
+        </div>
+      </EditorialSection>
 
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground uppercase tracking-wide">Username</Label>
-            <p className="text-sm font-mono text-muted-foreground">{user.username}</p>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <Label htmlFor="displayName">Display Name</Label>
-            <div className="flex gap-2">
-              <Input
-                id="displayName"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Your display name"
-                className="max-w-sm"
-              />
-              <Button
-                onClick={handleSaveProfile}
-                disabled={saving || displayName.trim() === (user.name || user.username || "")}
-                size="sm"
-              >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
-              </Button>
+      <EditorialSection index="ii." title="Change password">
+        {passwordSuccess && (
+          <EditorialNote tone="ok" kicker="Updated" className="mb-6 max-w-md">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-[#16A34A]" />
+              Password changed successfully.
             </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Change Password */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <KeyRound className="h-4 w-4" />
-            Change Password
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {passwordSuccess && (
-            <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2">
-              <CheckCircle2 className="h-4 w-4" />
-              Password changed successfully
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="currentPassword">Current Password</Label>
-            <Input
-              id="currentPassword"
+          </EditorialNote>
+        )}
+        <div className="max-w-md space-y-6">
+          <EditorialField label="Current password">
+            <EditorialInput
               type="password"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
               autoComplete="current-password"
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="newPassword">New Password</Label>
-            <Input
-              id="newPassword"
+          </EditorialField>
+          <EditorialField label="New password">
+            <EditorialInput
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               autoComplete="new-password"
             />
-            <p className="text-xs text-muted-foreground">Minimum 8 characters</p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm New Password</Label>
-            <Input
-              id="confirmPassword"
+            <p className="text-[10px] uppercase tracking-[0.22em] text-[#9CA3AF] mt-1">Minimum 8 characters</p>
+          </EditorialField>
+          <EditorialField label="Confirm new password">
+            <EditorialInput
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               autoComplete="new-password"
               onKeyDown={(e) => e.key === "Enter" && handleChangePassword()}
             />
-          </div>
-          <Button
+          </EditorialField>
+          <EditorialButton
+            variant="primary"
+            arrow
             onClick={handleChangePassword}
             disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
           >
-            {changingPassword ? (
-              <><Loader2 className="h-4 w-4 animate-spin mr-2" />Changing…</>
-            ) : (
-              "Change Password"
-            )}
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
+            {changingPassword ? "Changing…" : "Change password"}
+          </EditorialButton>
+        </div>
+      </EditorialSection>
+    </EditorialPage>
   )
 }

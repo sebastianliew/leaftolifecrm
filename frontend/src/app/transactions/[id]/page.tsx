@@ -1,19 +1,27 @@
 "use client"
 
-import { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ArrowLeft, FileText, Printer, AlertTriangle, Download, X, Mail, CheckCircle2 } from 'lucide-react'
 import Image from 'next/image'
+import { ArrowLeft, FileText, Printer, Download, Mail, CheckCircle2 } from 'lucide-react'
 
 import { useTransactions as useTransactionsHook } from '@/hooks/useTransactions'
 import { formatCurrency } from '@/utils/currency'
 import type { Transaction } from '@/types/transaction'
+import {
+  EditorialPage,
+  EditorialPageSkeleton,
+  EditorialErrorScreen,
+  EditorialBreadcrumb,
+  EditorialMasthead,
+  EditorialButton,
+  EditorialSection,
+  EditorialDefList,
+  EditorialPill,
+  EditorialNote,
+  EditorialModal,
+  EditorialMeta,
+} from '@/components/ui/editorial'
 
 interface GenerateInvoiceResponse {
   success: boolean
@@ -26,6 +34,14 @@ interface SendEmailResponse {
   emailSent: boolean
   recipient: string
   sentAt: string
+}
+
+const paymentToneMap: Record<string, "muted" | "ink" | "danger" | "warning" | "ok"> = {
+  paid: 'ok',
+  pending: 'warning',
+  partial: 'warning',
+  overdue: 'danger',
+  failed: 'danger',
 }
 
 export default function TransactionDetailPage() {
@@ -51,50 +67,18 @@ export default function TransactionDetailPage() {
   }, [id, getTransaction])
 
   useEffect(() => {
-    if (id) {
-      loadTransaction()
-    }
+    if (id) loadTransaction()
   }, [id, loadTransaction])
-
-  const handleGenerateInvoice = async () => {
-    if (!transaction) return
-
-    try {
-      const result = await generateInvoice(transaction._id) as GenerateInvoiceResponse
-      await loadTransaction() // Refresh to show invoice status
-      // After generation, show the preview
-      await previewInvoicePDF(result.downloadUrl)
-    } catch (err) {
-      console.error('Failed to generate invoice:', err)
-    }
-  }
-
-  const handleViewInvoice = async () => {
-    if (!transaction) return
-
-    try {
-      // Always regenerate to ensure PDF reflects current transaction data
-      const result = await generateInvoice(transaction._id) as GenerateInvoiceResponse
-      await loadTransaction() // Refresh transaction data
-      await previewInvoicePDF(result.downloadUrl)
-    } catch (err) {
-      console.error('[Invoice] Generation failed:', err)
-      setError('Failed to generate invoice. Please try again.')
-    }
-  }
 
   const previewInvoicePDF = async (downloadUrl: string) => {
     try {
-      // Get token from authToken (used by api-client)
       const token = localStorage.getItem('authToken') || localStorage.getItem('token')
       const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api'
       const fullUrl = `${apiBase.replace(/\/api$/, '')}${downloadUrl}`
 
       const response = await fetch(fullUrl, {
-        credentials: 'include', // Include cookies
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        credentials: 'include',
+        headers: { 'Authorization': `Bearer ${token}` },
       })
 
       if (!response.ok) {
@@ -114,23 +98,38 @@ export default function TransactionDetailPage() {
     }
   }
 
+  const handleGenerateInvoice = async () => {
+    if (!transaction) return
+    try {
+      const result = await generateInvoice(transaction._id) as GenerateInvoiceResponse
+      await loadTransaction()
+      await previewInvoicePDF(result.downloadUrl)
+    } catch (err) {
+      console.error('Failed to generate invoice:', err)
+    }
+  }
+
+  const handleViewInvoice = async () => {
+    if (!transaction) return
+    try {
+      const result = await generateInvoice(transaction._id) as GenerateInvoiceResponse
+      await loadTransaction()
+      await previewInvoicePDF(result.downloadUrl)
+    } catch (err) {
+      console.error('[Invoice] Generation failed:', err)
+      setError('Failed to generate invoice. Please try again.')
+    }
+  }
+
   const downloadInvoicePDF = async () => {
     if (!pdfUrl || !transaction?.invoiceNumber) return
-
-    try {
-      // Use the filename provided by the backend (virtual field extracted from invoicePath)
-      // This eliminates the need to duplicate the formatInvoiceFilename logic in frontend
-      const filename = transaction.invoiceFilename || `${transaction.invoiceNumber}.pdf`
-
-      const a = document.createElement('a')
-      a.href = pdfUrl
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-    } catch (error) {
-      console.error('[Invoice] Download failed:', error)
-    }
+    const filename = transaction.invoiceFilename || `${transaction.invoiceNumber}.pdf`
+    const a = document.createElement('a')
+    a.href = pdfUrl
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
   }
 
   const handleClosePreview = () => {
@@ -143,530 +142,407 @@ export default function TransactionDetailPage() {
 
   const handleSendInvoiceEmail = async () => {
     if (!transaction) return
-
     setEmailLoading(true)
     setError(null)
     setEmailSuccess(null)
-
     try {
       const result = await sendInvoiceEmail(transaction._id) as SendEmailResponse
-      await loadTransaction() // Refresh transaction to show email sent status
-
+      await loadTransaction()
       if (result.emailSent) {
         setEmailSuccess(`Invoice email sent successfully to ${result.recipient}`)
-        // Auto-hide success message after 5 seconds
         setTimeout(() => setEmailSuccess(null), 5000)
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to send invoice email'
-      setError(errorMessage)
+      setError(err instanceof Error ? err.message : 'Failed to send invoice email')
       console.error('Failed to send invoice email:', err)
     } finally {
       setEmailLoading(false)
     }
   }
 
-  // Cleanup blob URL on unmount
   useEffect(() => {
     return () => {
-      if (pdfUrl) {
-        window.URL.revokeObjectURL(pdfUrl)
-      }
+      if (pdfUrl) window.URL.revokeObjectURL(pdfUrl)
     }
   }, [pdfUrl])
 
-  const renderInvoiceStatus = (txn: Transaction) => {
+  const renderInvoiceStatus = (txn: Transaction): React.ReactNode => {
     if (txn.invoiceStatus === 'completed' && txn.invoiceEmailSent && txn.invoiceEmailSentAt) {
       return (
-        <div className="flex items-start gap-2">
-          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5" />
-          <div>
-            <p className="font-medium text-green-700">Email Sent</p>
-            <p className="text-xs text-gray-600">
-              {new Date(txn.invoiceEmailSentAt).toLocaleString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-              })}
-            </p>
-            {txn.invoiceEmailRecipient && (
-              <p className="text-xs text-gray-600">
-                to: {txn.invoiceEmailRecipient}
-              </p>
-            )}
-          </div>
+        <div>
+          <span className="text-[#16A34A]">Email sent</span>
+          <EditorialMeta className="tabular-nums">
+            {new Date(txn.invoiceEmailSentAt).toLocaleString('en-US', {
+              year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+            })}
+            {txn.invoiceEmailRecipient && ` · to ${txn.invoiceEmailRecipient}`}
+          </EditorialMeta>
         </div>
       )
     }
-
     if (txn.invoiceStatus === 'completed') {
-      return <p className="font-medium text-gray-600">Generated &bull; Not sent via email</p>
+      return <span className="text-[#6B7280]">Generated · not sent</span>
     }
-
     if (txn.invoiceStatus === 'failed') {
       return (
-        <div className="flex items-start gap-2">
-          <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5" />
-          <div>
-            <p className="font-medium text-red-600">Generation Failed</p>
-            {txn.invoiceError && (
-              <p className="text-xs text-gray-600">{txn.invoiceError}</p>
-            )}
-          </div>
+        <div>
+          <span className="text-[#DC2626]">Generation failed</span>
+          {txn.invoiceError && <EditorialMeta>{txn.invoiceError}</EditorialMeta>}
         </div>
       )
     }
-
-    if (txn.invoiceStatus === 'generating') {
-      return <p className="font-medium text-blue-600">Generating...</p>
-    }
-
-    return <p className="font-medium text-gray-500">Pending</p>
+    if (txn.invoiceStatus === 'generating') return <span className="text-[#6B7280]">Generating…</span>
+    return <span className="text-[#9CA3AF]">Pending</span>
   }
 
-  const getPaymentStatusColor = (status: string) => {
-    switch (status) {
-      case 'paid':
-        return 'bg-green-100 text-green-800'
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800'
-      case 'partial':
-        return 'bg-orange-100 text-orange-800'
-      case 'overdue':
-      case 'failed':
-        return 'bg-red-100 text-red-800'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
-  }
-
-  if (loading && !transaction) {
-    return (
-      <div className="container mx-auto p-6 space-y-6">
-        <Skeleton className="h-10 w-64" />
-        <Skeleton className="h-96 w-full" />
-      </div>
-    )
-  }
+  if (loading && !transaction) return <EditorialPageSkeleton />
 
   if (error || !transaction) {
     return (
-      <div className="container mx-auto p-6">
-        <Alert variant="destructive">
-          <AlertDescription>{error || 'Transaction not found'}</AlertDescription>
-        </Alert>
-        <Button onClick={() => router.push('/transactions')} className="mt-4">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Transactions
-        </Button>
-      </div>
+      <EditorialErrorScreen
+        title="Could not load transaction."
+        description={error || 'Transaction not found'}
+        onRetry={() => router.push('/transactions')}
+      />
     )
   }
 
   const totalItems = (transaction.items || []).reduce((sum, item) => sum + (item.quantity ?? 0), 0)
   const totalDiscounts = (transaction.items || []).reduce((sum, item) => sum + (item.discountAmount || 0), 0)
-  // Calculate correct total from subtotal minus discounts
   const subtotal = (transaction.items || []).reduce((sum, item) => sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)), 0)
   const calculatedTotal = subtotal - totalDiscounts - (transaction.discountAmount || 0)
+  const outstanding = calculatedTotal - (transaction.paidAmount || 0)
+  const paymentTone = paymentToneMap[transaction.paymentStatus || 'pending'] || 'muted'
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push('/transactions')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-3xl font-bold">Transaction Details</h1>
-              {transaction.status === 'draft' && (
-                <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
-                  DRAFT
-                </Badge>
-              )}
-            </div>
-            <p className="text-gray-500">{transaction.transactionNumber}</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={() => router.push('/transactions')} variant="outline">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Transactions
-          </Button>
-          {transaction.invoiceStatus === 'completed' && transaction.invoicePath ? (
-            <Button onClick={handleViewInvoice} variant="default">
-              <FileText className="mr-2 h-4 w-4" />
-              View Invoice
-            </Button>
-          ) : (
-            <Button onClick={handleGenerateInvoice} disabled={loading} variant="default">
-              <Printer className="mr-2 h-4 w-4" />
-              {transaction.invoiceStatus === 'failed' ? 'Retry Invoice' : 'Download PDF'}
-            </Button>
-          )}
-          {transaction.customerEmail && (
-            <Button
-              onClick={handleSendInvoiceEmail}
-              disabled={emailLoading}
-              variant="secondary"
-            >
-              <Mail className="mr-2 h-4 w-4" />
-              {emailLoading
-                ? 'Sending...'
-                : transaction.invoiceEmailSent
-                  ? 'Resend Email'
-                  : 'Send Email'}
-            </Button>
-          )}
-        </div>
-      </div>
+    <EditorialPage>
+      <EditorialBreadcrumb
+        segments={[
+          { label: 'Transactions', href: '/transactions' },
+          { label: transaction.transactionNumber },
+        ]}
+      />
 
-      {/* Success Message */}
+      <EditorialMasthead
+        kicker="Transaction"
+        title={transaction.transactionNumber}
+        subtitle={
+          <>
+            {new Date(transaction.transactionDate).toLocaleDateString('en-US', {
+              year: 'numeric', month: 'long', day: 'numeric',
+            })}
+            {transaction.status === 'draft' && <span className="ml-3 text-[#EA580C]">· Draft</span>}
+          </>
+        }
+      >
+        <EditorialButton
+          variant="ghost"
+          icon={<ArrowLeft className="h-3 w-3" />}
+          onClick={() => router.push('/transactions')}
+        >
+          Back
+        </EditorialButton>
+        {transaction.invoiceStatus === 'completed' && transaction.invoicePath ? (
+          <EditorialButton
+            variant="primary"
+            arrow
+            icon={<FileText className="h-3 w-3" />}
+            onClick={handleViewInvoice}
+          >
+            View invoice
+          </EditorialButton>
+        ) : (
+          <EditorialButton
+            variant="primary"
+            arrow
+            icon={<Printer className="h-3 w-3" />}
+            onClick={handleGenerateInvoice}
+            disabled={loading}
+          >
+            {transaction.invoiceStatus === 'failed' ? 'Retry invoice' : 'Generate invoice'}
+          </EditorialButton>
+        )}
+        {transaction.customerEmail && (
+          <EditorialButton
+            variant="ghost"
+            icon={<Mail className="h-3 w-3" />}
+            onClick={handleSendInvoiceEmail}
+            disabled={emailLoading}
+          >
+            {emailLoading ? 'Sending…' : transaction.invoiceEmailSent ? 'Resend email' : 'Send email'}
+          </EditorialButton>
+        )}
+      </EditorialMasthead>
+
       {emailSuccess && (
-        <Alert className="border-green-200 bg-green-50">
-          <CheckCircle2 className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-800">
-            {emailSuccess}
-          </AlertDescription>
-        </Alert>
+        <div className="mt-6">
+          <EditorialNote tone="ok" kicker="Email sent">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-[#16A34A]" />
+              {emailSuccess}
+            </div>
+          </EditorialNote>
+        </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Customer Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Customer Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <p className="text-sm text-gray-500">Name</p>
-              <p className="font-medium">{transaction.customerName}</p>
-            </div>
-            {transaction.customerEmail && (
-              <div>
-                <p className="text-sm text-gray-500">Email</p>
-                <p className="font-medium">{transaction.customerEmail}</p>
-              </div>
-            )}
-            {transaction.customerPhone && (
-              <div>
-                <p className="text-sm text-gray-500">Phone</p>
-                <p className="font-medium">{transaction.customerPhone}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <EditorialSection index="i." title="Customer">
+        <EditorialDefList
+          cols={3}
+          items={[
+            { label: 'Name', value: transaction.customerName },
+            { label: 'Email', value: transaction.customerEmail || '—', tone: transaction.customerEmail ? 'ink' : 'muted' },
+            { label: 'Phone', value: transaction.customerPhone || '—', tone: transaction.customerPhone ? 'ink' : 'muted' },
+          ]}
+        />
+      </EditorialSection>
 
-        {/* Transaction Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Transaction Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <p className="text-sm text-gray-500">Date</p>
-              <p className="font-medium">
-                {new Date(transaction.transactionDate).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Type</p>
-              <p className="font-medium capitalize">{transaction.type || 'sale'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Payment Method</p>
-              <p className="font-medium capitalize">{(transaction.paymentMethod || 'Paynow').replace('_', ' ')}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Payment Status</p>
-              <Badge className={getPaymentStatusColor(transaction.paymentStatus || 'pending')}>
-                {(transaction.paymentStatus || 'pending').toUpperCase()}
-              </Badge>
-            </div>
-            {(transaction.invoiceStatus && transaction.invoiceStatus !== 'none') && (
-              <div>
-                <p className="text-sm text-gray-500">Invoice Status</p>
-                {renderInvoiceStatus(transaction)}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <EditorialSection index="ii." title="Transaction details">
+        <EditorialDefList
+          cols={3}
+          items={[
+            {
+              label: 'Date',
+              value: new Date(transaction.transactionDate).toLocaleDateString('en-US', {
+                year: 'numeric', month: 'long', day: 'numeric',
+              }),
+            },
+            { label: 'Type', value: <span className="capitalize">{transaction.type || 'sale'}</span> },
+            {
+              label: 'Payment method',
+              value: <span className="capitalize">{(transaction.paymentMethod || 'Paynow').replace('_', ' ')}</span>,
+            },
+            {
+              label: 'Payment status',
+              value: <EditorialPill tone={paymentTone}>{(transaction.paymentStatus || 'pending').toUpperCase()}</EditorialPill>,
+            },
+            ...(transaction.invoiceStatus && transaction.invoiceStatus !== 'none'
+              ? [{ label: 'Invoice', value: renderInvoiceStatus(transaction) }]
+              : []),
+          ]}
+        />
+      </EditorialSection>
 
-      {/* Items */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Items ({totalItems} total)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {(transaction.items || []).map((item, index) => {
-              const isCustomBlend = item.itemType === 'custom_blend'
-              const isFixedBlend = item.itemType === 'fixed_blend'
-              const isBundle = item.itemType === 'bundle'
-              const blendIngredients = isCustomBlend ? item.customBlendData?.ingredients : null
-              const bundleProducts = isBundle ? item.bundleData?.bundleProducts : null
-              return (
-                <div key={index} className="flex justify-between items-start pb-4 border-b last:border-0">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium">
-                        {(isCustomBlend || isFixedBlend) && <span className="mr-1">🧪</span>}
-                        {isBundle && <span className="mr-1">📦</span>}
-                        {item.name}
-                      </p>
-                      {isCustomBlend && <Badge variant="secondary">Custom Blend</Badge>}
-                      {isFixedBlend && <Badge variant="secondary">Fixed Blend</Badge>}
-                      {isBundle && <Badge>Bundle</Badge>}
+      <EditorialSection
+        index="iii."
+        title={`Items · ${totalItems} total`}
+        actions={
+          (transaction.items || []).some(i => i.itemType === 'custom_blend' || i.itemType === 'fixed_blend') && (
+            <EditorialButton
+              variant="ghost"
+              onClick={() => router.push(`/transactions?edit=${transaction._id}`)}
+            >
+              Edit transaction
+            </EditorialButton>
+          )
+        }
+      >
+        <div className="space-y-6">
+          {(transaction.items || []).map((item, index) => {
+            const isCustomBlend = item.itemType === 'custom_blend'
+            const isFixedBlend = item.itemType === 'fixed_blend'
+            const isBundle = item.itemType === 'bundle'
+            const blendIngredients = isCustomBlend ? item.customBlendData?.ingredients : null
+            const bundleProducts = isBundle ? item.bundleData?.bundleProducts : null
+            return (
+              <div key={index} className="flex justify-between items-start pb-6 border-b border-[#E5E7EB] last:border-0 last:pb-0">
+                <div className="flex-1 pr-6">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <p className="text-[14px] text-[#0A0A0A] font-medium">{item.name}</p>
+                    {isCustomBlend && <EditorialPill>Custom blend</EditorialPill>}
+                    {isFixedBlend && <EditorialPill>Fixed blend</EditorialPill>}
+                    {isBundle && <EditorialPill tone="ink">Bundle</EditorialPill>}
+                  </div>
+                  {item.sku && <EditorialMeta className="font-mono tracking-wide">SKU · {item.sku}</EditorialMeta>}
+                  <p className="text-[12px] text-[#6B7280] mt-2 tabular-nums">
+                    {item.quantity ?? 0} × {formatCurrency(item.unitPrice ?? 0)}
+                  </p>
+                  {blendIngredients && blendIngredients.length > 0 && (
+                    <div className="mt-3 border-l-2 border-[#16A34A] pl-4 py-2">
+                      <p className="text-[10px] uppercase tracking-[0.4em] text-[#16A34A] mb-2">Ingredients</p>
+                      <ul className="space-y-1">
+                        {blendIngredients.map((ing, i) => (
+                          <li key={i} className="text-[12px] text-[#0A0A0A] tabular-nums">
+                            {ing.name} · <span className="text-[#6B7280]">{ing.quantity} {ing.unitName}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {item.customBlendData?.preparationNotes && (
+                        <p className="text-[12px] text-[#6B7280] italic font-light mt-2">
+                          {item.customBlendData.preparationNotes}
+                        </p>
+                      )}
                     </div>
-                    {item.sku && <p className="text-sm text-gray-500">SKU: {item.sku}</p>}
-                    <p className="text-sm text-gray-600">
-                      Quantity: {item.quantity ?? 0} × {formatCurrency(item.unitPrice ?? 0)}
+                  )}
+                  {bundleProducts && bundleProducts.length > 0 && (
+                    <div className="mt-3 border-l-2 border-[#0A0A0A] pl-4 py-2">
+                      <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280] mb-2">Bundle contents</p>
+                      <ul className="space-y-1">
+                        {bundleProducts.map((bp, i) => (
+                          <li key={i} className="text-[12px] text-[#0A0A0A] tabular-nums">
+                            {bp.name} · <span className="text-[#6B7280]">×{bp.quantity}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {item.discountAmount && item.discountAmount > 0 && (
+                    <p className="text-[11px] uppercase tracking-[0.28em] text-[#16A34A] mt-3 tabular-nums">
+                      Member discount · −{formatCurrency(item.discountAmount)}
                     </p>
-                    {blendIngredients && blendIngredients.length > 0 && (
-                      <div className="mt-2 pl-3 border-l-2 border-emerald-200 bg-emerald-50/50 rounded-r py-2">
-                        <p className="text-xs font-semibold text-emerald-900 mb-1">Ingredients</p>
-                        <ul className="space-y-0.5">
-                          {blendIngredients.map((ing, i) => (
-                            <li key={i} className="text-xs text-gray-700">
-                              • {ing.name} — {ing.quantity} {ing.unitName}
-                            </li>
-                          ))}
-                        </ul>
-                        {item.customBlendData?.preparationNotes && (
-                          <p className="text-xs text-gray-600 italic mt-1">
-                            Notes: {item.customBlendData.preparationNotes}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {bundleProducts && bundleProducts.length > 0 && (
-                      <div className="mt-2 pl-3 border-l-2 border-blue-200 bg-blue-50/50 rounded-r py-2">
-                        <p className="text-xs font-semibold text-blue-900 mb-1">Bundle contents</p>
-                        <ul className="space-y-0.5">
-                          {bundleProducts.map((bp, i) => (
-                            <li key={i} className="text-xs text-gray-700">
-                              • {bp.name} × {bp.quantity}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {item.discountAmount && item.discountAmount > 0 && (
-                      <p className="text-sm text-green-600 mt-1">
-                        Member Discount: -{formatCurrency(item.discountAmount)}
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold">{formatCurrency(item.totalPrice)}</p>
-                  </div>
+                  )}
                 </div>
-              )
-            })}
-          </div>
-          {(transaction.items || []).some(i => i.itemType === 'custom_blend' || i.itemType === 'fixed_blend') && (
-            <div className="mt-4 pt-4 border-t">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => router.push(`/transactions?edit=${transaction._id}`)}
-              >
-                Edit transaction (modify blends)
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <p className="text-[14px] text-[#0A0A0A] tabular-nums shrink-0">{formatCurrency(item.totalPrice)}</p>
+              </div>
+            )
+          })}
+        </div>
+      </EditorialSection>
 
-      {/* Payment Summary */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment Summary</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="flex justify-between">
-            <span className="text-gray-600">Subtotal</span>
-            <span>{formatCurrency(subtotal)}</span>
+      <EditorialSection index="iv." title="Payment summary">
+        <dl className="space-y-3 max-w-md ml-auto">
+          <div className="flex justify-between items-baseline">
+            <dt className="text-[12px] text-[#6B7280]">Subtotal</dt>
+            <dd className="text-[14px] text-[#0A0A0A] tabular-nums">{formatCurrency(subtotal)}</dd>
           </div>
           {totalDiscounts > 0 && (
-            <div className="flex justify-between text-green-600">
-              <span>Member Discounts</span>
-              <span>-{formatCurrency(totalDiscounts)}</span>
+            <div className="flex justify-between items-baseline">
+              <dt className="text-[12px] text-[#16A34A]">Member discounts</dt>
+              <dd className="text-[14px] text-[#16A34A] tabular-nums">−{formatCurrency(totalDiscounts)}</dd>
             </div>
           )}
-          {transaction.discountAmount && transaction.discountAmount > 0 && (
-            <div className="flex justify-between text-green-600">
-              <span>Additional Discount</span>
-              <span>-{formatCurrency(transaction.discountAmount)}</span>
+          {transaction.discountAmount && transaction.discountAmount > 0 ? (
+            <div className="flex justify-between items-baseline">
+              <dt className="text-[12px] text-[#16A34A]">Additional discount</dt>
+              <dd className="text-[14px] text-[#16A34A] tabular-nums">−{formatCurrency(transaction.discountAmount)}</dd>
+            </div>
+          ) : null}
+          <div className="flex justify-between items-baseline pt-3 border-t border-[#0A0A0A]">
+            <dt className="text-[10px] uppercase tracking-[0.32em] text-[#0A0A0A]">Total</dt>
+            <dd className="font-light text-[28px] leading-none tabular-nums text-[#0A0A0A]">{formatCurrency(calculatedTotal)}</dd>
+          </div>
+          <div className="flex justify-between items-baseline pt-2">
+            <dt className="text-[12px] text-[#6B7280]">Paid</dt>
+            <dd className="text-[14px] text-[#0A0A0A] tabular-nums">{formatCurrency(transaction.paidAmount || 0)}</dd>
+          </div>
+          {outstanding > 0 && (
+            <div className="flex justify-between items-baseline pt-2 border-t border-[#E5E7EB]">
+              <dt className="text-[10px] uppercase tracking-[0.28em] text-[#EA580C]">Outstanding</dt>
+              <dd className="text-[16px] tabular-nums text-[#EA580C]">{formatCurrency(outstanding)}</dd>
             </div>
           )}
-          <div className="flex justify-between text-xl font-bold pt-2 border-t">
-            <span>Total</span>
-            <span>{formatCurrency(calculatedTotal)}</span>
-          </div>
-          <div className="flex justify-between font-medium pt-2">
-            <span>Paid Amount</span>
-            <span>{formatCurrency(transaction.paidAmount || 0)}</span>
-          </div>
-        </CardContent>
-      </Card>
+        </dl>
+      </EditorialSection>
 
-      {/* Payment Required Section - Show when payment is not complete */}
       {transaction.paymentStatus && transaction.paymentStatus !== 'paid' && (
-        <Card className="border-yellow-200 bg-yellow-50">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3 mb-4">
-              <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-yellow-900 text-lg">Payment Required</h3>
-                <p className="text-yellow-800 text-sm mt-1">
-                  Outstanding Amount: {formatCurrency(calculatedTotal - (transaction.paidAmount || 0))}
+        <EditorialSection
+          index="v."
+          title="Payment required"
+          description="Kindly check the invoice and proceed with transfer once confirmed."
+        >
+          <EditorialNote tone="warning" kicker="Outstanding amount" className="mb-8">
+            <span className="font-light text-[28px] leading-none tabular-nums text-[#EA580C]">
+              {formatCurrency(outstanding)}
+            </span>
+          </EditorialNote>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280] mb-4">Option 1 · PayNow</p>
+              <div className="flex flex-col md:flex-row gap-6 items-start">
+                <div className="bg-white p-3 border border-[#E5E7EB] flex-shrink-0">
+                  <Image
+                    src="/paynow-qr-uen202527780c.jpeg"
+                    alt="PayNow QR Code – UEN 202527780C"
+                    width={150}
+                    height={150}
+                  />
+                  <p className="text-[10px] text-center text-[#6B7280] mt-2 tracking-wide">
+                    UEN 202527780C
+                  </p>
+                </div>
+                <div className="space-y-3 text-[13px]">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">UEN</p>
+                    <p className="font-mono mt-1">202527780C</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Company</p>
+                    <p className="mt-1">Leaf to Life Pte Ltd</p>
+                  </div>
+                  <p className="text-[11px] italic font-light text-[#9CA3AF]">
+                    Scan with your banking app to pay via PayNow.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.4em] text-[#6B7280] mb-4">Option 2 · Bank transfer</p>
+              <EditorialDefList
+                cols={2}
+                items={[
+                  { label: 'Account number', value: <span className="font-mono">0721361590</span> },
+                  { label: 'Account name', value: 'Leaf to Life Pte Ltd' },
+                  { label: 'Bank', value: 'DBS Bank (Singapore)' },
+                  { label: 'Swift code', value: <span className="font-mono">DBSSSGSG</span> },
+                  { label: 'Bank code', value: <span className="font-mono">7171</span> },
+                ]}
+              />
+              <div className="mt-6">
+                <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Bank address</p>
+                <p className="text-[13px] mt-1 text-[#0A0A0A]">
+                  12 Marina Boulevard, DBS Asia Central, Marina Bay Financial Centre Tower 3, Singapore 018982
                 </p>
               </div>
             </div>
-
-            <p className="text-gray-700 mb-4">
-              Kindly check the invoice and proceed with transfer once confirmed.
-            </p>
-
-            {/* PayNow Option */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <h4 className="font-semibold text-blue-900 mb-3">Option 1: PayNow</h4>
-              <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
-                {/* QR Code */}
-                <div className="bg-white p-3 rounded-lg border border-blue-300 flex-shrink-0">
-                  <Image
-                    src="/paynow-qr-uen202527780c.jpeg"
-                    alt="PayNow QR Code - UEN 202527780C"
-                    width={150}
-                    height={150}
-                    className="rounded"
-                  />
-                  <p className="text-xs text-center text-gray-600 mt-2 font-medium">
-                    UEN 202527780C, Leaf to Life Pte Ltd
-                  </p>
-                </div>
-                {/* Instructions */}
-                <div className="space-y-2 text-sm flex-1">
-                  <p className="text-gray-700">
-                    <span className="font-medium">PayNow to our UEN:</span> <span className="font-mono font-semibold">202527780C</span>
-                  </p>
-                  <p className="text-gray-700">
-                    <span className="font-medium">Company Name:</span> Leaf to Life Pte Ltd
-                  </p>
-                  <p className="text-gray-600 text-xs mt-2">
-                    Scan the QR code with your banking app to make payment via PayNow
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Bank Transfer Option */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <h4 className="font-semibold text-blue-900 mb-2">Option 2: Bank Transfer</h4>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <div>
-                  <p className="text-gray-600">Account Number:</p>
-                  <p className="font-medium font-mono">0721361590</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Account Name:</p>
-                  <p className="font-medium">Leaf to Life Pte Ltd</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Bank:</p>
-                  <p className="font-medium">DBS Bank (Singapore)</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Swift Code:</p>
-                  <p className="font-medium font-mono">DBSSSGSG</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Bank Code:</p>
-                  <p className="font-medium font-mono">7171</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-gray-600">Bank Address:</p>
-                  <p className="font-medium">12 Marina Boulevard, DBS Asia Central, Marina Bay Financial Centre Tower 3, Singapore 018982</p>
-                </div>
-              </div>
-            </div>
-
-            {/* No Refund Policy */}
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
-                <div>
-                  <h4 className="font-semibold text-red-900">NO REFUND POLICY</h4>
-                  <p className="text-red-800 text-sm mt-1">
-                    All sales are final. No refunds will be provided once payment is processed.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <p className="text-sm text-gray-700 mt-4">
-              Please share the transaction details with me once payment is made.
-            </p>
-            <p className="text-sm font-semibold text-gray-700 mt-2">
-              Note: We&apos;ll proceed to blend and arrange delivery after payment is received.
-            </p>
-
-            <p className="text-sm text-gray-600 mt-4 text-center">
-              For questions about this invoice, please contact us at <a href="mailto:customerservice@leaftolife.com.sg" className="text-blue-600 hover:underline">customerservice@leaftolife.com.sg</a> or <a href="tel:+6565389978" className="text-blue-600 hover:underline">+65 6538 9978</a>
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Notes */}
-      {transaction.notes && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Notes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-700">{transaction.notes}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* PDF Preview Dialog */}
-      <Dialog open={showPreview} onOpenChange={handleClosePreview}>
-        <DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0">
-          <DialogHeader className="px-6 py-4 border-b">
-            <div className="flex items-center justify-between">
-              <DialogTitle>Invoice Preview - {transaction?.invoiceNumber}</DialogTitle>
-              <div className="flex gap-2">
-                <Button onClick={downloadInvoicePDF} variant="outline" size="sm">
-                  <Download className="mr-2 h-4 w-4" />
-                  Download
-                </Button>
-                <Button onClick={handleClosePreview} variant="ghost" size="sm">
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </DialogHeader>
-          <div className="flex-1 overflow-hidden">
-            {pdfUrl && (
-              <iframe
-                src={pdfUrl}
-                className="w-full h-full border-0"
-                title="Invoice Preview"
-              />
-            )}
           </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+
+          <EditorialNote tone="danger" kicker="No refund policy" className="mt-10">
+            All sales are final. No refunds will be provided once payment is processed.
+          </EditorialNote>
+
+          <p className="text-[12px] text-[#6B7280] mt-6 italic font-light">
+            Please share the transaction details once payment is made. We&apos;ll proceed to blend and arrange
+            delivery after payment is received.
+          </p>
+
+          <p className="text-[11px] uppercase tracking-[0.28em] text-[#6B7280] mt-4 text-center">
+            Questions? Contact{' '}
+            <a href="mailto:customerservice@leaftolife.com.sg" className="text-[#0A0A0A] hover:underline normal-case tracking-normal">
+              customerservice@leaftolife.com.sg
+            </a>{' '}
+            or{' '}
+            <a href="tel:+6565389978" className="text-[#0A0A0A] hover:underline normal-case tracking-normal">
+              +65 6538 9978
+            </a>
+          </p>
+        </EditorialSection>
+      )}
+
+      {transaction.notes && (
+        <EditorialSection title="Notes">
+          <p className="text-[14px] text-[#0A0A0A] italic font-light leading-relaxed">{transaction.notes}</p>
+        </EditorialSection>
+      )}
+
+      <EditorialModal
+        open={showPreview}
+        onOpenChange={(open) => !open && handleClosePreview()}
+        kicker="Invoice"
+        title={`Preview · ${transaction?.invoiceNumber || ''}`}
+        size="2xl"
+      >
+        <div className="flex items-center justify-end gap-2 mb-4 -mt-2">
+          <EditorialButton variant="ghost" icon={<Download className="h-3 w-3" />} onClick={downloadInvoicePDF}>
+            Download
+          </EditorialButton>
+        </div>
+        <div className="h-[70vh] overflow-hidden border border-[#E5E7EB]">
+          {pdfUrl && (
+            <iframe src={pdfUrl} className="w-full h-full border-0" title="Invoice Preview" />
+          )}
+        </div>
+      </EditorialModal>
+    </EditorialPage>
   )
 }

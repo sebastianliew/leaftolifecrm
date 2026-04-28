@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EditorialModal } from "@/components/ui/editorial";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { FaSearch, FaFlask, FaCheck, FaTimes } from 'react-icons/fa';
+import { FaSearch, FaCheck, FaTimes } from 'react-icons/fa';
 import { ImSpinner8 } from 'react-icons/im';
 import type { BlendTemplate } from '@/types/blend';
 import type { TransactionItem } from '@/types/transaction';
@@ -136,14 +136,14 @@ export function FixedBlendSelector({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col overflow-hidden">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="flex items-center gap-2">
-            <FaFlask className="h-5 w-5" />
-            {isEditing ? 'Edit Fixed Blend' : 'Select Fixed Blend Template'}
-          </DialogTitle>
-        </DialogHeader>
+    <EditorialModal
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      kicker="Fixed blend"
+      title={isEditing ? 'Edit fixed blend' : 'Select fixed blend template'}
+      description="Pick a saved formulation to apply to this transaction."
+      size="2xl"
+    >
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 overflow-y-auto">
           {/* Left Column - Blend List */}
@@ -332,7 +332,6 @@ export function FixedBlendSelector({
             Cancel
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+    </EditorialModal>
   );
 } 

@@ -9,15 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination"
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+  EditorialModal,
+  EditorialModalFooter,
+  EditorialButton,
+} from "@/components/ui/editorial"
 import { usePatients } from "@/hooks/usePatients"
 import type { Patient, PatientFormData } from "@/types/patient"
 import { HiSearch, HiFilter, HiRefresh, HiTrash } from "react-icons/hi"
@@ -459,30 +454,27 @@ export default function MembershipsPage() {
         </CardContent>
       </Card>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!patientToDelete} onOpenChange={(open) => !open && handleDeleteCancel()}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Patient</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to deactivate{' '}
-              <span className="font-semibold">
-                {patientToDelete?.firstName} {patientToDelete?.lastName}
-              </span>
-              ? The patient will be set to inactive and hidden from default views.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleDeleteCancel}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <EditorialModal
+        open={!!patientToDelete}
+        onOpenChange={(open) => !open && handleDeleteCancel()}
+        kicker="Deactivate patient"
+        kickerTone="danger"
+        title={
+          patientToDelete
+            ? `Deactivate ${patientToDelete.firstName} ${patientToDelete.lastName}?`
+            : 'Deactivate patient?'
+        }
+        description="The patient will be set to inactive and hidden from default views. Their data and transaction history are preserved."
+      >
+        <EditorialModalFooter>
+          <EditorialButton variant="ghost" onClick={handleDeleteCancel}>
+            Cancel
+          </EditorialButton>
+          <EditorialButton variant="primary" arrow onClick={handleDeleteConfirm}>
+            Deactivate
+          </EditorialButton>
+        </EditorialModalFooter>
+      </EditorialModal>
     </div>
   )
 }
