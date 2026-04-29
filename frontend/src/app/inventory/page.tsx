@@ -286,6 +286,7 @@ export default function InventoryPage() {
         status: 'active',
         canSellLoose: data.canSellLoose,
         containerCapacity: data.containerCapacity,
+        discountFlags: data.discountFlags,
       }) as unknown as { _id: string }
 
       // If user opened containers during creation, do the pool transfer immediately

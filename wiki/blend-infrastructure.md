@@ -235,3 +235,16 @@ Ingredients saved before 2026-04-24 have no `sellingPricePerUnit` field. The fal
 - Wiki: [[controller-conventions]] — response-shape rules this controller doesn't fully follow.
 - Graphify community: `BlendTemplateService.ts` (42 nodes, cohesion 0.07 — flagged for split) — see `graphify-out/obsidian/_COMMUNITY_BlendTemplateService_ts.md`.
 - Existing tests: `backend/__tests__/unit/services/blendCost.test.ts` — pins the per-unit cost invariant.
+
+## 8. Custom blend invoice pricing backstop
+
+> [!info] Added 2026-04-29 after the "herb dampness $12 vs $31.25" invoice report
+
+The old custom-blend creator defaulted new blends to **margin pricing** with `marginPercent = 0`. For the screenshot case, that meant the saved transaction line was priced at the ingredient **cost** total (`$12.00`), while the UI separately displayed the ingredient **selling-price** total (`$31.25`). Invoices were not wrong independently: [[invoiceGenerator.ts]] prints the saved transaction item `unitPrice`, so it faithfully printed the underpriced custom-blend line.
+
+The fix is deliberately two-layered:
+
+1. `frontend/src/components/transactions/CustomBlendCreator.tsx` defaults new blends to **Sum of Selling Prices**, shows the final saved selling price prominently, removes the staff-facing margin calculator, and keeps existing edited blends in manual mode so historical sale prices do not drift.
+2. `backend/controllers/transactions.controller.ts` now has a legacy-payload backstop. If a custom blend arrives with `marginPercent = 0`, `unitPrice` equal to recalculated ingredient cost, and a higher `sellingPricePerUnit` sum is available, the server corrects `unitPrice`/`totalPrice` to the selling-price sum before saving and before async invoice generation.
+
+Guard: `backend/__tests__/integration/discount-flags-http-stress.test.ts` includes the exact 50ml + 25ml + 25ml payload: cost total `$12.00`, selling total `$31.25`, and asserts the saved custom-blend line is `$31.25`.

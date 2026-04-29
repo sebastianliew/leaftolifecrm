@@ -29,6 +29,9 @@ const productSchema = z.object({
   bundleInfo: z.string().optional(),
   bundlePrice: z.number().min(0, "Bundle price must be positive").optional(),
   category: z.string().min(1, "Category is required"),
+  discountableForAll: z.boolean().optional(),
+  discountableForMembers: z.boolean().optional(),
+  discountableInBlends: z.boolean().optional(),
 }).refine(
   (data) => !data.canSellLoose || (data.containerCapacity !== undefined && data.containerCapacity > 1),
   {
@@ -56,6 +59,11 @@ export interface EditProductSubmitData {
   bundlePrice?: number
   hasBundle: boolean
   status: string
+  discountFlags?: {
+    discountableForAll?: boolean
+    discountableForMembers?: boolean
+    discountableInBlends?: boolean
+  }
 }
 
 interface EditProductModalProps {
@@ -196,7 +204,10 @@ export function EditProductModal({
         currentStock: product.currentStock || 0,
         bundleInfo: product.bundleInfo?.hasBundle ? "Yes" : "",
         bundlePrice: product.bundleInfo?.bundlePrice || 0,
-        category: product.category?._id || product.category?.id || ""
+        category: product.category?._id || product.category?.id || "",
+        discountableForAll: product.discountFlags?.discountableForAll !== false,
+        discountableForMembers: product.discountFlags?.discountableForMembers !== false,
+        discountableInBlends: product.discountFlags?.discountableInBlends === true,
       }
 
       reset(formData)
@@ -237,6 +248,11 @@ export function EditProductModal({
         bundlePrice: showBundlePrice ? data.bundlePrice : undefined,
         hasBundle: !!showBundlePrice,
         status: 'active',
+        discountFlags: {
+          discountableForAll: data.discountableForAll ?? true,
+          discountableForMembers: data.discountableForMembers ?? true,
+          discountableInBlends: data.discountableInBlends ?? false,
+        },
       }
 
       await onSubmit(transformedData)
@@ -512,6 +528,50 @@ export function EditProductModal({
                       ${(sellVal / cap).toFixed(4)} per {unitLabel}
                     </p>
                   )}
+                </div>
+              </div>
+
+              {/* ── Discount eligibility ── */}
+              <div className="mt-10 pt-8 border-t border-[#E5E7EB] space-y-5">
+                <p className="text-[10px] uppercase tracking-[0.3em] text-[#6B7280]">Discount eligibility</p>
+
+                <div className="flex items-center justify-between">
+                  <div className="max-w-md">
+                    <p className="leaf-display text-[16px] text-[#0A0A0A] italic font-light">Discountable (any kind)</p>
+                    <p className="text-[11px] text-[#6B7280] mt-1 leaf-body leading-relaxed">
+                      When off, this product blocks <em>every</em> discount — manual line, member auto-applied, and bill-level. Use for items you never want discounted (e.g. lab tests).
+                    </p>
+                  </div>
+                  <Switch
+                    checked={watch('discountableForAll') !== false}
+                    onCheckedChange={(checked) => setValue('discountableForAll', checked)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="max-w-md">
+                    <p className="leaf-display text-[16px] text-[#0A0A0A] italic font-light">Eligible for member discounts</p>
+                    <p className="text-[11px] text-[#6B7280] mt-1 leaf-body leading-relaxed">
+                      Auto-applies the patient&rsquo;s membership discount on this product.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={watch('discountableForMembers') !== false}
+                    onCheckedChange={(checked) => setValue('discountableForMembers', checked)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="max-w-md">
+                    <p className="leaf-display text-[16px] text-[#0A0A0A] italic font-light">Discountable in custom blends</p>
+                    <p className="text-[11px] text-[#6B7280] mt-1 leaf-body leading-relaxed">
+                      Reserved for future use — not currently enforced when this product is used as a blend ingredient.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={watch('discountableInBlends') === true}
+                    onCheckedChange={(checked) => setValue('discountableInBlends', checked)}
+                  />
                 </div>
               </div>
             </div>

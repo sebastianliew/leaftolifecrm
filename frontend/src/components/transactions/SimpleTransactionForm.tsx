@@ -101,7 +101,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               _id: productId,
               discountFlags: {
                 discountableForMembers: true,
-                discountableForAll: false,
+                discountableForAll: true,
                 discountableInBlends: false
               }
             } as Partial<Product> as Product;
@@ -601,12 +601,13 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     let productForDiscount = item.product;
     
     if (item.itemType === 'fixed_blend' && !item.product) {
-      // Create synthetic product for fixed blend discount calculation
+      // Synthetic product for fixed-blend discount eligibility — fixed blends are
+      // discountable by default; the real product (if any) overrides via lookup.
       productForDiscount = {
         _id: item.productId || '',
         discountFlags: {
-          discountableForMembers: true, // Fixed blends are eligible for member discounts
-          discountableForAll: false,
+          discountableForMembers: true,
+          discountableForAll: true,
           discountableInBlends: false
         }
       } as Partial<Product> as Product;
@@ -703,7 +704,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         } else if (item.itemType === 'fixed_blend' && !product) {
           product = {
             _id: item.productId || '',
-            discountFlags: { discountableForMembers: true, discountableForAll: false, discountableInBlends: false }
+            discountFlags: { discountableForMembers: true, discountableForAll: true, discountableInBlends: false }
           } as Partial<Product> as Product;
         }
 
@@ -1001,7 +1002,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
             } else if (item.itemType === 'fixed_blend' && !productForDiscount) {
               productForDiscount = {
                 _id: item.productId || '',
-                discountFlags: { discountableForMembers: true, discountableForAll: false, discountableInBlends: false }
+                discountFlags: { discountableForMembers: true, discountableForAll: true, discountableInBlends: false }
               } as Partial<Product> as Product;
             }
 
@@ -1445,7 +1446,9 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                             {(item.itemType === 'product' || item.itemType === 'fixed_blend') &&
                              !item.isService && item.saleType !== 'volume' && (
                               <p className="text-[10px] uppercase tracking-[0.22em] text-[#9CA3AF] mt-1">
-                                {item.product?.discountFlags?.discountableForMembers === false
+                                {item.product?.discountFlags?.discountableForAll === false
+                                  ? 'Non-discountable'
+                                  : item.product?.discountFlags?.discountableForMembers === false
                                   ? 'Not eligible'
                                   : 'No discount'}
                               </p>

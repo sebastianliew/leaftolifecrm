@@ -14,7 +14,7 @@ import type { FeaturePermissions } from '../lib/permissions/types.js';
 import { createAuditLog } from '../models/AuditLog.js';
 import { transactionInventoryService } from '../services/TransactionInventoryService.js';
 import { AppError } from '../middlewares/errorHandler.middleware.js';
-import { computeUnitPrice, safeContainerCapacity, perUnitCost } from '../utils/pricingUtils.js';
+import { computeUnitPrice, safeContainerCapacity, perUnitCost, perUnitSellingPrice } from '../utils/pricingUtils.js';
 import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 import { normalizeTransactionForPayment, formatInvoiceFilename } from '../utils/transactionUtils.js';
 
@@ -24,6 +24,37 @@ import { DiscountValidationService } from '../services/DiscountValidationService
 import { transactionCalculationService } from '../services/TransactionCalculationService.js';
 
 const permissionService = PermissionService.getInstance();
+
+type CustomBlendIngredientLike = {
+  productId: string;
+  quantity: number;
+  costPerUnit?: number;
+  sellingPricePerUnit?: number;
+};
+
+type CustomBlendItemLike = {
+  name?: string;
+  quantity?: number;
+  unitPrice: number;
+  totalPrice?: number;
+  customBlendData: {
+    ingredients: CustomBlendIngredientLike[];
+    totalIngredientCost?: number;
+    marginPercent?: number;
+  };
+};
+
+function shouldCorrectLegacyCostPricedBlend(
+  item: CustomBlendItemLike,
+  totalIngredientCost: number,
+  totalIngredientSellingPrice: number
+): boolean {
+  const marginPercent = item.customBlendData.marginPercent ?? 0;
+  const isZeroMarginCostPrice = Math.abs(marginPercent) < 0.0001
+    && Math.abs((item.unitPrice ?? 0) - totalIngredientCost) < 0.01;
+
+  return isZeroMarginCostPrice && totalIngredientSellingPrice > totalIngredientCost + 0.01;
+}
 
 // ========================================================================
 // CALCULATE TRANSACTION (Preview endpoint)
@@ -567,18 +598,35 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
           const ingredientMap = new Map(ingredientProducts.map((p) => [String(p._id), p]));
 
           let totalIngredientCost = 0;
+          let totalIngredientSellingPrice = 0;
           for (const ing of item.customBlendData.ingredients) {
             const product = ingredientMap.get(ing.productId);
             if (product) {
               // Per-base-unit cost from product.costPrice ÷ containerCapacity.
               // Falls back to 0 rather than sellingPrice — see pricingUtils docstring.
               const unitCost = perUnitCost(product as Parameters<typeof perUnitCost>[0]) ?? 0;
+              const unitSellingPrice = perUnitSellingPrice(product as Parameters<typeof perUnitSellingPrice>[0])
+                ?? ing.sellingPricePerUnit
+                ?? 0;
               ing.costPerUnit = unitCost;
+              ing.sellingPricePerUnit = unitSellingPrice;
               totalIngredientCost += ing.quantity * unitCost;
+              totalIngredientSellingPrice += ing.quantity * unitSellingPrice;
+            } else {
+              totalIngredientSellingPrice += ing.quantity * (ing.sellingPricePerUnit ?? 0);
             }
           }
 
           item.customBlendData.totalIngredientCost = Math.round(totalIngredientCost * 100) / 100;
+          const roundedSellingSum = Math.round(totalIngredientSellingPrice * 100) / 100;
+
+          // Backstop for old/cached frontends: the previous custom-blend UI defaulted to
+          // margin=0 and saved the ingredient COST as the customer-facing price, while
+          // showing the higher sum of ingredient selling prices above it.
+          if (shouldCorrectLegacyCostPricedBlend(item, item.customBlendData.totalIngredientCost, roundedSellingSum)) {
+            item.unitPrice = roundedSellingSum;
+            item.totalPrice = roundedSellingSum * (item.quantity || 1) - (item.discountAmount || 0);
+          }
 
           // Warn if selling price is below ingredient cost (don't block — staff may intentionally discount)
           if (item.unitPrice < item.customBlendData.totalIngredientCost) {
@@ -604,9 +652,10 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
             // Only apply to eligible item types
             if (item.itemType !== 'product' && item.itemType !== 'fixed_blend') continue;
 
-            // Check product discount flags
+            // Check product discount flags — either flag false blocks the auto-applied discount
             if (item.productId && /^[a-fA-F0-9]{24}$/.test(item.productId)) {
-              const discountProduct = await Product.findById(item.productId).select('discountFlags').lean() as { discountFlags?: { discountableForMembers?: boolean } } | null;
+              const discountProduct = await Product.findById(item.productId).select('discountFlags').lean() as { discountFlags?: { discountableForAll?: boolean; discountableForMembers?: boolean } } | null;
+              if (discountProduct?.discountFlags?.discountableForAll === false) continue;
               if (discountProduct?.discountFlags?.discountableForMembers === false) continue;
             }
 

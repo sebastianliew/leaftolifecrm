@@ -100,9 +100,11 @@ export class DiscountService {
     customer: Customer,
     options?: DiscountOptions
   ): DiscountResult {
+    const discountableForAll = product.discountFlags?.discountableForAll !== false
     const discountableForMembers = product.discountFlags?.discountableForMembers !== false
     const isEligible =
       customer.discountRate > 0 &&
+      discountableForAll &&
       discountableForMembers &&
       (options?.itemType === 'product' || options?.itemType === 'fixed_blend')
 

@@ -31,6 +31,9 @@ const productSchema = z.object({
   bundleInfo: z.string().optional(),
   bundlePrice: z.number().min(0, "Bundle price must be positive").optional(),
   category: z.string().min(1, "Category is required"),
+  discountableForAll: z.boolean().optional(),
+  discountableForMembers: z.boolean().optional(),
+  discountableInBlends: z.boolean().optional(),
 }).refine(
   (data) => !data.canSellLoose || (data.containerCapacity !== undefined && data.containerCapacity > 1),
   {
@@ -58,6 +61,11 @@ export interface AddProductSubmitData {
   bundlePrice?: number
   hasBundle: boolean
   initialContainersToOpen?: number
+  discountFlags?: {
+    discountableForAll?: boolean
+    discountableForMembers?: boolean
+    discountableInBlends?: boolean
+  }
 }
 
 interface AddProductModalProps {
@@ -129,7 +137,10 @@ export function AddProductModal({
       currentStock: 0,
       bundleInfo: "",
       bundlePrice: undefined,
-      category: ""
+      category: "",
+      discountableForAll: true,
+      discountableForMembers: true,
+      discountableInBlends: false,
     }
   })
 
@@ -172,6 +183,11 @@ export function AddProductModal({
         hasBundle: !!showBundlePrice,
         // containersToOpen always stores base units — no mode conversion needed
         initialContainersToOpen: (data.canSellLoose && containersToOpen) ? Number(containersToOpen) : 0,
+        discountFlags: {
+          discountableForAll: data.discountableForAll ?? true,
+          discountableForMembers: data.discountableForMembers ?? true,
+          discountableInBlends: data.discountableInBlends ?? false,
+        },
       }
 
       await onSubmit(transformedData)
@@ -557,6 +573,50 @@ export function AddProductModal({
               </div>
             )
           })()}
+
+          {/* Discount eligibility */}
+          <div className="space-y-3 rounded border p-3">
+            <p className="text-sm font-medium">Discount eligibility</p>
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm">Discountable (any kind)</p>
+                <p className="text-xs text-muted-foreground">
+                  When off, blocks every discount — manual line, member auto-applied, and bill-level.
+                </p>
+              </div>
+              <Switch
+                checked={watch('discountableForAll') !== false}
+                onCheckedChange={(checked) => setValue('discountableForAll', checked)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm">Eligible for member discounts</p>
+                <p className="text-xs text-muted-foreground">
+                  Auto-applies the patient&rsquo;s membership discount.
+                </p>
+              </div>
+              <Switch
+                checked={watch('discountableForMembers') !== false}
+                onCheckedChange={(checked) => setValue('discountableForMembers', checked)}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm">Discountable in custom blends</p>
+                <p className="text-xs text-muted-foreground">
+                  Reserved — not currently enforced when this product is used as an ingredient.
+                </p>
+              </div>
+              <Switch
+                checked={watch('discountableInBlends') === true}
+                onCheckedChange={(checked) => setValue('discountableInBlends', checked)}
+              />
+            </div>
+          </div>
 
           {/* Stock Information */}
           {(() => {

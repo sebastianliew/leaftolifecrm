@@ -1,16 +1,14 @@
 "use client"
 
 import { useState, useEffect, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { EditorialModal } from "@/components/ui/editorial";
+import { EditorialButton, EditorialModal, EditorialModalFooter } from "@/components/ui/editorial";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
 import { FaPlus, FaTrash, FaSearch, FaCheck, FaTimes, FaExclamationTriangle, FaCalculator, FaClipboardList } from 'react-icons/fa';
 import { ImSpinner8 } from 'react-icons/im';
 import type { Product } from '@/types/inventory';
@@ -18,8 +16,6 @@ import type { UnitOfMeasurement } from '@/types/inventory';
 import type { 
   BlendIngredient,
   ValidationResult,
-  CostCalculation,
-  PricingSuggestion,
   CustomBlendData
 } from '@/types/blend';
 
@@ -65,11 +61,11 @@ export function CustomBlendCreator({
   const [blendName, setBlendName] = useState('');
   const [preparationNotes, setPreparationNotes] = useState('');
   const [ingredients, setIngredients] = useState<(BlendIngredient & { sellingPricePerUnit?: number })[]>([]);
-  const [marginPercent, setMarginPercent] = useState(0);
-  const [finalPrice, setFinalPrice] = useState<string>('');
-  const [pricingMode, setPricingMode] = useState<'margin' | 'manual'>('margin');
+  // Default pricing mode for NEW blends is 'sellingSum' (Σ ingredient selling
+  // prices) — matches how clinic staff price ad-hoc blends and avoids the
+  // 2026-04-28 incident where margin=0 silently saved at cost.
+  const [pricingMode, setPricingMode] = useState<'manual' | 'sellingSum'>('sellingSum');
   const [manualPrice, setManualPrice] = useState<string>('');
-  const [isUpdatingPrice, setIsUpdatingPrice] = useState(false);
   const [_isLoadingEditData, setIsLoadingEditData] = useState(false);
 
   // Track if form has been initialized for current dialog session
@@ -123,21 +119,12 @@ export function CustomBlendCreator({
           };
         }));
 
-        // Calculate and restore the original margin ratio so price recalculates with fresh ingredient costs
-        const oldTotalIngredientCost = blendData.totalIngredientCost || 0;
         const oldUnitPrice = editingBlend.unitPrice || 0;
 
-        if (oldTotalIngredientCost > 0 && oldUnitPrice > 0) {
-          // Calculate what margin was used: margin = ((price / cost) - 1) * 100
-          const calculatedMargin = ((oldUnitPrice / oldTotalIngredientCost) - 1) * 100;
-          setMarginPercent(Math.round(calculatedMargin));
-        } else if (blendData.marginPercent) {
-          // Fallback: use stored margin if available
-          setMarginPercent(blendData.marginPercent);
-        }
-
-        // Don't set finalPrice from old unitPrice - let margin-based pricingSuggestion recalculate
-        // with fresh ingredient prices. This ensures the final price reflects current inventory costs.
+        // Editing an existing blend keeps the saved price as-is via manual mode
+        // — the new sellingSum default is for *new* blends only.
+        setPricingMode('manual');
+        setManualPrice(oldUnitPrice ? oldUnitPrice.toFixed(2) : '');
         
         setIsLoadingEditData(false);
       }, 300); // Small delay to show loading state
@@ -146,13 +133,14 @@ export function CustomBlendCreator({
       setBlendName('');
       setPreparationNotes('');
       setIngredients([]);
-      setMarginPercent(0);
-      setFinalPrice('');
+      setManualPrice('');
+      setPricingMode('sellingSum');
       setIsLoadingEditData(false);
     } else if (editingBlend) {
       // Fallback: populate with basic item data if customBlendData is missing
       setBlendName(editingBlend.name || 'Custom Blend')
-      setFinalPrice(editingBlend.unitPrice ? editingBlend.unitPrice.toString() : '')
+      setManualPrice(editingBlend.unitPrice ? editingBlend.unitPrice.toFixed(2) : '')
+      setPricingMode('manual')
       setIngredients([]) // We can't restore ingredients without customBlendData
       setPreparationNotes('Note: Original blend data not available for editing')
       setIsLoadingEditData(false)
@@ -162,48 +150,11 @@ export function CustomBlendCreator({
     hasInitializedRef.current = true;
   }, [open, editingBlend, products]);
 
-  // Cost-based pricing: sum ingredient cost prices, apply margin markup.
-  const calculateCost = async (ingredients: BlendIngredient[], margin: number) => {
-    const totalCost = ingredients.reduce((sum, ing) => {
-      return sum + (ing.quantity * (ing.costPerUnit || 0));
-    }, 0);
-
-    const markupAmount = totalCost * (margin / 100);
-    const suggestedPrice = totalCost + markupAmount;
-    const minimumPrice = totalCost * 1.1; // 10% minimum markup
-
-    return {
-      cost: {
-        totalCost,
-        breakdown: ingredients.map(ing => ({
-          ingredientId: ing.productId,
-          ingredientName: ing.name,
-          quantity: ing.quantity,
-          unitCost: ing.costPerUnit || 0,
-          totalCost: ing.quantity * (ing.costPerUnit || 0)
-        }))
-      },
-      pricing: {
-        suggestedPrice,
-        minimumPrice,
-        profitMargin: margin,
-        breakdown: {
-          cost: totalCost,
-          markup: markupAmount,
-          suggestedMarkupPercent: margin
-        }
-      }
-    };
-  };
-
   const [showProductDialog, setShowProductDialog] = useState(false);
   const [productSearch, setProductSearch] = useState('');
 
   const [validation, setValidation] = useState<ValidationResult | null>(null);
-  const [_costCalculation, setCostCalculation] = useState<CostCalculation | null>(null);
-  const [pricingSuggestion, setPricingSuggestion] = useState<PricingSuggestion | null>(null);
   const [_validating, setValidating] = useState(false);
-  const [_calculating, setCalculating] = useState(false);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -231,48 +182,20 @@ export function CustomBlendCreator({
     runValidation();
   }, [ingredients, validateIngredients]);
 
-  // Auto-calculate cost when ingredients or margin change
-  useEffect(() => {
-    const runCostCalculation = async () => {
-      if (ingredients.length > 0) {
-        setCalculating(true);
-        try {
-          const result = await calculateCost(ingredients, marginPercent);
-          setCostCalculation(result.cost);
-          setPricingSuggestion(result.pricing);
-          
-          // Update manual price when margin changes if in margin mode and not manually updating
-          if (pricingMode === 'margin' && !isUpdatingPrice) {
-            setManualPrice(result.pricing.suggestedPrice.toFixed(2));
-          }
-        } catch (error: unknown) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-          console.error(`Cost calculation failed: ${errorMessage}`);
-          setCostCalculation(null);
-          setPricingSuggestion(null);
-        } finally {
-          setCalculating(false);
-        }
-      } else {
-        setCostCalculation(null);
-        setPricingSuggestion(null);
-      }
-    };
-
-    runCostCalculation();
-  }, [ingredients, marginPercent, pricingMode, isUpdatingPrice]);
+  // Sum of ingredient selling prices = the default suggested blend price.
+  // Recomputed inline so it tracks ingredient edits in sellingSum mode without
+  // depending on the table-display memo declared further down.
+  const sellingPriceSum = ingredients.reduce(
+    (total, ing) => total + (ing.quantity * (ing.sellingPricePerUnit || 0)), 0
+  );
 
   const _resetForm = () => {
     setBlendName('');
     setPreparationNotes('');
     setIngredients([]);
-    setMarginPercent(0);
-    setPricingMode('margin');
+    setPricingMode('sellingSum');
     setManualPrice('');
-    setIsUpdatingPrice(false);
     setValidation(null);
-    setCostCalculation(null);
-    setPricingSuggestion(null);
     setErrors({});
   };
 
@@ -433,8 +356,7 @@ export function CustomBlendCreator({
     setBlendName(blend.blendName);
     setPreparationNotes(blend.preparationNotes || '');
     // TODO: Set container type from blend history if available
-    setMarginPercent(blend.marginPercent);
-    
+
     // Convert history ingredients to current format
     const convertedIngredients: (BlendIngredient & { sellingPricePerUnit?: number })[] = blend.ingredients.map((ing: BlendHistoryIngredient) => ({
       productId: ing.productId,
@@ -465,12 +387,22 @@ export function CustomBlendCreator({
     const calculatedTotalPrice = ingredients.reduce((total, ingredient) =>
       total + (ingredient.quantity * (ingredient.costPerUnit || 0)), 0
     );
-    
-    // Use pricing based on selected mode
-    const parsedFinalPrice = finalPrice ? parseFloat(finalPrice) : null;
-    const calculatedSellingPrice = pricingMode === 'manual' 
+
+    const calculatedSellingPrice = pricingMode === 'manual'
       ? (parseFloat(manualPrice) || 0)
-      : (parsedFinalPrice || pricingSuggestion?.suggestedPrice || (calculatedTotalPrice * 2));
+      : sellingPriceSum;
+
+    // Guard: confirm before saving below ingredient cost. Catches the staff
+    // mistake of leaving margin at 0% and saving at cost (the 2026-04-28
+    // "herb dampness $12 vs $31.25" incident).
+    if (calculatedSellingPrice > 0 && calculatedSellingPrice < calculatedTotalPrice) {
+      const confirmed = window.confirm(
+        `Final price ($${calculatedSellingPrice.toFixed(2)}) is below the ingredient cost ($${calculatedTotalPrice.toFixed(2)}).\n\n` +
+        `Sum of ingredient selling prices is $${sellingPriceSum.toFixed(2)}.\n\n` +
+        `Save this blend below cost anyway?`
+      );
+      if (!confirmed) return;
+    }
     
     const now = new Date();
 
@@ -491,7 +423,9 @@ export function CustomBlendCreator({
       preparationNotes,
       mixedBy: user?.name || user?.email || 'unknown',
       mixedAt: now,
-      marginPercent: marginPercent, // Store margin for future edits
+      marginPercent: calculatedTotalPrice > 0
+        ? Math.round(((calculatedSellingPrice - calculatedTotalPrice) / calculatedTotalPrice) * 100)
+        : 0,
     };
 
     const blendItem: TransactionItem = {
@@ -550,12 +484,11 @@ export function CustomBlendCreator({
     }
   };
 
-  // Sum of selling prices shown in the table (quantity × per-unit selling price).
-  const totalIngredientPrice = ingredients.reduce((total, ingredient) =>
-    total + (ingredient.quantity * (ingredient.sellingPricePerUnit || 0)), 0
-  );
+  // Alias for clarity in JSX — sellingPriceSum was declared earlier next to
+  // the cost-calc effect so it's available there too.
+  const totalIngredientPrice = sellingPriceSum;
 
-  // Cost basis used by margin-based pricing (quantity × per-unit cost).
+  // Cost basis used for profit display and below-cost guard.
   const totalIngredientCost = ingredients.reduce((total, ingredient) =>
     total + (ingredient.quantity * (ingredient.costPerUnit || 0)), 0
   );
@@ -570,53 +503,47 @@ export function CustomBlendCreator({
       size="2xl"
     >
 
-        <div className="space-y-6">
+        <div className="space-y-0">
           {/* Basic Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Blend Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="blendName">Blend Name *</Label>
-                  <Input
-                    id="blendName"
-                    value={blendName}
-                    onChange={(e) => setBlendName(e.target.value)}
-                    placeholder="e.g., Custom Pain Relief Mix"
-                    className={errors.blendName ? 'border-red-500' : ''}
-                  />
-                  {errors.blendName && <p className="text-sm text-red-500 mt-1">{errors.blendName}</p>}
-                </div>
-
-              </div>
-
-              <div className="mt-4">
-                <Label htmlFor="preparationNotes">Preparation Notes</Label>
-                <Textarea
-                  id="preparationNotes"
-                  value={preparationNotes}
-                  onChange={(e) => setPreparationNotes(e.target.value)}
-                  placeholder="Special mixing instructions, storage notes, etc."
-                  rows={3}
+          <section className="border-b border-[#E5E7EB] pb-8">
+            <p className="text-[10px] uppercase tracking-[0.32em] text-[#6B7280]">Blend information</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-5">
+              <div>
+                <Label htmlFor="blendName" className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Blend Name *</Label>
+                <Input
+                  id="blendName"
+                  value={blendName}
+                  onChange={(e) => setBlendName(e.target.value)}
+                  placeholder="e.g., Custom Pain Relief Mix"
+                  className={`rounded-none border-0 border-b px-0 focus-visible:ring-0 ${errors.blendName ? 'border-red-500' : 'border-[#E5E7EB]'}`}
                 />
+                {errors.blendName && <p className="text-sm text-red-500 mt-1">{errors.blendName}</p>}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+
+            <div className="mt-6">
+              <Label htmlFor="preparationNotes" className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Preparation Notes</Label>
+              <Textarea
+                id="preparationNotes"
+                value={preparationNotes}
+                onChange={(e) => setPreparationNotes(e.target.value)}
+                placeholder="Special mixing instructions, storage notes, etc."
+                rows={3}
+                className="rounded-none border-0 border-b border-[#E5E7EB] px-0 focus-visible:ring-0 resize-none"
+              />
+            </div>
+          </section>
 
           {/* Ingredients */}
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <FaClipboardList className="h-4 w-4 text-green-600" />
-                  <CardTitle className="text-lg">Recipe Ingredients</CardTitle>
+          <section className="border-b border-[#E5E7EB] py-8">
+              <div className="flex justify-between items-center gap-6">
+                <div>
+                  <p className="text-[10px] uppercase tracking-[0.32em] text-[#6B7280]">Recipe ingredients</p>
+                  <p className="text-sm text-[#6B7280] mt-2">Add products and set the amount used in this custom blend.</p>
                 </div>
-                <Button type="button" size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => setShowProductDialog(true)}>
-                  <FaPlus className="mr-2 h-4 w-4" />
+                <EditorialButton type="button" variant="primary" icon={<FaPlus className="h-3.5 w-3.5" />} onClick={() => setShowProductDialog(true)}>
                   Add Ingredient
-                </Button>
+                </EditorialButton>
                 <EditorialModal
                   open={showProductDialog}
                   onOpenChange={setShowProductDialog}
@@ -625,20 +552,20 @@ export function CustomBlendCreator({
                   description="Pick a product to add as a recipe ingredient."
                   size="xl"
                 >
-                    <div className="space-y-4">
-                      <div className="relative">
-                        <FaSearch className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <Input
-                          placeholder="Search products..."
-                          value={productSearch}
-                          onChange={(e) => setProductSearch(e.target.value)}
-                          className="pl-10"
-                        />
-                      </div>
-                      <div className="border rounded-lg">
+                      <div className="space-y-5">
+                        <div className="relative">
+                          <FaSearch className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
+                          <Input
+                            placeholder="Search products..."
+                            value={productSearch}
+                            onChange={(e) => setProductSearch(e.target.value)}
+                            className="rounded-none border-0 border-b border-[#E5E7EB] pl-7 focus-visible:ring-0"
+                          />
+                        </div>
+                      <div className="border-t border-[#E5E7EB]">
                         {/* Fixed Header */}
                         <div className="bg-white border-b sticky top-0 z-10">
-                          <div className="grid grid-cols-5 gap-4 p-3 font-medium text-sm">
+                          <div className="grid grid-cols-5 gap-4 py-3 text-[10px] uppercase tracking-[0.24em] text-[#6B7280]">
                             <div>Name</div>
                             <div>Category</div>
                             <div>Stock</div>
@@ -651,7 +578,7 @@ export function CustomBlendCreator({
                         <div className="max-h-96 overflow-y-auto">
                           <div className="divide-y">
                             {filteredProducts.map(product => (
-                              <div key={product._id} className="grid grid-cols-5 gap-4 p-3 items-center hover:bg-gray-50">
+                              <div key={product._id} className="grid grid-cols-5 gap-4 py-3 items-center hover:bg-[#F9FAFB]">
                                 <div className="font-medium">{product.name}</div>
                                 <div className="text-sm text-gray-600">{product.category?.name || 'N/A'}</div>
                                 <div className="text-sm">
@@ -671,6 +598,7 @@ export function CustomBlendCreator({
                                     size="sm"
                                     onClick={() => addIngredient(product)}
                                     disabled={ingredients.some(ing => ing.productId === product._id)}
+                                    className="rounded-none"
                                   >
                                     {ingredients.some(ing => ing.productId === product._id) ? 'Added' : 'Add'}
                                   </Button>
@@ -683,8 +611,6 @@ export function CustomBlendCreator({
                     </div>
                 </EditorialModal>
               </div>
-            </CardHeader>
-            <CardContent>
               {errors.ingredients && (
                 <Alert className="mb-4" variant="destructive">
                   <AlertDescription>{errors.ingredients}</AlertDescription>
@@ -692,17 +618,17 @@ export function CustomBlendCreator({
               )}
 
               {ingredients.length > 0 ? (
-                <div className="border rounded-lg">
+                <div className="mt-6 border-t border-[#E5E7EB]">
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold">Ingredient</TableHead>
-                        <TableHead className="font-semibold">Volume</TableHead>
-                        <TableHead className="font-semibold">Unit</TableHead>
-                        <TableHead className="font-semibold">Converted</TableHead>
-                        <TableHead className="font-semibold">Selling Price</TableHead>
-                        <TableHead className="font-semibold">Stock</TableHead>
-                        <TableHead className="font-semibold w-20">Action</TableHead>
+                      <TableRow>
+                        <TableHead className="text-[10px] uppercase tracking-[0.24em] text-[#6B7280] font-normal">Ingredient</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-[0.24em] text-[#6B7280] font-normal">Volume</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-[0.24em] text-[#6B7280] font-normal">Unit</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-[0.24em] text-[#6B7280] font-normal">Converted</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-[0.24em] text-[#6B7280] font-normal">Selling Price</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-[0.24em] text-[#6B7280] font-normal">Stock</TableHead>
+                        <TableHead className="text-[10px] uppercase tracking-[0.24em] text-[#6B7280] font-normal w-20">Action</TableHead>
                       </TableRow>
                     </TableHeader>
                   <TableBody>
@@ -716,7 +642,7 @@ export function CustomBlendCreator({
                             step="0.01"
                             value={ingredient.quantity}
                             onChange={(e) => updateIngredient(index, 'quantity', parseFloat(e.target.value) || 0)}
-                            className={`w-24 ${errors[`ingredient_${index}_quantity`] ? 'border-red-500' : ''}`}
+                            className={`w-24 rounded-none border-0 border-b px-0 focus-visible:ring-0 ${errors[`ingredient_${index}_quantity`] ? 'border-red-500' : 'border-[#E5E7EB]'}`}
                           />
                           {errors[`ingredient_${index}_quantity`] && (
                             <p className="text-xs text-red-500 mt-1">{errors[`ingredient_${index}_quantity`]}</p>
@@ -767,10 +693,9 @@ export function CustomBlendCreator({
                         <TableCell>
                           <Button
                             type="button"
-                            variant="outline"
                             size="sm"
                             onClick={() => removeIngredient(index)}
-                            className="text-red-600 border-red-200 hover:bg-red-50"
+                            className="rounded-none border border-red-200 bg-white text-red-600 hover:bg-red-50"
                           >
                             <FaTrash className="h-4 w-4" />
                           </Button>
@@ -781,14 +706,13 @@ export function CustomBlendCreator({
                 </Table>
               </div>
               ) : (
-                <div className="text-center py-12 border-2 border-dashed border-gray-200 rounded-lg">
+                <div className="mt-6 text-center py-12 border-y border-dashed border-[#E5E7EB]">
                   <FaClipboardList className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No ingredients added yet</h3>
                   <p className="text-gray-500 mb-4">Start building your custom blend by adding ingredients</p>
-                  <Button type="button" className="bg-green-600 hover:bg-green-700" onClick={() => setShowProductDialog(true)}>
-                    <FaPlus className="mr-2 h-4 w-4" />
+                  <EditorialButton type="button" variant="primary" icon={<FaPlus className="h-3.5 w-3.5" />} onClick={() => setShowProductDialog(true)}>
                     Add Your First Ingredient
-                  </Button>
+                  </EditorialButton>
                   <EditorialModal
                     open={showProductDialog}
                     onOpenChange={setShowProductDialog}
@@ -799,17 +723,17 @@ export function CustomBlendCreator({
                   >
                       <div className="space-y-4">
                         <div className="relative">
-                          <FaSearch className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                          <FaSearch className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B7280]" />
                           <Input
                             placeholder="Search products..."
                             value={productSearch}
                             onChange={(e) => setProductSearch(e.target.value)}
-                            className="pl-10"
+                            className="rounded-none border-0 border-b border-[#E5E7EB] pl-7 focus-visible:ring-0"
                           />
                         </div>
-                        <div className="border rounded-lg">
+                        <div className="border-t border-[#E5E7EB]">
                           <div className="bg-white border-b sticky top-0 z-10">
-                            <div className="grid grid-cols-5 gap-4 p-3 font-medium text-sm">
+                            <div className="grid grid-cols-5 gap-4 py-3 text-[10px] uppercase tracking-[0.24em] text-[#6B7280]">
                               <div>Name</div>
                               <div>Category</div>
                               <div>Stock</div>
@@ -820,7 +744,7 @@ export function CustomBlendCreator({
                           <div className="max-h-96 overflow-y-auto">
                             <div className="divide-y">
                               {filteredProducts.map(product => (
-                                <div key={product._id} className="grid grid-cols-5 gap-4 p-3 items-center hover:bg-gray-50">
+                                <div key={product._id} className="grid grid-cols-5 gap-4 py-3 items-center hover:bg-[#F9FAFB]">
                                   <div className="font-medium">{product.name}</div>
                                   <div className="text-sm text-gray-600">{product.category?.name || 'N/A'}</div>
                                   <div className="text-sm">
@@ -834,6 +758,7 @@ export function CustomBlendCreator({
                                       size="sm"
                                       onClick={() => addIngredient(product)}
                                       disabled={ingredients.some(ing => ing.productId === product._id)}
+                                      className="rounded-none"
                                     >
                                       {ingredients.some(ing => ing.productId === product._id) ? 'Added' : 'Add'}
                                     </Button>
@@ -848,13 +773,16 @@ export function CustomBlendCreator({
                 </div>
               )}
               
-              {/* Selling Price Display */}
+              {/* Reference: Σ of ingredient selling prices.
+                  Not the saved blend price — the active "Pricing Method" below
+                  determines what gets saved. Used as the default when
+                  pricing mode is "Sum of Selling Prices". */}
               {ingredients.length > 0 && (
-                <div className="mt-4 pt-4 border-t">
+                <div className="mt-6 pt-5 border-t border-[#E5E7EB]">
                   <div className="flex justify-between items-center">
                     <div>
-                      <h4 className="font-medium text-sm text-gray-700">Total Ingredient Price</h4>
-                      <p className="text-xs text-gray-500">Sum of all ingredient prices</p>
+                      <h4 className="font-medium text-sm text-gray-700">Σ Ingredient Selling Prices (reference)</h4>
+                      <p className="text-xs text-gray-500">Σ (qty × per-unit selling price). Sets the default in &ldquo;Sum of Selling Prices&rdquo; mode.</p>
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-semibold">S${totalIngredientPrice.toFixed(2)}</p>
@@ -862,8 +790,7 @@ export function CustomBlendCreator({
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </section>
 
           {/* Validation Results - Show as warning, not error */}
           {validation && (validation.errors.length > 0 || validation.warnings.length > 0) && (
@@ -905,168 +832,142 @@ export function CustomBlendCreator({
 
           {/* Pricing Configuration */}
           {ingredients.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <FaCalculator className="h-5 w-5" />
-                  Blend Pricing
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <section className="border-b border-[#E5E7EB] py-8">
+              <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
                 <div>
-                  {/* Pricing Mode Toggle */}
-                  <div className="mb-4">
-                    <Label>Pricing Method</Label>
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                      <Button
-                        type="button"
-                        variant={pricingMode === 'margin' ? 'default' : 'outline'}
-                        onClick={() => setPricingMode('margin')}
-                        className="w-full"
-                      >
-                        Margin-Based
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={pricingMode === 'manual' ? 'default' : 'outline'}
-                        onClick={() => setPricingMode('manual')}
-                        className="w-full"
-                      >
-                        Manual Price
-                      </Button>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <FaCalculator className="h-4 w-4 text-[#0F172A]" />
+                    <p className="text-[10px] uppercase tracking-[0.32em] text-[#6B7280]">Blend pricing</p>
                   </div>
+                  <p className="mt-2 max-w-2xl text-sm text-[#6B7280]">
+                    Choose the price that will be saved to the transaction and printed on the invoice.
+                  </p>
+                </div>
+                <div className="text-left md:text-right">
+                  <p className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Final selling price</p>
+                  <p className="mt-1 text-4xl font-light leading-none text-[#16A34A] tabular-nums">
+                    ${pricingMode === 'manual'
+                      ? (parseFloat(manualPrice) || 0).toFixed(2)
+                      : sellingPriceSum.toFixed(2)
+                    }
+                  </p>
+                  {(() => {
+                    const finalSellingPrice = pricingMode === 'manual'
+                      ? (parseFloat(manualPrice) || 0)
+                      : sellingPriceSum;
+                    if (finalSellingPrice > 0 && finalSellingPrice < totalIngredientCost) {
+                      return (
+                        <p className="mt-2 text-sm font-medium text-red-600">
+                          Below ingredient cost (${totalIngredientCost.toFixed(2)}). You will be asked to confirm on save.
+                        </p>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+              </div>
 
-                  {/* Margin-Based Pricing */}
-                  {pricingMode === 'margin' && pricingSuggestion && (
-                    <>
-                      <h4 className="font-medium mb-2">Margin-Based Configuration</h4>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span>Base Cost (Ingredients):</span>
-                          <span>${totalIngredientCost.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Margin ({marginPercent}%):</span>
-                          <span>${(totalIngredientCost * marginPercent / 100).toFixed(2)}</span>
-                        </div>
-                        <Separator className="my-2" />
-                        <div className="flex justify-between">
-                          <span>Calculated Price:</span>
-                          <span className="text-lg font-semibold text-green-600">${pricingSuggestion.suggestedPrice.toFixed(2)}</span>
-                        </div>
-                      </div>
+              <div className="mt-8">
+                <Label className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Pricing Method</Label>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <EditorialButton
+                    type="button"
+                    variant={pricingMode === 'sellingSum' ? 'ghost-active' : 'ghost'}
+                    onClick={() => setPricingMode('sellingSum')}
+                    className="justify-center"
+                  >
+                    Sum of Selling Prices
+                  </EditorialButton>
+                  <EditorialButton
+                    type="button"
+                    variant={pricingMode === 'manual' ? 'ghost-active' : 'ghost'}
+                    onClick={() => {
+                      setPricingMode('manual');
+                      if (!manualPrice) {
+                        setManualPrice(sellingPriceSum.toFixed(2));
+                      }
+                    }}
+                    className="justify-center"
+                  >
+                    Manual Price
+                  </EditorialButton>
+                </div>
+              </div>
 
-                      <div className="mt-4">
-                        <Label htmlFor="marginPercent">Profit Margin %</Label>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Input
-                            id="marginPercent"
-                            type="number"
-                            min="0"
-                            value={marginPercent}
-                            onChange={(e) => {
-                              const newMargin = parseInt(e.target.value) || 0;
-                              setMarginPercent(newMargin);
-                            }}
-                            className="w-24"
-                          />
-                          <span className="text-sm text-gray-500">Adjust to change selling price</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Manual Pricing */}
-                  {pricingMode === 'manual' && (
-                    <>
-                      <h4 className="font-medium mb-2">Manual Price Configuration</h4>
-                      <div className="space-y-1 text-sm mb-4">
-                        <div className="flex justify-between">
-                          <span>Base Cost (Ingredients):</span>
-                          <span>${totalIngredientCost.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Profit:</span>
-                          <span className={parseFloat(manualPrice) > totalIngredientCost ? 'text-green-600' : 'text-red-600'}>
-                            ${((parseFloat(manualPrice) || 0) - totalIngredientCost).toFixed(2)}
-                            {manualPrice && totalIngredientCost > 0 && ` (${(((parseFloat(manualPrice) - totalIngredientCost) / totalIngredientCost) * 100).toFixed(0)}%)`}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mt-4">
-                        <Label htmlFor="manualPrice">Set Custom Price</Label>
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
-                            <Input
-                              id="manualPrice"
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={manualPrice}
-                              onChange={(e) => {
-                                setIsUpdatingPrice(true);
-                                setManualPrice(e.target.value);
-                                
-                                // Calculate and update margin percentage based on manual price
-                                const newPrice = parseFloat(e.target.value) || 0;
-                                if (newPrice > 0 && totalIngredientCost > 0) {
-                                  const newMargin = Math.round(((newPrice - totalIngredientCost) / totalIngredientCost) * 100);
-                                  setMarginPercent(Math.max(0, newMargin));
-                                }
-                                
-                                setTimeout(() => setIsUpdatingPrice(false), 100);
-                              }}
-                              placeholder="0.00"
-                              className="pl-8 w-32"
-                            />
-                          </div>
-                          <span className="text-sm text-gray-500">
-                          </span>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* Final Price Display */}
-                  <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium">Final Selling Price:</span>
-                      <span className="text-xl font-bold text-green-600">
-                        ${pricingMode === 'manual' 
-                          ? (parseFloat(manualPrice) || 0).toFixed(2)
-                          : (pricingSuggestion?.suggestedPrice || 0).toFixed(2)
-                        }
-                      </span>
+              {pricingMode === 'sellingSum' && (
+                <div className="mt-6 border-t border-[#E5E7EB] pt-5">
+                  <p className="text-sm font-medium text-[#111827]">Sum of Ingredient Selling Prices</p>
+                  <div className="mt-3 space-y-2 text-sm">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-[#6B7280]">Qty x per-unit selling price</span>
+                      <span className="font-medium tabular-nums">${sellingPriceSum.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-[#6B7280]">Base cost</span>
+                      <span className="tabular-nums">${totalIngredientCost.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              )}
+
+              {pricingMode === 'manual' && (
+                <div className="mt-6 border-t border-[#E5E7EB] pt-5">
+                  <div className="grid gap-6 md:grid-cols-[1fr_auto] md:items-end">
+                    <div>
+                      <p className="text-sm font-medium text-[#111827]">Manual Price Configuration</p>
+                      <div className="mt-3 space-y-2 text-sm">
+                        <div className="flex justify-between gap-4">
+                          <span className="text-[#6B7280]">Base cost</span>
+                          <span className="tabular-nums">${totalIngredientCost.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between gap-4">
+                          <span className="text-[#6B7280]">Profit</span>
+                          <span className={`tabular-nums ${(parseFloat(manualPrice) || 0) > totalIngredientCost ? 'text-green-600' : 'text-red-600'}`}>
+                            ${((parseFloat(manualPrice) || 0) - totalIngredientCost).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="manualPrice" className="text-[10px] uppercase tracking-[0.28em] text-[#6B7280]">Set Custom Price</Label>
+                      <div className="relative mt-2">
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 text-sm text-[#6B7280]">$</span>
+                        <Input
+                          id="manualPrice"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={manualPrice}
+                          onChange={(e) => {
+                            setManualPrice(e.target.value);
+                          }}
+                          placeholder="0.00"
+                          className="w-36 rounded-none border-0 border-b border-[#E5E7EB] pl-5 pr-0 text-right focus-visible:ring-0"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
           )}
 
-          <Separator />
-
           {/* Form Actions */}
-          <div className="flex justify-between">
-            <Button variant="outline" onClick={onClose}>
-              <FaTimes className="mr-2 h-4 w-4" />
+          <EditorialModalFooter className="justify-between">
+            <EditorialButton type="button" variant="ghost" icon={<FaTimes className="h-3.5 w-3.5" />} onClick={onClose}>
               Cancel
-            </Button>
-            <Button
+            </EditorialButton>
+            <EditorialButton
+              type="button"
+              variant="primary"
               onClick={handleCreateCustomBlend}
               disabled={parentLoading}
+              icon={parentLoading ? <ImSpinner8 className="h-3.5 w-3.5 animate-spin" /> : <FaCheck className="h-3.5 w-3.5" />}
             >
-              {parentLoading ? (
-                <ImSpinner8 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <FaCheck className="mr-2 h-4 w-4" />
-              )}
               {editingBlend ? 'Update' : 'Add'} Custom Blend{editingBlend ? '' : ' to Transaction'}
-            </Button>
-          </div>
+            </EditorialButton>
+          </EditorialModalFooter>
         </div>
     </EditorialModal>
   );

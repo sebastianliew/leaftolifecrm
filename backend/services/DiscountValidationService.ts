@@ -15,7 +15,11 @@
  * └─────────────────┴────────────┴──────────────────────────────────────────┘
  *
  * Additional checks:
- * - Product.discountFlags.discountableForMembers must not be false
+ * - Product.discountFlags.discountableForAll must not be false (broad gate;
+ *   blocks every discount type — manual, auto, bill-level)
+ * - Product.discountFlags.discountableForMembers must not be false (also
+ *   blocks any line-level discount today; kept distinct so future code can
+ *   relax it to "auto-apply only" without flipping the broader gate)
  * - Discount % must not exceed patient's membership tier entitlement
  * - These rules apply to ALL transactions (drafts included)
  */
@@ -77,7 +81,7 @@ export class DiscountValidationService {
     // Batch-fetch products to check discountFlags (only real MongoDB ObjectIds)
     const { isValidObjectId } = await import('../lib/validations/sanitize.js');
     const validProductIds = discountedProductIds.filter(id => isValidObjectId(id));
-    const productFlagsMap = new Map<string, { discountableForMembers: boolean }>();
+    const productFlagsMap = new Map<string, { discountable: boolean }>();
 
     if (validProductIds.length > 0) {
       const products = await Product.find(
@@ -85,10 +89,12 @@ export class DiscountValidationService {
         { discountFlags: 1 }
       ).lean();
 
-      for (const p of products as Array<{ _id: unknown; discountFlags?: { discountableForMembers?: boolean } }>) {
+      for (const p of products as Array<{ _id: unknown; discountFlags?: { discountableForAll?: boolean; discountableForMembers?: boolean } }>) {
+        // Schema defaults are true; either flag set to false blocks the discount.
+        const discountableForAll = p.discountFlags?.discountableForAll !== false;
+        const discountableForMembers = p.discountFlags?.discountableForMembers !== false;
         productFlagsMap.set(String(p._id), {
-          // Schema default is true, so only false means explicitly non-discountable
-          discountableForMembers: p.discountFlags?.discountableForMembers !== false
+          discountable: discountableForAll && discountableForMembers
         });
       }
     }
@@ -123,10 +129,10 @@ export class DiscountValidationService {
       // ── CHECK 2: Product discountFlags ──
       if (item.productId && isValidObjectId(item.productId)) {
         const flags = productFlagsMap.get(item.productId);
-        // If product found and explicitly marked as not discountable
-        if (flags && !flags.discountableForMembers) {
+        // If product found and explicitly flagged non-discountable on either dimension
+        if (flags && !flags.discountable) {
           errors.push({
-            error: `Item "${itemName}" is not eligible for membership discounts (product flagged as non-discountable)`,
+            error: `Item "${itemName}" is flagged non-discountable and cannot receive a discount`,
             item: itemName,
             code: 'PRODUCT_NOT_DISCOUNTABLE'
           });
@@ -193,10 +199,12 @@ export class DiscountValidationService {
       const products = await Product.find(
         { _id: { $in: productIds } },
         { discountFlags: 1 }
-      ).lean() as Array<{ _id: unknown; discountFlags?: { discountableForMembers?: boolean } }>;
+      ).lean() as Array<{ _id: unknown; discountFlags?: { discountableForAll?: boolean; discountableForMembers?: boolean } }>;
 
       for (const p of products) {
-        productFlagsMap.set(String(p._id), p.discountFlags?.discountableForMembers !== false);
+        const discountableForAll = p.discountFlags?.discountableForAll !== false;
+        const discountableForMembers = p.discountFlags?.discountableForMembers !== false;
+        productFlagsMap.set(String(p._id), discountableForAll && discountableForMembers);
       }
     }
 

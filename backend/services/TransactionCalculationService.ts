@@ -232,10 +232,12 @@ class TransactionCalculationService {
       const products = await Product.find(
         { _id: { $in: eligibleProductIds } },
         { discountFlags: 1 }
-      ).lean() as Array<{ _id: unknown; discountFlags?: { discountableForMembers?: boolean } }>;
+      ).lean() as Array<{ _id: unknown; discountFlags?: { discountableForAll?: boolean; discountableForMembers?: boolean } }>;
 
       for (const p of products) {
-        discountFlagsMap.set(String(p._id), p.discountFlags?.discountableForMembers !== false);
+        const discountableForAll = p.discountFlags?.discountableForAll !== false;
+        const discountableForMembers = p.discountFlags?.discountableForMembers !== false;
+        discountFlagsMap.set(String(p._id), discountableForAll && discountableForMembers);
       }
     }
 
