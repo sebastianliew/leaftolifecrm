@@ -56,7 +56,7 @@ export function CustomBlendCreator({
   const { validateIngredients } = useBlendTemplates();
   const { user } = usePermissions();
   const { toast } = useToast();
-  const _isSuperAdmin = user?.role === 'super_admin';
+  const isSuperAdmin = user?.role === 'super_admin';
 
   const [blendName, setBlendName] = useState('');
   const [preparationNotes, setPreparationNotes] = useState('');
@@ -395,7 +395,7 @@ export function CustomBlendCreator({
     // Guard: confirm before saving below ingredient cost. Catches the staff
     // mistake of leaving margin at 0% and saving at cost (the 2026-04-28
     // "herb dampness $12 vs $31.25" incident).
-    if (calculatedSellingPrice > 0 && calculatedSellingPrice < calculatedTotalPrice) {
+    if (isSuperAdmin && calculatedSellingPrice > 0 && calculatedSellingPrice < calculatedTotalPrice) {
       const confirmed = window.confirm(
         `Final price ($${calculatedSellingPrice.toFixed(2)}) is below the ingredient cost ($${calculatedTotalPrice.toFixed(2)}).\n\n` +
         `Sum of ingredient selling prices is $${sellingPriceSum.toFixed(2)}.\n\n` +
@@ -855,7 +855,7 @@ export function CustomBlendCreator({
                     const finalSellingPrice = pricingMode === 'manual'
                       ? (parseFloat(manualPrice) || 0)
                       : sellingPriceSum;
-                    if (finalSellingPrice > 0 && finalSellingPrice < totalIngredientCost) {
+                    if (isSuperAdmin && finalSellingPrice > 0 && finalSellingPrice < totalIngredientCost) {
                       return (
                         <p className="mt-2 text-sm font-medium text-red-600">
                           Below ingredient cost (${totalIngredientCost.toFixed(2)}). You will be asked to confirm on save.
@@ -902,10 +902,12 @@ export function CustomBlendCreator({
                       <span className="text-[#6B7280]">Qty x per-unit selling price</span>
                       <span className="font-medium tabular-nums">${sellingPriceSum.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-[#6B7280]">Base cost</span>
-                      <span className="tabular-nums">${totalIngredientCost.toFixed(2)}</span>
-                    </div>
+                    {isSuperAdmin && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-[#6B7280]">Base cost</span>
+                        <span className="tabular-nums">${totalIngredientCost.toFixed(2)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -916,16 +918,20 @@ export function CustomBlendCreator({
                     <div>
                       <p className="text-sm font-medium text-[#111827]">Manual Price Configuration</p>
                       <div className="mt-3 space-y-2 text-sm">
-                        <div className="flex justify-between gap-4">
-                          <span className="text-[#6B7280]">Base cost</span>
-                          <span className="tabular-nums">${totalIngredientCost.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between gap-4">
-                          <span className="text-[#6B7280]">Profit</span>
-                          <span className={`tabular-nums ${(parseFloat(manualPrice) || 0) > totalIngredientCost ? 'text-green-600' : 'text-red-600'}`}>
-                            ${((parseFloat(manualPrice) || 0) - totalIngredientCost).toFixed(2)}
-                          </span>
-                        </div>
+                        {isSuperAdmin && (
+                          <>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-[#6B7280]">Base cost</span>
+                              <span className="tabular-nums">${totalIngredientCost.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-[#6B7280]">Profit</span>
+                              <span className={`tabular-nums ${(parseFloat(manualPrice) || 0) > totalIngredientCost ? 'text-green-600' : 'text-red-600'}`}>
+                                ${((parseFloat(manualPrice) || 0) - totalIngredientCost).toFixed(2)}
+                              </span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
 

@@ -29,6 +29,7 @@ export interface InventoryPermissions {
   canManageStock: boolean;
   canCreateRestockOrders: boolean;
   canBulkOperations: boolean;
+  canViewCostPrices: boolean;
   canEditCostPrices: boolean;
   [key: string]: boolean | number;
 }

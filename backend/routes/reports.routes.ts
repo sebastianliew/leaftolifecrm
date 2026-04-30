@@ -6,7 +6,7 @@ import { CustomerValueController } from '../controllers/reports/customerValueCon
 import { InventoryAnalysisController } from '../controllers/reports/InventoryAnalysisController.js';
 import { InventoryCostController } from '../controllers/reports/InventoryCostController.js';
 import { authenticateToken } from '../middlewares/auth.middleware.js';
-import { requirePermission } from '../middlewares/permission.middleware.js';
+import { requireAllPermissions, requirePermission } from '../middlewares/permission.middleware.js';
 
 const router: IRouter = express.Router();
 
@@ -56,7 +56,10 @@ router.get('/transaction-date-range', requirePermission('reports', 'canViewFinan
 });
 
 // Item Sales Report endpoint (inventory report)
-router.get('/item-sales', requirePermission('reports', 'canViewInventoryReports'), async (req: Request, res: Response) => {
+router.get('/item-sales', requireAllPermissions([
+  { category: 'reports', permission: 'canViewInventoryReports' },
+  { category: 'inventory', permission: 'canViewCostPrices' },
+]), async (req: Request, res: Response) => {
   try {
     
     await ItemSalesController.getItemSalesReport(req as unknown as Parameters<typeof ItemSalesController.getItemSalesReport>[0], res as Parameters<typeof ItemSalesController.getItemSalesReport>[1]);
@@ -84,7 +87,10 @@ router.get('/customer-value', requirePermission('reports', 'canViewFinancialRepo
 router.get('/inventory-analysis', requirePermission('reports', 'canViewInventoryReports'), InventoryAnalysisController.getInventoryReport);
 
 // Inventory Cost Report endpoint (inventory report)
-router.get('/inventory-cost', requirePermission('reports', 'canViewInventoryReports'), async (req: Request, res: Response) => {
+router.get('/inventory-cost', requireAllPermissions([
+  { category: 'reports', permission: 'canViewInventoryReports' },
+  { category: 'inventory', permission: 'canViewCostPrices' },
+]), async (req: Request, res: Response) => {
   try {
     await InventoryCostController.getInventoryCostReport(req as unknown as Parameters<typeof InventoryCostController.getInventoryCostReport>[0], res as Parameters<typeof InventoryCostController.getInventoryCostReport>[1]);
   } catch (error) {

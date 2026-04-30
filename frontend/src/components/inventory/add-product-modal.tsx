@@ -173,8 +173,8 @@ export function AddProductModal({
         brand: data.brand && data.brand !== '_none' ? { id: data.brand } : undefined,
         containerCapacity: data.containerCapacity,
         canSellLoose: data.canSellLoose || false,
-        // Only include cost price if user has permission
-        costPrice: canEditCostPrices ? data.costPrice : 0,
+        // Only super admins can submit cost price.
+        costPrice: canEditCostPrices ? data.costPrice : undefined,
         sellingPrice: data.sellingPrice,
         // Always include current stock for product creation
         currentStock: data.currentStock || 0,

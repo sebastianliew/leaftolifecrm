@@ -24,6 +24,20 @@ const PRODUCT_POPULATE = [
   { path: 'unitOfMeasurement', select: 'name abbreviation' }
 ];
 
+const canViewCostPrices = (req: Request): boolean => {
+  const authReq = req as AuthenticatedRequest;
+  return authReq.user?.role === 'super_admin';
+};
+
+const stripCostPrice = <T extends Record<string, unknown>>(product: T): Omit<T, 'costPrice'> => {
+  const { costPrice: _costPrice, ...rest } = product;
+  return rest;
+};
+
+const sanitizeProductCost = <T extends Record<string, unknown>>(req: Request, product: T): T | Omit<T, 'costPrice'> => {
+  return canViewCostPrices(req) ? product : stripCostPrice(product);
+};
+
 // ── Controllers ──
 
 export const getProducts = asyncHandler(async (req: Request, res: Response) => {
@@ -53,16 +67,8 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     Product.countDocuments(query)
   ]);
 
-  // Strip costPrice for non-admin users
-  const authReq = req as AuthenticatedRequest;
-  const canViewCost = authReq.user?.role === 'super_admin' || authReq.user?.role === 'admin';
-  const sanitized = canViewCost ? products : products.map(p => {
-    const { costPrice, ...rest } = p as Record<string, unknown>;
-    return rest;
-  });
-
   res.json({
-    products: sanitized,
+    products: products.map(p => sanitizeProductCost(req, p as Record<string, unknown>)),
     pagination: QueryBuilder.paginationResponse(total, pagination.page, pagination.limit)
   });
 });
@@ -144,11 +150,19 @@ export const getInventoryStats = asyncHandler(async (req: Request, res: Response
     }
   ]);
 
-  res.json(stats || {
+  const responseStats = stats || {
     totalProducts: 0, activeProducts: 0, outOfStock: 0,
     stockOwed: 0, totalOwedValue: 0,
     expired: 0, expiringSoon: 0, totalValue: 0
-  });
+  };
+
+  if (!canViewCostPrices(req)) {
+    const { totalOwedValue: _totalOwedValue, totalValue: _totalValue, ...publicStats } = responseStats;
+    res.json(publicStats);
+    return;
+  }
+
+  res.json(responseStats);
 });
 
 export const getProductById = asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
@@ -157,7 +171,7 @@ export const getProductById = asyncHandler(async (req: Request<{ id: string }>, 
     .lean();
 
   if (!product) throw new NotFoundError('Product', req.params.id);
-  res.json(product);
+  res.json(sanitizeProductCost(req, product as Record<string, unknown>));
 });
 
 export const createProduct = asyncHandler(async (req: Request, res: Response) => {
@@ -201,7 +215,8 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     totalQuantity: currentStock || 0,
     availableStock: currentStock || 0,
     reservedStock: 0,
-    costPrice, sellingPrice, status,
+    costPrice: canViewCostPrices(req) ? costPrice : undefined,
+    sellingPrice, status,
     isActive: status === 'active',
     expiryDate,
     looseStock: 0,
@@ -215,7 +230,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
   await product.save();
   await product.populate(PRODUCT_POPULATE);
 
-  res.status(201).json(product);
+  res.status(201).json(sanitizeProductCost(req, product.toObject() as Record<string, unknown>));
 });
 
 // Fields that can be modified via PUT /products/:id.
@@ -295,7 +310,7 @@ export const updateProduct = asyncHandler(async (req: Request<{ id: string }>, r
   ).populate(PRODUCT_POPULATE);
 
   if (!product) throw new NotFoundError('Product', req.params.id);
-  res.json(product);
+  res.json(sanitizeProductCost(req, product.toObject() as Record<string, unknown>));
 });
 
 export const deleteProduct = asyncHandler(async (req: Request<{ id: string }>, res: Response) => {
@@ -348,7 +363,7 @@ export const getProductTemplates = asyncHandler(async (_req: Request, res: Respo
     .limit(50)
     .lean();
 
-  res.json(templates);
+  res.json(templates.map(p => sanitizeProductCost(_req, p as Record<string, unknown>)));
 });
 
 export const bulkDeleteProducts = asyncHandler(async (req: Request, res: Response) => {
@@ -401,7 +416,7 @@ export const bulkDeleteProducts = asyncHandler(async (req: Request, res: Respons
 export const exportProducts = asyncHandler(async (req: Request, res: Response) => {
   const XLSX = await import('xlsx');
   const user = (req as unknown as { user: IUser }).user;
-  const isAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+  const isSuperAdmin = user?.role === 'super_admin';
 
   const products = await Product.find({ isDeleted: { $ne: true } })
     .populate('category', 'name')
@@ -427,7 +442,7 @@ export const exportProducts = asyncHandler(async (req: Request, res: Response) =
       'Current Stock': p.currentStock ?? 0,
       'Status': p.isActive ? 'Active' : 'Inactive',
     };
-    if (isAdmin) {
+    if (isSuperAdmin) {
       row['Cost Price'] = p.costPrice ?? '';
     }
     return row;
@@ -489,7 +504,7 @@ export const manageProductPool = asyncHandler(async (req: Request<{ id: string }
   res.json({
     success: true,
     message: `Successfully ${action === "open" ? "moved" : "sealed back"} ${amount} ${unit} ${action === "open" ? "to loose pool" : ""}`.trim(),
-    product: updatedProduct,
+    product: sanitizeProductCost(req, updatedProduct as Record<string, unknown>),
     pool: {
       looseStock,
       sealedStock: currentStock - looseStock,

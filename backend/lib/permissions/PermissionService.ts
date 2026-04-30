@@ -48,7 +48,8 @@ export class PermissionService {
             canManageStock: true,
             canCreateRestockOrders: true,
             canBulkOperations: true,
-            canEditCostPrices: true
+            canViewCostPrices: false,
+            canEditCostPrices: false
           },
           userManagement: {
             canViewUsers: false,
@@ -122,6 +123,7 @@ export class PermissionService {
             canManageStock: false,
             canCreateRestockOrders: false,
             canBulkOperations: false,
+            canViewCostPrices: false,
             canEditCostPrices: false
           },
           userManagement: {
@@ -196,6 +198,7 @@ export class PermissionService {
             canManageStock: false,
             canCreateRestockOrders: false,
             canBulkOperations: false,
+            canViewCostPrices: false,
             canEditCostPrices: false
           },
           userManagement: {
@@ -270,6 +273,7 @@ export class PermissionService {
             canManageStock: false,
             canCreateRestockOrders: false,
             canBulkOperations: false,
+            canViewCostPrices: false,
             canEditCostPrices: false
           },
           userManagement: {
@@ -322,6 +326,10 @@ export class PermissionService {
 
   // Check if user has specific feature permission
   public hasPermission(user: { role: string; featurePermissions?: Partial<FeaturePermissions> }, category: keyof FeaturePermissions, permission: string): boolean {
+    if (category === 'inventory' && (permission === 'canViewCostPrices' || permission === 'canEditCostPrices')) {
+      return user.role === 'super_admin';
+    }
+
     // Super admin has unlimited access
     if (user.role === 'super_admin') {
       return true;
@@ -435,7 +443,7 @@ export class PermissionService {
       super_admin: {
         discounts: { canApplyProductDiscounts: true, canApplyBillDiscounts: true, maxDiscountPercent: 100, maxDiscountAmount: 999999, unlimitedDiscounts: true },
         reports: { canViewFinancialReports: true, canViewInventoryReports: true, canViewUserReports: true, canViewSecurityMetrics: true, canExportReports: true },
-        inventory: { canViewInventory: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: true, canManageStock: true, canCreateRestockOrders: true, canBulkOperations: true, canEditCostPrices: true },
+        inventory: { canViewInventory: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: true, canManageStock: true, canCreateRestockOrders: true, canBulkOperations: true, canViewCostPrices: true, canEditCostPrices: true },
         userManagement: { canViewUsers: true, canCreateUsers: true, canEditUsers: true, canDeleteUsers: true, canAssignRoles: true, canChangeRoles: true, canManagePermissions: true, canResetPasswords: true, canViewSecurityLogs: true, canViewAuditLogs: true },
         patients: { canCreatePatients: true, canEditPatients: true, canDeletePatients: true, canViewMedicalHistory: true, canManagePrescriptions: true, canAccessAllPatients: true },
         transactions: { canViewTransactions: true, canCreateTransactions: true, canEditTransactions: true, canEditDrafts: true, canDeleteTransactions: true, canApplyDiscounts: true, canRefundTransactions: true, canViewFinancialDetails: true },
@@ -456,7 +464,7 @@ export class PermissionService {
       admin: {
         discounts: { canApplyProductDiscounts: true, canApplyBillDiscounts: true, maxDiscountPercent: 50, maxDiscountAmount: 1000, unlimitedDiscounts: false },
         reports: { canViewFinancialReports: true, canViewInventoryReports: true, canViewUserReports: true, canViewSecurityMetrics: false, canExportReports: true },
-        inventory: { canViewInventory: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: true, canManageStock: true, canCreateRestockOrders: true, canBulkOperations: true, canEditCostPrices: false }, // Cost prices restricted to super_admin only
+        inventory: { canViewInventory: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: true, canManageStock: true, canCreateRestockOrders: true, canBulkOperations: true, canViewCostPrices: false, canEditCostPrices: false }, // Cost prices restricted to super_admin only
         userManagement: { canViewUsers: true, canCreateUsers: true, canEditUsers: true, canDeleteUsers: false, canAssignRoles: false, canChangeRoles: false, canManagePermissions: false, canResetPasswords: true, canViewSecurityLogs: true, canViewAuditLogs: true },
         patients: { canCreatePatients: true, canEditPatients: true, canDeletePatients: true, canViewMedicalHistory: true, canManagePrescriptions: true, canAccessAllPatients: true },
         transactions: { canViewTransactions: true, canCreateTransactions: true, canEditTransactions: true, canEditDrafts: true, canDeleteTransactions: false, canApplyDiscounts: true, canRefundTransactions: true, canViewFinancialDetails: true },
@@ -477,7 +485,7 @@ export class PermissionService {
       manager: {
         discounts: { canApplyProductDiscounts: true, canApplyBillDiscounts: true, maxDiscountPercent: 25, maxDiscountAmount: 500, unlimitedDiscounts: false },
         reports: { canViewFinancialReports: true, canViewInventoryReports: true, canViewUserReports: false, canViewSecurityMetrics: false, canExportReports: true },
-        inventory: { canViewInventory: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: false, canManageStock: true, canCreateRestockOrders: true, canBulkOperations: false, canEditCostPrices: false }, // Cost prices restricted to super_admin only
+        inventory: { canViewInventory: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: false, canManageStock: true, canCreateRestockOrders: true, canBulkOperations: false, canViewCostPrices: false, canEditCostPrices: false }, // Cost prices restricted to super_admin only
         userManagement: { canViewUsers: true, canCreateUsers: false, canEditUsers: false, canDeleteUsers: false, canAssignRoles: false, canChangeRoles: false, canManagePermissions: false, canResetPasswords: false, canViewSecurityLogs: false, canViewAuditLogs: false },
         patients: { canCreatePatients: true, canEditPatients: true, canDeletePatients: false, canViewMedicalHistory: true, canManagePrescriptions: true, canAccessAllPatients: true },
         transactions: { canViewTransactions: true, canCreateTransactions: true, canEditTransactions: true, canEditDrafts: true, canDeleteTransactions: false, canApplyDiscounts: true, canRefundTransactions: false, canViewFinancialDetails: true },
@@ -498,7 +506,7 @@ export class PermissionService {
       staff: {
         discounts: { canApplyProductDiscounts: false, canApplyBillDiscounts: true, maxDiscountPercent: 10, maxDiscountAmount: 100, unlimitedDiscounts: false },
         reports: { canViewFinancialReports: false, canViewInventoryReports: false, canViewUserReports: false, canViewSecurityMetrics: false, canExportReports: false },
-        inventory: { canViewInventory: true, canAddProducts: false, canEditProducts: false, canDeleteProducts: false, canManageStock: false, canCreateRestockOrders: false, canBulkOperations: false, canEditCostPrices: false },
+        inventory: { canViewInventory: true, canAddProducts: false, canEditProducts: false, canDeleteProducts: false, canManageStock: false, canCreateRestockOrders: false, canBulkOperations: false, canViewCostPrices: false, canEditCostPrices: false },
         userManagement: { canViewUsers: false, canCreateUsers: false, canEditUsers: false, canDeleteUsers: false, canAssignRoles: false, canChangeRoles: false, canManagePermissions: false, canResetPasswords: false, canViewSecurityLogs: false, canViewAuditLogs: false },
         patients: { canCreatePatients: true, canEditPatients: false, canDeletePatients: false, canViewMedicalHistory: false, canManagePrescriptions: false, canAccessAllPatients: true },
         transactions: { canViewTransactions: true, canCreateTransactions: true, canEditTransactions: false, canEditDrafts: true, canDeleteTransactions: false, canApplyDiscounts: true, canRefundTransactions: false, canViewFinancialDetails: false },

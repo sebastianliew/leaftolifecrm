@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import QuickBlendCreator from './QuickBlendCreator';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface BlendWizardProps {
   products: Array<{
@@ -39,6 +40,8 @@ interface WizardStep {
 }
 
 export default function BlendWizard({ products, onComplete, onCancel }: BlendWizardProps) {
+  const { user } = usePermissions();
+  const isSuperAdmin = user?.role === 'super_admin';
   const [currentStep, setCurrentStep] = useState(0);
   const [blendData, setBlendData] = useState<Parameters<BlendWizardProps['onComplete']>[0]>({} as Parameters<BlendWizardProps['onComplete']>[0]);
   const [showTips, setShowTips] = useState(true);
@@ -51,7 +54,7 @@ export default function BlendWizard({ products, onComplete, onCancel }: BlendWiz
       tips: [
         'Blends allow you to combine multiple products in specific quantities',
         'You can use different units (ml, drops, g) and the system will handle conversions',
-        'Each blend tracks cost and suggests pricing automatically',
+        isSuperAdmin ? 'Each blend tracks cost and suggests pricing automatically' : 'Saved blends can be reused for future orders',
         'Saved blends can be reused for future orders'
       ]
     },
@@ -264,14 +267,18 @@ export default function BlendWizard({ products, onComplete, onCancel }: BlendWiz
                 <div className="text-sm text-gray-500">Ingredients</div>
                 <div className="font-medium">{blendData.ingredients?.length || 0}</div>
               </div>
-              <div>
-                <div className="text-sm text-gray-500">Total Cost</div>
-                <div className="font-medium">${typeof blendData.totalCost === 'number' ? blendData.totalCost.toFixed(2) : '0.00'}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-500">Suggested Price</div>
-                <div className="font-medium">${typeof blendData.suggestedPrice === 'number' ? blendData.suggestedPrice.toFixed(2) : '0.00'}</div>
-              </div>
+              {isSuperAdmin && (
+                <>
+                  <div>
+                    <div className="text-sm text-gray-500">Total Cost</div>
+                    <div className="font-medium">${typeof blendData.totalCost === 'number' ? blendData.totalCost.toFixed(2) : '0.00'}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-500">Suggested Price</div>
+                    <div className="font-medium">${typeof blendData.suggestedPrice === 'number' ? blendData.suggestedPrice.toFixed(2) : '0.00'}</div>
+                  </div>
+                </>
+              )}
             </div>
 
             {blendData.ingredients && (

@@ -54,7 +54,7 @@ export interface Product {
   totalQuantity?: number;
   availableStock: number;
   reservedStock: number;
-  costPrice: number;
+  costPrice?: number;
   sellingPrice: number;
   status: 'active' | 'inactive';
   isActive: boolean;
@@ -92,7 +92,7 @@ export interface ProductFormData {
   quantity: number;
   currentStock: number;
   totalQuantity?: number;
-  costPrice: number;
+  costPrice?: number;
   sellingPrice: number;
   status: 'active' | 'inactive';
   expiryDate?: string;
@@ -117,7 +117,7 @@ export interface ProductTemplate {
     abbreviation: string;
   };
   sellingPrice: number;
-  costPrice: number;
+  costPrice?: number;
 }
 
 export type ProductAdditionMethod = 'template' | 'new';

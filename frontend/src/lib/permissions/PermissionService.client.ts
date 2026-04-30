@@ -35,6 +35,7 @@ export class PermissionService {
             canManageStock: true,
             canCreateRestockOrders: true,
             canBulkOperations: true,
+            canViewCostPrices: false,
             canEditCostPrices: false,
           },
           patients: {
@@ -109,6 +110,7 @@ export class PermissionService {
             canManageStock: false,
             canCreateRestockOrders: false,
             canBulkOperations: false,
+            canViewCostPrices: false,
             canEditCostPrices: false,
           },
           patients: {
@@ -183,6 +185,7 @@ export class PermissionService {
             canManageStock: true,
             canCreateRestockOrders: true,
             canBulkOperations: false,
+            canViewCostPrices: false,
             canEditCostPrices: false,
           },
           patients: {
@@ -257,6 +260,7 @@ export class PermissionService {
             canManageStock: false,
             canCreateRestockOrders: false,
             canBulkOperations: false,
+            canViewCostPrices: false,
             canEditCostPrices: false,
           },
           patients: {
@@ -333,7 +337,7 @@ export class PermissionService {
     switch (role) {
       case 'super_admin':
         return {
-          inventory: { canViewInventory: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: true, canManageStock: true, canCreateRestockOrders: true, canBulkOperations: true, canEditCostPrices: true },
+          inventory: { canViewInventory: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: true, canManageStock: true, canCreateRestockOrders: true, canBulkOperations: true, canViewCostPrices: true, canEditCostPrices: true },
           patients: { canCreatePatients: true, canEditPatients: true, canDeletePatients: true, canViewMedicalHistory: true, canManagePrescriptions: true, canAccessAllPatients: true },
           reports: { canViewFinancialReports: true, canViewInventoryReports: true, canViewUserReports: true, canViewSecurityMetrics: true, canExportReports: true },
           settings: { canViewSettings: true, canEditSettings: true, canManageIntegrations: true, canConfigureSystem: true },
@@ -349,7 +353,7 @@ export class PermissionService {
         };
       case 'admin':
         return {
-          inventory: { canViewInventory: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: false, canManageStock: true, canCreateRestockOrders: true, canBulkOperations: true, canEditCostPrices: false },
+          inventory: { canViewInventory: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: false, canManageStock: true, canCreateRestockOrders: true, canBulkOperations: true, canViewCostPrices: false, canEditCostPrices: false },
           patients: { canCreatePatients: true, canEditPatients: true, canDeletePatients: false, canViewMedicalHistory: true, canManagePrescriptions: true, canAccessAllPatients: true },
           reports: { canViewFinancialReports: true, canViewInventoryReports: true, canViewUserReports: true, canViewSecurityMetrics: false, canExportReports: true },
           settings: { canViewSettings: true, canEditSettings: true, canManageIntegrations: false, canConfigureSystem: false },
@@ -365,7 +369,7 @@ export class PermissionService {
         };
       case 'manager':
         return {
-          inventory: { canViewInventory: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: false, canManageStock: true, canCreateRestockOrders: true, canBulkOperations: false, canEditCostPrices: false },
+          inventory: { canViewInventory: true, canAddProducts: true, canEditProducts: true, canDeleteProducts: false, canManageStock: true, canCreateRestockOrders: true, canBulkOperations: false, canViewCostPrices: false, canEditCostPrices: false },
           patients: { canCreatePatients: true, canEditPatients: true, canDeletePatients: false, canViewMedicalHistory: true, canManagePrescriptions: true, canAccessAllPatients: true },
           reports: { canViewFinancialReports: true, canViewInventoryReports: true, canViewUserReports: false, canViewSecurityMetrics: false, canExportReports: true },
           settings: { canViewSettings: true, canEditSettings: false, canManageIntegrations: false, canConfigureSystem: false },
@@ -381,7 +385,7 @@ export class PermissionService {
         };
       case 'staff':
         return {
-          inventory: { canViewInventory: true, canAddProducts: false, canEditProducts: false, canDeleteProducts: false, canManageStock: false, canCreateRestockOrders: false, canBulkOperations: false, canEditCostPrices: false },
+          inventory: { canViewInventory: true, canAddProducts: false, canEditProducts: false, canDeleteProducts: false, canManageStock: false, canCreateRestockOrders: false, canBulkOperations: false, canViewCostPrices: false, canEditCostPrices: false },
           patients: { canCreatePatients: true, canEditPatients: false, canDeletePatients: false, canViewMedicalHistory: false, canManagePrescriptions: false, canAccessAllPatients: false },
           reports: { canViewFinancialReports: false, canViewInventoryReports: false, canViewUserReports: false, canViewSecurityMetrics: false, canExportReports: false },
           settings: { canViewSettings: false, canEditSettings: false, canManageIntegrations: false, canConfigureSystem: false },

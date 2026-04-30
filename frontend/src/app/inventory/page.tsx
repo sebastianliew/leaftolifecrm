@@ -281,7 +281,7 @@ export default function InventoryPage() {
         unitOfMeasurement: data.unitOfMeasurement.id,
         currentStock: data.currentStock || 0,
         sellingPrice: data.sellingPrice || 0,
-        costPrice: data.costPrice || 0,
+        ...(canViewCostPrices && data.costPrice !== undefined ? { costPrice: data.costPrice } : {}),
         description: data.bundleInfo,
         status: 'active',
         canSellLoose: data.canSellLoose,

@@ -133,6 +133,10 @@ export const usePermissions = () => {
   ): boolean => {
     if (!user) return false;
 
+    if (category === 'inventory' && (permission === 'canViewCostPrices' || permission === 'canEditCostPrices')) {
+      return user.role === 'super_admin';
+    }
+
     // Super admin has unlimited access
     if (user.role === 'super_admin') return true;
 

@@ -158,7 +158,10 @@ export const navigationItems: NavigationItem[] = [
         icon: 'item-sales',
         description: 'View detailed sales reports for individual items',
         visibility: {
-          permissions: [{ category: 'reports', permission: 'canViewFinancialReports' }]
+          permissions: [
+            { category: 'reports', permission: 'canViewFinancialReports' },
+            { category: 'inventory', permission: 'canViewCostPrices' }
+          ]
         }
       },
       {
@@ -198,7 +201,10 @@ export const navigationItems: NavigationItem[] = [
         icon: 'inventory-cost',
         description: 'Detailed analysis of inventory costs and stock valuation',
         visibility: {
-          permissions: [{ category: 'reports', permission: 'canViewInventoryReports' }]
+          permissions: [
+            { category: 'reports', permission: 'canViewInventoryReports' },
+            { category: 'inventory', permission: 'canViewCostPrices' }
+          ]
         }
       },
       {

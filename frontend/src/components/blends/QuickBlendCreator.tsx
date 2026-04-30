@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import UnitConversionService from '@/lib/unit-conversion';
 import { perUnitCost } from '@/lib/pricing';
+import { usePermissions } from '@/hooks/usePermissions';
 
 /**
  * Determines the content unit based on container type.
@@ -29,7 +30,7 @@ interface Product {
   currentStock: number;
   totalQuantity: number;
   sellingPrice: number;
-  costPrice: number;
+  costPrice?: number;
   containerCapacity?: number;
   containerType?: string;
   discountFlags?: {
@@ -82,6 +83,8 @@ export default function QuickBlendCreator({
   initialData,
   className = ''
 }: QuickBlendCreatorProps) {
+  const { user } = usePermissions();
+  const isSuperAdmin = user?.role === 'super_admin';
   const [blendName, setBlendName] = useState(initialData?.blendName || '');
   const [targetSize, setTargetSize] = useState(initialData?.targetSize || 100);
   const [targetUnit, setTargetUnit] = useState(initialData?.targetUnit || 'ml');
@@ -605,14 +608,18 @@ export default function QuickBlendCreator({
                 <div className="text-gray-500">Target Size</div>
                 <div className="font-medium">{targetSize} {targetUnit}</div>
               </div>
-              <div>
-                <div className="text-gray-500">Total Cost</div>
-                <div className="font-medium">${blendCalculations.totalCost.toFixed(2)}</div>
-              </div>
-              <div>
-                <div className="text-gray-500">Suggested Price</div>
-                <div className="font-medium">${blendCalculations.suggestedPrice.toFixed(2)}</div>
-              </div>
+              {isSuperAdmin && (
+                <>
+                  <div>
+                    <div className="text-gray-500">Total Cost</div>
+                    <div className="font-medium">${blendCalculations.totalCost.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Suggested Price</div>
+                    <div className="font-medium">${blendCalculations.suggestedPrice.toFixed(2)}</div>
+                  </div>
+                </>
+              )}
             </div>
 
             {blendCalculations.error && (

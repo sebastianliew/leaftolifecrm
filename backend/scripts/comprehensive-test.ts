@@ -269,7 +269,7 @@ async function run() {
     /convertedQuantity:\s*.*\*\s*\(?.*containerCapacity/,
     /convertedQuantity:\s*.*containerCapacity\s*\*/,
   ];
-  let hasBad = badPatterns.some(p => p.test(txForm));
+  const hasBad = badPatterns.some(p => p.test(txForm));
 
   assert('17a. No convertedQuantity × containerCapacity in frontend', !hasBad,
     'Frontend should never multiply convertedQuantity by containerCapacity');

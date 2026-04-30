@@ -28,6 +28,7 @@ export interface FeaturePermissions {
     canManageStock: boolean;
     canCreateRestockOrders: boolean;
     canBulkOperations: boolean;
+    canViewCostPrices: boolean; // SUPER ADMIN ONLY
     canEditCostPrices: boolean; // SUPER ADMIN ONLY
   };
   transactions: {
@@ -175,6 +176,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Partial<FeaturePermissions>> = {
       canManageStock: true,
       canCreateRestockOrders: true,
       canBulkOperations: true,
+      canViewCostPrices: false,
       canEditCostPrices: false, // Only super admin
     },
     transactions: {
@@ -238,6 +240,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Partial<FeaturePermissions>> = {
       canManageStock: true,
       canCreateRestockOrders: true,
       canBulkOperations: false,
+      canViewCostPrices: false,
       canEditCostPrices: false,
     },
     transactions: {
@@ -301,6 +304,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Partial<FeaturePermissions>> = {
       canManageStock: true,
       canCreateRestockOrders: false,
       canBulkOperations: false,
+      canViewCostPrices: false,
       canEditCostPrices: false,
     },
     transactions: {
@@ -358,6 +362,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Partial<FeaturePermissions>> = {
       canManageStock: false,
       canCreateRestockOrders: false,
       canBulkOperations: false,
+      canViewCostPrices: false,
       canEditCostPrices: false,
     },
     transactions: {
