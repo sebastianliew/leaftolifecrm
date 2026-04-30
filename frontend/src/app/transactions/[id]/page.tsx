@@ -8,6 +8,7 @@ import { ArrowLeft, FileText, Printer, Download, Mail, CheckCircle2 } from 'luci
 import { useTransactions as useTransactionsHook } from '@/hooks/useTransactions'
 import { formatCurrency } from '@/utils/currency'
 import type { Transaction } from '@/types/transaction'
+import { getInvoiceItemDiscountLabel, getItemDiscountLabel } from '@/lib/transactions/discountOverrides'
 import {
   EditorialPage,
   EditorialPageSkeleton,
@@ -209,6 +210,7 @@ export default function TransactionDetailPage() {
 
   const totalItems = (transaction.items || []).reduce((sum, item) => sum + (item.quantity ?? 0), 0)
   const totalDiscounts = (transaction.items || []).reduce((sum, item) => sum + (item.discountAmount || 0), 0)
+  const totalDiscountLabel = getInvoiceItemDiscountLabel(transaction.items || [])
   const subtotal = (transaction.items || []).reduce((sum, item) => sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)), 0)
   const calculatedTotal = subtotal - totalDiscounts - (transaction.discountAmount || 0)
   const outstanding = calculatedTotal - (transaction.paidAmount || 0)
@@ -387,7 +389,7 @@ export default function TransactionDetailPage() {
                   )}
                   {item.discountAmount && item.discountAmount > 0 && (
                     <p className="text-[11px] uppercase tracking-[0.28em] text-[#16A34A] mt-3 tabular-nums">
-                      Member discount · −{formatCurrency(item.discountAmount)}
+                      {getItemDiscountLabel(item)} · −{formatCurrency(item.discountAmount)}
                     </p>
                   )}
                 </div>
@@ -406,7 +408,7 @@ export default function TransactionDetailPage() {
           </div>
           {totalDiscounts > 0 && (
             <div className="flex justify-between items-baseline">
-              <dt className="text-[12px] text-[#16A34A]">Member discounts</dt>
+              <dt className="text-[12px] text-[#16A34A]">{totalDiscountLabel}</dt>
               <dd className="text-[14px] text-[#16A34A] tabular-nums">−{formatCurrency(totalDiscounts)}</dd>
             </div>
           )}

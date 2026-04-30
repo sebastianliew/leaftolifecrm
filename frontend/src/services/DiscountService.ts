@@ -44,6 +44,8 @@ interface TransactionItem {
   unitPrice: number
   totalPrice?: number
   discountAmount?: number
+  discountSource?: 'membership' | 'gift' | 'manual_override'
+  discountReason?: string
   itemType?: string
   isService?: boolean
   saleType?: string
@@ -58,6 +60,8 @@ interface CalculateResponse {
     unitPrice: number
     totalPrice: number
     discountAmount: number
+    discountSource?: 'membership' | 'gift' | 'manual_override'
+    discountReason?: string
     convertedQuantity?: number
     containerCapacityAtSale?: number
     displaySku?: string

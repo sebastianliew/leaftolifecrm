@@ -17,6 +17,12 @@ import { AppError } from '../middlewares/errorHandler.middleware.js';
 import { computeUnitPrice, safeContainerCapacity, perUnitCost, perUnitSellingPrice } from '../utils/pricingUtils.js';
 import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 import { normalizeTransactionForPayment, formatInvoiceFilename } from '../utils/transactionUtils.js';
+import {
+  DiscountOverridePolicyError,
+  normalizeManualItemDiscount,
+  normalizeManualItemDiscounts,
+  type DiscountSource,
+} from '../services/discountOverridePolicy.js';
 
 // Fix #4: In-memory lock to prevent concurrent invoice sends for the same transaction
 const invoiceSendLocks = new Set<string>();
@@ -61,12 +67,39 @@ function shouldCorrectLegacyCostPricedBlend(
 // Returns server-calculated prices, discounts, and totals without saving.
 // Frontend calls this to show accurate values before submission.
 // ========================================================================
-export const calculateTransactionPreview = async (req: Request, res: Response): Promise<void> => {
+export const calculateTransactionPreview = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { items, customerId, discountAmount } = req.body;
+    const allowDiscountOverride = req.user?.role === 'super_admin';
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: 'Items array is required and must not be empty' });
+      return;
+    }
+
+    const discountValidation = await DiscountValidationService.validateTransaction(
+      items,
+      customerId || null,
+      { allowDiscountOverride }
+    );
+    if (!discountValidation.valid) {
+      const firstError = discountValidation.errors[0];
+      res.status(400).json({
+        error: firstError.error,
+        item: firstError.item,
+        code: firstError.code,
+        allErrors: discountValidation.errors,
+      });
+      return;
+    }
+
+    const billEligibility = await DiscountValidationService.validateBillDiscount(
+      discountAmount || 0,
+      items,
+      { allowDiscountOverride }
+    );
+    if (!billEligibility.valid) {
+      res.status(400).json({ error: billEligibility.error, code: 'BILL_DISCOUNT_INELIGIBLE_ITEMS' });
       return;
     }
 
@@ -74,13 +107,32 @@ export const calculateTransactionPreview = async (req: Request, res: Response): 
       items,
       customerId: customerId || null,
       discountAmount: discountAmount || 0,
+      allowDiscountOverride,
+      mode: 'preview',
     });
+
+    if (result.totalAmount < 0) {
+      res.status(400).json({
+        error: 'Bill discount exceeds the discounted subtotal',
+        code: 'TOTAL_NEGATIVE',
+        message: 'Total cannot be negative.',
+      });
+      return;
+    }
 
     res.json({
       success: true,
       ...result,
     });
   } catch (error) {
+    if (error instanceof DiscountOverridePolicyError) {
+      res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        allErrors: error.errors,
+      });
+      return;
+    }
     console.error('[TransactionCalculation] Error:', error);
     res.status(500).json({ error: 'Failed to calculate transaction' });
   }
@@ -101,6 +153,8 @@ async function generateInvoiceAsync(
       quantity: number;
       unitPrice: number;
       discountAmount?: number;
+      discountSource?: DiscountSource;
+      discountReason?: string;
       itemType?: string;
     }>;
     discountAmount: number;
@@ -147,6 +201,8 @@ async function generateInvoiceAsync(
         unitPrice: item.unitPrice ?? 0,
         totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
         discountAmount: item.discountAmount,
+        discountSource: item.discountSource,
+        discountReason: item.discountReason,
         itemType: item.itemType as 'product' | 'fixed_blend' | 'custom_blend' | 'bundle' | 'miscellaneous' | 'consultation' | 'service' | undefined
       })),
       subtotal,
@@ -384,6 +440,7 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
 
   try {
     const transactionData = req.body;
+    const allowDiscountOverride = req.user?.role === 'super_admin';
 
     // Basic validation
     if (!transactionData.customerName || !transactionData.items || transactionData.items.length === 0) {
@@ -439,7 +496,8 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
         // Also validate bill discount doesn't apply to non-eligible items
         const billEligibility = await DiscountValidationService.validateBillDiscount(
           transactionData.discountAmount,
-          transactionData.items
+          transactionData.items,
+          { allowDiscountOverride }
         );
         if (!billEligibility.valid) {
           res.status(400).json({ error: billEligibility.error, code: 'BILL_DISCOUNT_INELIGIBLE_ITEMS' });
@@ -479,7 +537,8 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
     {
       const discountValidation = await DiscountValidationService.validateTransaction(
         transactionData.items,
-        transactionData.customerId
+        transactionData.customerId,
+        { allowDiscountOverride }
       );
 
       if (!discountValidation.valid) {
@@ -637,6 +696,12 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
     }
 
     // ========================================================================
+    // PRESERVE GIFT / MANUAL OVERRIDE LINE DISCOUNTS
+    // Gifted product lines should follow verified server prices and stay free.
+    // ========================================================================
+    normalizeManualItemDiscounts(transactionData.items);
+
+    // ========================================================================
     // SERVER-SIDE DISCOUNT RECALCULATION
     // Look up customer tier and recalculate membership discounts
     // ========================================================================
@@ -649,6 +714,8 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
           const serverDiscountRate = customer.memberBenefits.discountPercentage;
 
           for (const item of transactionData.items) {
+            if (normalizeManualItemDiscount(item)) continue;
+
             // Only apply to eligible item types
             if (item.itemType !== 'product' && item.itemType !== 'fixed_blend') continue;
 
@@ -664,6 +731,7 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
 
             // Use server-calculated discount (override frontend)
             item.discountAmount = Math.round(serverDiscount * 100) / 100;
+            item.discountSource = item.discountAmount > 0 ? 'membership' : undefined;
             item.totalPrice = itemSubtotal - item.discountAmount;
           }
         }
@@ -924,6 +992,15 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
       duration: Date.now() - startTime
     });
 
+    if (error instanceof DiscountOverridePolicyError) {
+      res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        allErrors: error.errors
+      });
+      return;
+    }
+
     if (error instanceof AppError) {
       const body: Record<string, unknown> = { error: error.message };
       if (error.code) body.code = error.code;
@@ -974,6 +1051,7 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
   try {
     const { id } = req.params;
     const updateData = req.body;
+    const allowDiscountOverride = req.user?.role === 'super_admin';
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       res.status(400).json({ error: 'Invalid transaction ID' });
@@ -1056,7 +1134,8 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
       const customerId = updateData.customerId || existingTransaction.customerId;
       const discountValidation = await DiscountValidationService.validateTransaction(
         updateData.items,
-        customerId
+        customerId,
+        { allowDiscountOverride }
       );
 
       if (!discountValidation.valid) {
@@ -1099,7 +1178,8 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
 
         const billEligibility = await DiscountValidationService.validateBillDiscount(
           updateData.discountAmount,
-          updateData.items
+          updateData.items,
+          { allowDiscountOverride }
         );
         if (!billEligibility.valid) {
           res.status(400).json({ error: billEligibility.error, code: 'BILL_DISCOUNT_INELIGIBLE_ITEMS' });
@@ -1208,6 +1288,8 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
             item.containerCapacityAtSale = serverCap;
           }
 
+          normalizeManualItemDiscounts(updateData.items);
+
           // Recalculate totals from verified prices
           const recalcSubtotal = updateData.items.reduce(
             (sum: number, item: { unitPrice?: number; quantity?: number }) =>
@@ -1267,6 +1349,34 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
       updateData.items &&
       Array.isArray(updateData.items) &&
       updateData.items.length > 0;
+
+    if (isCompletedItemUpdate) {
+      const calculated = await transactionCalculationService.calculateTransaction({
+        items: updateData.items,
+        customerId: updateData.customerId || existingTransaction.customerId || null,
+        discountAmount: updateData.discountAmount ?? existingTransaction.discountAmount ?? 0,
+        allowDiscountOverride,
+        mode: 'commit',
+      });
+
+      if (calculated.totalAmount < 0) {
+        res.status(400).json({
+          error: 'Bill discount exceeds the discounted subtotal',
+          code: 'TOTAL_NEGATIVE',
+          message: 'Total cannot be negative.',
+        });
+        return;
+      }
+
+      updateData.items = updateData.items.map((item: Record<string, unknown>, index: number) => ({
+        ...item,
+        ...calculated.items[index],
+      }));
+      updateData.subtotal = calculated.subtotal;
+      updateData.totalAmount = calculated.totalAmount;
+    } else if (updateData.items && Array.isArray(updateData.items)) {
+      normalizeManualItemDiscounts(updateData.items);
+    }
 
     // Build per-product delta map: positive = more sold (deduct more), negative = less sold (restore)
     type InventoryDelta = { productId: string; productName: string; delta: number; unitOfMeasurementId?: string };
@@ -1495,6 +1605,8 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
             unitPrice: item.unitPrice ?? 0,
             totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
             discountAmount: item.discountAmount,
+            discountSource: item.discountSource,
+            discountReason: item.discountReason,
             itemType: item.itemType
           })),
           subtotal,
@@ -1570,6 +1682,14 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
     res.status(200).json({ ...responseDoc, _oversoldItems: oversoldItems });
   } catch (error) {
     console.error('Error updating transaction:', error);
+    if (error instanceof DiscountOverridePolicyError) {
+      res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code,
+        allErrors: error.errors
+      });
+      return;
+    }
     if (error instanceof AppError) {
       const body: Record<string, unknown> = { error: error.message };
       if (error.code) body.code = error.code;
@@ -1740,6 +1860,8 @@ export const generateTransactionInvoice = async (req: AuthenticatedRequest, res:
         unitPrice: item.unitPrice ?? 0,
         totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
         discountAmount: item.discountAmount,
+        discountSource: item.discountSource,
+        discountReason: item.discountReason,
         itemType: item.itemType
       })),
       subtotal,
@@ -1895,6 +2017,8 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
         unitPrice: item.unitPrice ?? 0,
         totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
         discountAmount: item.discountAmount,
+        discountSource: item.discountSource,
+        discountReason: item.discountReason,
         itemType: item.itemType
       })),
       subtotal,
@@ -2027,6 +2151,36 @@ export const saveDraft = async (req: AuthenticatedRequest, res: Response): Promi
       return;
     }
 
+    const allowDiscountOverride = req.user.role === 'super_admin';
+    const draftItems = Array.isArray(formData.items) ? formData.items : [];
+
+    if (formData.paymentMethod === 'offset_from_credit') {
+      res.status(400).json({
+        error: 'Customer credit feature is not yet implemented',
+        code: 'CREDIT_LEDGER_NOT_CONFIGURED',
+        message: 'Choose a different payment method. The store-credit ledger has open product decisions (see wiki/deduction-surfaces.md §D1).'
+      });
+      return;
+    }
+
+    const discountValidation = await DiscountValidationService.validateTransaction(
+      draftItems,
+      formData.customerId,
+      { allowDiscountOverride }
+    );
+    if (!discountValidation.valid) {
+      const firstError = discountValidation.errors[0];
+      res.status(400).json({
+        error: firstError.error,
+        item: firstError.item,
+        code: firstError.code,
+        allErrors: discountValidation.errors
+      });
+      return;
+    }
+
+    normalizeManualItemDiscounts(draftItems);
+
     // Convert form data to transaction format
     // Don't set transactionNumber - let the pre-save middleware generate a proper TXN number
     const transactionData = {
@@ -2034,7 +2188,7 @@ export const saveDraft = async (req: AuthenticatedRequest, res: Response): Promi
       customerId: formData.customerId,
       customerEmail: formData.customerEmail,
       customerPhone: formData.customerPhone,
-      items: formData.items || [],
+      items: draftItems,
       subtotal: formData.subtotal || 0,
       discountAmount: formData.discount || 0,
       totalAmount: formData.total || formData.subtotal || 0,

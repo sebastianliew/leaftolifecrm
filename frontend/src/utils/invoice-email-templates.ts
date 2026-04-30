@@ -1,6 +1,7 @@
 import type { Transaction, CompanyInfo as BaseCompanyInfo, Address } from '@/types/transaction';
 import { format } from 'date-fns';
 import { formatCurrency } from '@/utils/validators';
+import { getInvoiceItemDiscountLabel, getItemDiscountLabel } from '@/lib/transactions/discountOverrides';
 
 interface EmailTemplateOptions {
   customerName: string;
@@ -544,7 +545,7 @@ export class InvoiceEmailTemplates {
         <div class="item-name">
           ${item.name}
           ${item.isService ? ' <span style="color: #666; font-size: 12px;">(Service)</span>' : ''}
-          ${(item.discountAmount || 0) > 0 ? ' <span style="color: #15803d; font-size: 12px;">(Member Discount Applied)</span>' : ''}
+          ${(item.discountAmount || 0) > 0 ? ` <span style="color: #15803d; font-size: 12px;">(${getItemDiscountLabel(item)} Applied)</span>` : ''}
         </div>
         <div class="item-details">
           <div style="font-size: 12px; color: #666;">
@@ -559,6 +560,7 @@ export class InvoiceEmailTemplates {
     `).join('');
 
     const memberDiscountTotal = transaction.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
+    const itemDiscountLabel = getInvoiceItemDiscountLabel(transaction.items);
 
     return `
       <div class="items-summary">
@@ -574,7 +576,7 @@ export class InvoiceEmailTemplates {
           
           ${memberDiscountTotal > 0 ? `
             <div class="item-row" style="color: #15803d;">
-              <div class="item-name">Member Discounts</div>
+              <div class="item-name">${itemDiscountLabel}</div>
               <div class="item-quantity"></div>
               <div class="item-price">-${formatCurrency(memberDiscountTotal, transaction.currency)}</div>
             </div>

@@ -35,6 +35,8 @@ export interface ITransaction extends Document {
     costPrice?: number; // Cost price captured at point of sale for accurate margin calculations
     totalPrice: number;
     discountAmount?: number;
+    discountSource?: 'membership' | 'gift' | 'manual_override';
+    discountReason?: string;
     isService?: boolean;
     saleType: 'quantity' | 'volume';
     unitOfMeasurementId: string;
@@ -156,6 +158,11 @@ const TransactionItemSchema = new Schema({
   costPrice: { type: Number }, // Cost price captured at point of sale
   totalPrice: { type: Number, required: true },
   discountAmount: { type: Number, default: 0 },
+  discountSource: {
+    type: String,
+    enum: ['membership', 'gift', 'manual_override']
+  },
+  discountReason: { type: String, maxlength: 200 },
   isService: { type: Boolean, default: false },
   saleType: { type: String, enum: ['quantity', 'volume'], required: true },
   unitOfMeasurementId: { type: String, required: true },

@@ -88,6 +88,8 @@ export interface TransactionItem {
   unitPrice: number
   totalPrice: number
   discountAmount?: number
+  discountSource?: 'membership' | 'gift' | 'manual_override'
+  discountReason?: string
   isService?: boolean
   saleType: 'quantity' | 'volume'
   unitOfMeasurementId: string

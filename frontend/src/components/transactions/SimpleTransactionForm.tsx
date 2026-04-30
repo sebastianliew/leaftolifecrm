@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FaTrash, FaShoppingCart, FaUserPlus, FaEdit } from "react-icons/fa"
+import { FaTrash, FaShoppingCart, FaUserPlus, FaEdit, FaGift } from "react-icons/fa"
 import { FiRefreshCw, FiAlertTriangle } from "react-icons/fi"
 import { ImSpinner8 } from "react-icons/im"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -30,6 +30,18 @@ import { DiscountService } from "@/services/DiscountService"
 import { formatCurrency } from "@/utils/currency"
 import { useToast } from "@/hooks/use-toast"
 import { api } from "@/lib/api-client"
+import { usePermissions } from "@/hooks/usePermissions"
+import {
+  clearDiscountMetadata,
+  getAdditionalDiscountBase,
+  getItemDiscountLabel,
+  getLineSubtotal,
+  isGiftEligibleItem,
+  isGiftItem,
+  isManualDiscountItem,
+  normalizeManualDiscount,
+  prepareDiscountOverrideItem,
+} from "@/lib/transactions/discountOverrides"
 
 /** Fetch a patient by ID from the backend and normalize _id → id. */
 async function fetchPatient(patientId: string): Promise<Patient | null> {
@@ -51,6 +63,8 @@ interface SimpleTransactionFormProps {
 export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCancel, loading, initialData }: SimpleTransactionFormProps) {
   const { units, getUnits } = useUnits()
   const { toast } = useToast()
+  const { user } = usePermissions()
+  const isSuperAdmin = user?.role === 'super_admin'
   const [showTypeSelector, setShowTypeSelector] = useState(false)
   const [showProductSelector, setShowProductSelector] = useState(false)
   const [showQuantityInput, setShowQuantityInput] = useState(false)
@@ -175,16 +189,22 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               // Call backend to recalculate all prices and discounts
               try {
                 const result = await DiscountService.calculateTransactionServer(
-                  formData.items.map(item => ({
-                    productId: item.productId,
-                    name: item.name,
-                    quantity: item.quantity,
-                    unitPrice: item.unitPrice,
-                    itemType: item.itemType,
-                    isService: item.isService,
-                    saleType: item.saleType,
-                    customBlendData: item.customBlendData,
-                  })),
+                  formData.items.map(item => {
+                    const preparedItem = prepareDiscountOverrideItem(item, isSuperAdmin)
+                    return {
+                      productId: preparedItem.productId,
+                      name: preparedItem.name,
+                      quantity: preparedItem.quantity,
+                      unitPrice: preparedItem.unitPrice,
+                      itemType: preparedItem.itemType,
+                      isService: preparedItem.isService,
+                      saleType: preparedItem.saleType,
+                      discountAmount: preparedItem.discountAmount,
+                      discountSource: preparedItem.discountSource,
+                      discountReason: preparedItem.discountReason,
+                      customBlendData: preparedItem.customBlendData,
+                    }
+                  }),
                   initialData.customerId,
                   formData.discountAmount
                 )
@@ -198,6 +218,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                           ...item,
                           unitPrice: serverItem.unitPrice,
                           discountAmount: serverItem.discountAmount,
+                          discountSource: serverItem.discountSource,
+                          discountReason: serverItem.discountReason,
                           totalPrice: serverItem.totalPrice,
                         }
                       }
@@ -258,16 +280,22 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
 
               try {
                 const result = await DiscountService.calculateTransactionServer(
-                  formData.items.map(item => ({
-                    productId: item.productId,
-                    name: item.name,
-                    quantity: item.quantity,
-                    unitPrice: item.unitPrice,
-                    itemType: item.itemType,
-                    isService: item.isService,
-                    saleType: item.saleType,
-                    customBlendData: item.customBlendData,
-                  })),
+                  formData.items.map(item => {
+                    const preparedItem = prepareDiscountOverrideItem(item, isSuperAdmin)
+                    return {
+                      productId: preparedItem.productId,
+                      name: preparedItem.name,
+                      quantity: preparedItem.quantity,
+                      unitPrice: preparedItem.unitPrice,
+                      itemType: preparedItem.itemType,
+                      isService: preparedItem.isService,
+                      saleType: preparedItem.saleType,
+                      discountAmount: preparedItem.discountAmount,
+                      discountSource: preparedItem.discountSource,
+                      discountReason: preparedItem.discountReason,
+                      customBlendData: preparedItem.customBlendData,
+                    }
+                  }),
                   updatedPatient.id,
                   formData.discountAmount
                 )
@@ -281,10 +309,14 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                           ...item,
                           unitPrice: serverItem.unitPrice,
                           discountAmount: serverItem.discountAmount,
+                          discountSource: serverItem.discountSource,
+                          discountReason: serverItem.discountReason,
                           totalPrice: serverItem.totalPrice,
                         }
                       }
-                      return { ...item, discountAmount: 0, totalPrice: item.quantity * item.unitPrice }
+                      return isManualDiscountItem(item)
+                        ? normalizeManualDiscount(item)
+                        : { ...clearDiscountMetadata(item), discountAmount: 0, totalPrice: item.quantity * item.unitPrice }
                     })
                     return { ...prev, items: updatedItems, subtotal: result.subtotal, totalAmount: result.totalAmount }
                   })
@@ -302,7 +334,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
 
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
-  }, [selectedPatient?.id, selectedPatient?.memberBenefits?.discountPercentage, products])
+  }, [selectedPatient?.id, selectedPatient?.memberBenefits?.discountPercentage, formData.items, formData.discountAmount, products, isSuperAdmin])
 
   useEffect(() => {
     // Subtotal = sum of original prices (without any discounts)
@@ -327,12 +359,13 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     debounceRef.current = setTimeout(async () => {
       const numValue = Number.parseFloat(value) || 0
 
-      // Calculate bill-level discount amount from percentage or direct amount
-      const memberDiscountTotal = formData.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0)
+      // Calculate bill-level discount amount from remaining positive charge lines.
+      // Negative credit adjustment lines do not expand the percentage base.
+      const additionalDiscountBase = getAdditionalDiscountBase(formData.items)
       const billDiscountAmount = discountMode === 'percentage'
-        ? ((formData.subtotal - memberDiscountTotal) * numValue / 100)
+        ? (additionalDiscountBase * numValue / 100)
         : numValue
-      const sanitizedAmount = Math.max(0, billDiscountAmount)
+      const sanitizedAmount = Math.min(Math.max(0, billDiscountAmount), additionalDiscountBase)
 
       // Apply optimistic local value immediately
       setFormData(prev => ({ ...prev, discountAmount: sanitizedAmount }))
@@ -340,16 +373,22 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       // Reconcile with server calculation
       try {
         const result = await DiscountService.calculateTransactionServer(
-          formData.items.map(item => ({
-            productId: item.productId,
-            name: item.name,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            itemType: item.itemType,
-            isService: item.isService,
-            saleType: item.saleType,
-            customBlendData: item.customBlendData,
-          })),
+          formData.items.map(item => {
+            const preparedItem = prepareDiscountOverrideItem(item, isSuperAdmin)
+            return {
+              productId: preparedItem.productId,
+              name: preparedItem.name,
+              quantity: preparedItem.quantity,
+              unitPrice: preparedItem.unitPrice,
+              itemType: preparedItem.itemType,
+              isService: preparedItem.isService,
+              saleType: preparedItem.saleType,
+              discountAmount: preparedItem.discountAmount,
+              discountSource: preparedItem.discountSource,
+              discountReason: preparedItem.discountReason,
+              customBlendData: preparedItem.customBlendData,
+            }
+          }),
           formData.customerId,
           sanitizedAmount
         )
@@ -366,7 +405,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
 
       setIsTyping(false)
     }, 1000)
-  }, [formData.subtotal, formData.items, formData.customerId, discountMode])
+  }, [formData.items, formData.customerId, discountMode, isSuperAdmin])
 
   // Sync discount value with mode changes (but not when user is typing)
   useEffect(() => {
@@ -374,16 +413,14 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       if (discountMode === 'amount') {
         setDiscountValue(formData.discountAmount.toString())
       } else {
-        // Calculate percentage based on after-membership total, not subtotal
-        const memberDiscountTotal = formData.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0)
-        const afterMembershipTotal = formData.subtotal - memberDiscountTotal
-        const percentage = afterMembershipTotal > 0 ? (formData.discountAmount / afterMembershipTotal * 100) : 0
+        const additionalDiscountBase = getAdditionalDiscountBase(formData.items)
+        const percentage = additionalDiscountBase > 0 ? (formData.discountAmount / additionalDiscountBase * 100) : 0
         setDiscountValue(percentage.toFixed(2))
       }
     } else if (!isTyping && formData.discountAmount === 0) {
       setDiscountValue('')
     }
-  }, [formData.discountAmount, discountMode, formData.subtotal, formData.items, isTyping])
+  }, [formData.discountAmount, discountMode, formData.items, isTyping])
 
   // Note: Membership discounts are now applied at the item level, not transaction level
   // The bottom discount section is for additional manual discounts only
@@ -577,6 +614,10 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
 
   // Centralized function to apply member discounts to REGULAR PRODUCTS AND FIXED BLENDS
   const applyMemberDiscount = (item: TransactionItem): TransactionItem => {
+    if (isManualDiscountItem(item)) {
+      return normalizeManualDiscount(item)
+    }
+
     console.log('[Discount] Checking item:', item.name, {
       itemType: item.itemType,
       saleType: item.saleType,
@@ -618,7 +659,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     if (!productForDiscount) {
       console.log('[Discount] Product not available for:', item.name, '- resetting discount');
       return {
-        ...item,
+        ...clearDiscountMetadata(item),
         discountAmount: 0,
         totalPrice: item.quantity * item.unitPrice
       };
@@ -647,6 +688,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       return {
         ...item,
         discountAmount: discountCalc.discountCalculation.discountAmount,
+        discountSource: 'membership' as const,
+        discountReason: undefined,
         totalPrice: discountCalc.discountCalculation.finalPrice
       }
     }
@@ -655,7 +698,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     // Reset any existing discount
     console.log('[Discount] Item eligible but no discount calculated for:', item.name, '- resetting discount');
     return {
-      ...item,
+      ...clearDiscountMetadata(item),
       discountAmount: 0,
       totalPrice: item.quantity * item.unitPrice
     }
@@ -677,6 +720,9 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       console.log('[Discount] Recalculating discounts for', prev.items.length, 'existing items');
 
       const updatedItems = prev.items.map((item) => {
+        if (isManualDiscountItem(item)) {
+          return normalizeManualDiscount(item)
+        }
 
         // Skip recalculation for non-eligible items for membership discounts (services, custom blends, bundles, etc.)
         // Note: "Sell in Parts" items (saleType: 'volume') ARE eligible for member discounts
@@ -734,6 +780,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
             return {
               ...item,
               discountAmount: discountResult.discountCalculation.discountAmount,
+              discountSource: 'membership' as const,
+              discountReason: undefined,
               totalPrice: discountResult.discountCalculation.finalPrice
             };
           }
@@ -742,7 +790,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         // If no discount applicable, reset any existing discounts
         console.log('[Discount] Resetting discount for:', item.name);
         return {
-          ...item,
+          ...clearDiscountMetadata(item),
           discountAmount: 0,
           totalPrice: item.quantity * item.unitPrice
         };
@@ -878,6 +926,14 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         // Use centralized pricing — correctly divides by containerCapacity for volume items
         const newUnitPrice = computeUnitPrice(currentProduct.sellingPrice, currentProduct.containerCapacity, item.saleType);
         const baseTotal = newUnitPrice * item.quantity;
+        const repricedItem = {
+          ...item,
+          unitPrice: newUnitPrice,
+        }
+
+        if (isManualDiscountItem(repricedItem)) {
+          return normalizeManualDiscount(repricedItem)
+        }
 
         // Recalculate member discount if applicable
         if (selectedPatient?.memberBenefits?.discountPercentage &&
@@ -901,13 +957,15 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               ...item,
               unitPrice: newUnitPrice,
               discountAmount: discountCalc.discountCalculation.discountAmount,
+              discountSource: 'membership' as const,
+              discountReason: undefined,
               totalPrice: discountCalc.discountCalculation.finalPrice
             };
           }
         }
 
         return {
-          ...item,
+          ...clearDiscountMetadata(item),
           unitPrice: newUnitPrice,
           discountAmount: 0,
           totalPrice: baseTotal
@@ -952,7 +1010,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         const newUnitPrice = newTotalIngredientCost * priceRatio;
         const newTotalPrice = newUnitPrice * item.quantity;
 
-        return {
+        const updatedItem = {
           ...item,
           unitPrice: newUnitPrice,
           totalPrice: newTotalPrice,
@@ -962,6 +1020,10 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
             totalIngredientCost: newTotalIngredientCost
           }
         };
+
+        return isManualDiscountItem(updatedItem)
+          ? normalizeManualDiscount(updatedItem)
+          : updatedItem;
       })
     }));
 
@@ -981,6 +1043,14 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       ...prev,
       items: prev.items.map(item => {
         if (item.id === itemId) {
+          if (isManualDiscountItem(item)) {
+            return normalizeManualDiscount({
+              ...item,
+              quantity: newQuantity,
+              convertedQuantity: newQuantity
+            })
+          }
+
           // Recalculate discount and price for products and fixed blends (not services/bundles/custom blends)
           if (!item.isService && selectedPatient?.memberBenefits?.discountPercentage && 
               (item.itemType === 'product' || item.itemType === 'fixed_blend')) {
@@ -1032,13 +1102,15 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               quantity: newQuantity,
               totalPrice,
               discountAmount,
+              discountSource: discountAmount > 0 ? 'membership' as const : undefined,
+              discountReason: undefined,
               convertedQuantity: newQuantity
             }
             }
           } else {
             // For services, bundles, custom blends, or when no patient selected - no discount recalculation
             return {
-              ...item,
+              ...clearDiscountMetadata(item),
               quantity: newQuantity,
               totalPrice: item.unitPrice * newQuantity,
               convertedQuantity: newQuantity
@@ -1105,6 +1177,30 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     return item.isService && item.productId === "consultation-fee"
   }
 
+  const toggleGiftItem = (itemId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map(item => {
+        if (item.id !== itemId || !isGiftEligibleItem(item)) return item
+
+        if (isGiftItem(item)) {
+          const restoredItem = {
+            ...clearDiscountMetadata(item),
+            discountAmount: 0,
+            totalPrice: getLineSubtotal(item),
+          }
+          return applyMemberDiscount(restoredItem)
+        }
+
+        return normalizeManualDiscount({
+          ...item,
+          discountSource: 'gift' as const,
+          discountReason: 'Gift / free of charge',
+        })
+      })
+    }))
+  }
+
   // const handleAddReorderItems = (items: Array<{ productId: string; name: string; quantity?: number; itemType: string }>) => { ... } // See purchase history TODO above
 
   // const handleQuickReorder = async (transactionId: string) => {
@@ -1169,7 +1265,10 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       }
 
       // Auto-set payment status based on paidAmount when completing a transaction
-      const submitData = { ...formData }
+      const submitData = {
+        ...formData,
+        items: formData.items.map(item => prepareDiscountOverrideItem(item, isSuperAdmin)),
+      }
       if (formData.paymentStatus === 'pending') {
         if (submitData.paidAmount >= submitData.totalAmount) {
           submitData.paymentStatus = 'paid'
@@ -1201,18 +1300,16 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     // Convert current value to new mode
     if (discountValue) {
       const numValue = Number.parseFloat(discountValue) || 0
-      // Calculate total membership discounts for conversion
-      const memberDiscountTotal = formData.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0)
-      const afterMembershipTotal = formData.subtotal - memberDiscountTotal
+      const additionalDiscountBase = getAdditionalDiscountBase(formData.items)
       
       // Convert between discount modes manually
       if (discountMode === 'percentage') {
         // Converting from percentage to amount
-        const convertedAmount = afterMembershipTotal * numValue / 100
+        const convertedAmount = additionalDiscountBase * numValue / 100
         setDiscountValue(convertedAmount.toString())
       } else {
         // Converting from amount to percentage
-        const convertedPercentage = afterMembershipTotal > 0 ? (numValue / afterMembershipTotal * 100) : 0
+        const convertedPercentage = additionalDiscountBase > 0 ? (numValue / additionalDiscountBase * 100) : 0
         setDiscountValue(convertedPercentage.toString())
       }
     }
@@ -1238,6 +1335,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     try {
       const draftData = {
         ...formData,
+        items: formData.items.map(item => prepareDiscountOverrideItem(item, isSuperAdmin)),
         isDraft: true,
         status: 'draft' as const
       }
@@ -1339,6 +1437,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               {formData.items.map((item) => {
                 const priceMismatch = getPriceMismatch(item);
                 const customBlendMismatch = getCustomBlendMismatch(item);
+                const discountLabel = getItemDiscountLabel(item, selectedPatient?.memberBenefits?.discountPercentage);
 
                 return (
                 <div key={item.id} className={`flex items-center gap-4 py-4 ${
@@ -1431,7 +1530,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                           {formatCurrency(item.unitPrice * item.quantity)}
                         </p>
                         <p className="text-[10px] uppercase tracking-[0.22em] text-[#16A34A] mt-1">
-                          {selectedPatient?.memberBenefits?.discountPercentage}% member
+                          {discountLabel}
                         </p>
                         <p className="text-[10px] text-[#16A34A] tabular-nums italic font-light">
                           save {formatCurrency(item.discountAmount || 0)}
@@ -1468,6 +1567,25 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                     )}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
+                    {isSuperAdmin && isGiftEligibleItem(item) && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className={`transition-colors ${isGiftItem(item) ? 'text-[#0F766E] hover:text-[#0A0A0A]' : 'text-[#6B7280] hover:text-[#0F766E]'}`}
+                              onClick={() => toggleGiftItem(item.id!)}
+                              title={isGiftItem(item) ? 'Remove gift' : 'Mark as gift'}
+                            >
+                              <FaGift className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            <p>{isGiftItem(item) ? 'Remove gift' : 'Mark as gift'}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                     {isConsultationItem(item) && (
                       <button
                         type="button"
@@ -1650,9 +1768,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                     {discountMode === 'percentage' 
                       ? `= ${formatCurrency(formData.discountAmount)}`
                       : (() => {
-                          const memberDiscountTotal = formData.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0)
-                          const afterMembershipTotal = formData.subtotal - memberDiscountTotal
-                          return afterMembershipTotal > 0 ? `= ${(formData.discountAmount / afterMembershipTotal * 100).toFixed(1)}%` : ''
+                          const additionalDiscountBase = getAdditionalDiscountBase(formData.items)
+                          return additionalDiscountBase > 0 ? `= ${(formData.discountAmount / additionalDiscountBase * 100).toFixed(1)}%` : ''
                         })()
                     }
                   </div>

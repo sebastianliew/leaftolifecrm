@@ -3,6 +3,7 @@
 import type { Transaction } from "@/types/transaction"
 import { jsPDF } from "jspdf"
 import { formatInvoiceFilename } from "./invoice-filename"
+import { getInvoiceItemDiscountLabel, getItemDiscountLabel } from "@/lib/transactions/discountOverrides"
 
 // Company information
 const defaultCompanyInfo = {
@@ -286,15 +287,16 @@ export function generateInvoicePDF(transaction: Transaction): void {
     doc.text(`${transaction.currency} ${transaction.subtotal.toFixed(2)}`, pageWidth - margin, yPos, { align: "right" });
 
     // Member discounts
-    const memberDiscountTotal = transaction.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
-    if (memberDiscountTotal > 0) {
+    const itemDiscountTotal = transaction.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
+    const itemDiscountLabel = getInvoiceItemDiscountLabel(transaction.items);
+    if (itemDiscountTotal > 0) {
       yPos += 6;
       doc.setFont("helvetica", "normal");
       doc.setTextColor(...gray);
-      doc.text("Member Discounts:", totalsX, yPos);
+      doc.text(`${itemDiscountLabel}:`, totalsX, yPos);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(...green);
-      doc.text(`-${transaction.currency} ${memberDiscountTotal.toFixed(2)}`, pageWidth - margin, yPos, { align: "right" });
+      doc.text(`-${transaction.currency} ${itemDiscountTotal.toFixed(2)}`, pageWidth - margin, yPos, { align: "right" });
     }
 
     // Additional discount
@@ -316,7 +318,7 @@ export function generateInvoicePDF(transaction: Transaction): void {
 
     yPos += 8;
     // Calculate correct total from subtotal minus discounts
-    const calculatedTotal = transaction.subtotal - memberDiscountTotal - transaction.discountAmount;
+    const calculatedTotal = transaction.subtotal - itemDiscountTotal - transaction.discountAmount;
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
@@ -345,6 +347,7 @@ export function generateInvoiceHTML(transaction: Transaction): string {
 
   // Calculate member discount total
   const memberDiscountTotal = transaction.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0);
+  const itemDiscountLabel = getInvoiceItemDiscountLabel(transaction.items);
 
   return `
     <!DOCTYPE html>
@@ -707,7 +710,7 @@ export function generateInvoiceHTML(transaction: Transaction): string {
                     ${item.name}
                     ${item.isService ? '<span class="badge badge-service">Service</span>' : ''}
                     ${item.saleType === 'volume' ? '<span class="badge badge-volume">Sold in Parts</span>' : ''}
-                    ${(item.discountAmount && item.discountAmount > 0) ? '<span class="badge badge-discount">Member Discount Applied</span>' : ''}
+                    ${(item.discountAmount && item.discountAmount > 0) ? `<span class="badge badge-discount">${getItemDiscountLabel(item)} Applied</span>` : ''}
                   </div>
                   ${item.description ? `<div class="item-description">${item.description}</div>` : ''}
                 </td>
@@ -732,7 +735,7 @@ export function generateInvoiceHTML(transaction: Transaction): string {
           </div>
           ${memberDiscountTotal > 0 ? `
             <div class="totals-row border-bottom">
-              <span class="totals-label">Member Discounts:</span>
+              <span class="totals-label">${itemDiscountLabel}:</span>
               <span class="totals-value discount-value">-${transaction.currency} ${memberDiscountTotal.toFixed(2)}</span>
             </div>
           ` : ''}

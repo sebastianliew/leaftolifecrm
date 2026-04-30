@@ -114,6 +114,8 @@ export const transactionItemSchema = z.object({
   saleType: z.enum(['quantity', 'volume']).default('quantity'),
   totalPrice: commonSchemas.currency,
   discountAmount: commonSchemas.nonNegativeNumber.default(0),
+  discountSource: z.enum(['membership', 'gift', 'manual_override']).optional(),
+  discountReason: z.string().max(200).optional(),
   isService: z.boolean().default(false),
   convertedQuantity: z.number().nonnegative().default(0)
 })
@@ -258,6 +260,8 @@ export const draftItemSchema = z.object({
   unitPrice: z.number().default(0),
   totalPrice: z.number().default(0),
   discountAmount: z.number().nonnegative().default(0),
+  discountSource: z.enum(['membership', 'gift', 'manual_override']).optional(),
+  discountReason: z.string().max(200).optional(),
   isService: z.boolean().default(false),
   saleType: z.enum(['quantity', 'volume', 'count'])
     .transform(val => val === 'count' ? 'quantity' : val)

@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
+import { getInvoiceItemDiscountLabel } from './discountOverridePolicy.js';
 
 interface InvoiceItem {
   name: string;
@@ -8,6 +9,8 @@ interface InvoiceItem {
   unitPrice: number;
   totalPrice: number;
   discountAmount?: number;
+  discountSource?: 'membership' | 'gift' | 'manual_override';
+  discountReason?: string;
   itemType?: 'product' | 'fixed_blend' | 'custom_blend' | 'bundle' | 'miscellaneous' | 'consultation' | 'service';
 }
 
@@ -349,10 +352,11 @@ export class InvoiceGenerator {
       .text('Subtotal:', labelX, this.yPosition)
       .text(this.formatCurrency(data.subtotal, currency), valueX, this.yPosition, { align: 'right', width: 60 });
 
-    // Member Discounts (if any)
+    // Item Discounts (if any)
     if (data.discountAmount > 0) {
       this.yPosition += 20;
-      this.doc.fillColor('#000000').text('Member Discounts:', labelX, this.yPosition);
+      const label = getInvoiceItemDiscountLabel(data.items);
+      this.doc.fillColor('#000000').text(label, labelX, this.yPosition);
       this.doc.fillColor('#059669').text(`-${this.formatCurrency(data.discountAmount, currency)}`, valueX, this.yPosition, { align: 'right', width: 60 });
     }
 

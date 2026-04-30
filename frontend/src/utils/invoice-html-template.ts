@@ -1,4 +1,5 @@
 import type { Transaction } from '@/types/transaction';
+import { getInvoiceItemDiscountLabel, getItemDiscountLabel } from '@/lib/transactions/discountOverrides';
 
 const defaultCompanyInfo = {
   name: "Leaf to Life Pte Ltd",
@@ -15,6 +16,7 @@ const defaultCompanyInfo = {
 
 export function generateInvoiceHTML(transaction: Transaction): string {
   const companyInfo = defaultCompanyInfo;
+  const itemDiscountLabel = getInvoiceItemDiscountLabel(transaction.items);
   
   return `
 <!DOCTYPE html>
@@ -511,7 +513,7 @@ export function generateInvoiceHTML(transaction: Transaction): string {
                             <div class="item-name">${item.name}</div>
                             ${item.description ? `<div class="item-description">${item.description}</div>` : ''}
                             ${item.isService ? '<span class="service-badge">Service</span>' : ''}
-                            ${(item.discountAmount || 0) > 0 ? '<span class="service-badge" style="background: #dcfce7; color: #15803d;">Member Discount Applied</span>' : ''}
+                            ${(item.discountAmount || 0) > 0 ? `<span class="service-badge" style="background: #dcfce7; color: #15803d;">${getItemDiscountLabel(item)} Applied</span>` : ''}
                         </td>
                         <td class="text-right">${item.quantity}</td>
                         <td class="text-right">${transaction.currency} ${item.unitPrice.toFixed(2)}</td>
@@ -536,7 +538,7 @@ export function generateInvoiceHTML(transaction: Transaction): string {
                 </tr>
                 ${transaction.items.some(item => (item.discountAmount || 0) > 0) ? `
                     <tr>
-                        <td class="label">Member Discounts:</td>
+                        <td class="label">${itemDiscountLabel}:</td>
                         <td class="amount" style="color: #15803d; font-weight: 600;">-${transaction.currency} ${transaction.items.reduce((sum, item) => sum + (item.discountAmount || 0), 0).toFixed(2)}</td>
                     </tr>
                 ` : ''}
@@ -584,4 +586,4 @@ export function generateInvoiceHTML(transaction: Transaction): string {
     </div>
 </body>
 </html>`;
-} 
+}

@@ -11,6 +11,14 @@
 
 import { Product } from '../models/Product.js';
 import { computeUnitPrice, safeContainerCapacity, perUnitCost } from '../utils/pricingUtils.js';
+import {
+  assertDiscountOverrideMetadata,
+  isManualDiscountSource,
+  normalizeManualItemDiscount,
+  normalizeManualItemDiscounts,
+  roundCurrency,
+  type DiscountSource,
+} from './discountOverridePolicy.js';
 
 // Item types eligible for membership discounts
 const DISCOUNT_ELIGIBLE_ITEM_TYPES = new Set(['product', 'fixed_blend']);
@@ -22,8 +30,11 @@ export interface CalculationItem {
   unitPrice: number;
   totalPrice?: number;
   discountAmount?: number;
+  discountSource?: DiscountSource | string;
+  discountReason?: string;
   itemType?: string;
   isService?: boolean;
+  miscellaneousCategory?: string;
   saleType?: 'quantity' | 'volume';
   convertedQuantity?: number;
   containerCapacityAtSale?: number;
@@ -40,6 +51,8 @@ export interface CalculationInput {
   items: CalculationItem[];
   customerId?: string | null;
   discountAmount?: number; // bill-level discount
+  allowDiscountOverride?: boolean;
+  mode?: 'preview' | 'commit';
 }
 
 export interface CalculatedItem extends CalculationItem {
@@ -82,10 +95,20 @@ class TransactionCalculationService {
     // ── STEP 2: Recalculate custom blend prices from ingredients ──
     await this.recalculateCustomBlendPrices(items, warnings);
 
-    // ── STEP 3: Recalculate membership discounts ──
+    assertDiscountOverrideMetadata(items, {
+      allowDiscountOverride: input.allowDiscountOverride,
+    });
+
+    // ── STEP 3: Preserve gift/manual line discounts after price changes ──
+    normalizeManualItemDiscounts(items);
+
+    // ── STEP 4: Recalculate membership discounts ──
     const memberDiscount = await this.recalculateMemberDiscounts(items, input.customerId);
 
-    // ── STEP 4: Recalculate totals ──
+    // ── STEP 5: Ensure every line has a verified net total ──
+    this.finalizeLineTotals(items);
+
+    // ── STEP 6: Recalculate totals ──
     const subtotal = items.reduce(
       (sum, item) => sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)),
       0
@@ -99,9 +122,9 @@ class TransactionCalculationService {
 
     return {
       items,
-      subtotal: Math.round(subtotal * 100) / 100,
-      totalItemDiscounts: Math.round(totalItemDiscounts * 100) / 100,
-      totalAmount: Math.round(totalAmount * 100) / 100,
+      subtotal: roundCurrency(subtotal),
+      totalItemDiscounts: roundCurrency(totalItemDiscounts),
+      totalAmount: roundCurrency(totalAmount),
       warnings,
       memberDiscount: memberDiscount || undefined,
     };
@@ -242,10 +265,16 @@ class TransactionCalculationService {
     }
 
     for (const item of items) {
+      const itemSubtotal = item.unitPrice * item.quantity;
+
+      if (normalizeManualItemDiscount(item)) {
+        continue;
+      }
+
       if (!DISCOUNT_ELIGIBLE_ITEM_TYPES.has(item.itemType || '')) {
         // Non-eligible items get no member discount
         item.discountAmount = 0;
-        item.totalPrice = item.unitPrice * item.quantity;
+        item.totalPrice = itemSubtotal;
         continue;
       }
 
@@ -254,21 +283,42 @@ class TransactionCalculationService {
         const isDiscountable = discountFlagsMap.get(item.productId);
         if (isDiscountable === false) {
           item.discountAmount = 0;
-          item.totalPrice = item.unitPrice * item.quantity;
+          item.totalPrice = itemSubtotal;
           continue;
         }
       }
 
-      const itemSubtotal = item.unitPrice * item.quantity;
       const discount = itemSubtotal * (discountRate / 100);
-      item.discountAmount = Math.round(discount * 100) / 100;
-      item.totalPrice = itemSubtotal - item.discountAmount;
+      item.discountAmount = roundCurrency(discount);
+      item.discountSource = item.discountAmount > 0 ? 'membership' : undefined;
+      item.totalPrice = roundCurrency(itemSubtotal - item.discountAmount);
     }
 
     return {
       percentage: discountRate,
       tier: customer.memberBenefits.membershipTier,
     };
+  }
+
+  private finalizeLineTotals(items: CalculatedItem[]): void {
+    for (const item of items) {
+      if (isManualDiscountSource(item.discountSource)) {
+        normalizeManualItemDiscount(item);
+        continue;
+      }
+
+      const itemSubtotal = roundCurrency((item.unitPrice ?? 0) * (item.quantity ?? 0));
+      const discountAmount = roundCurrency(
+        Math.min(Math.max(item.discountAmount ?? 0, 0), Math.max(itemSubtotal, 0))
+      );
+
+      item.discountAmount = discountAmount;
+      item.totalPrice = roundCurrency(itemSubtotal - discountAmount);
+
+      if (discountAmount <= 0 && item.discountSource === 'membership') {
+        delete item.discountSource;
+      }
+    }
   }
 }
 

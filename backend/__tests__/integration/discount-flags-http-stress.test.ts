@@ -63,17 +63,20 @@ function buildApp(): Express {
 }
 const app = buildApp();
 
-async function makeAdminToken() {
+async function makeToken(role: 'super_admin' | 'admin' | 'manager' | 'staff' = 'admin') {
   const u = await User.create({
-    email: `admin-${Date.now()}-${Math.random()}@test.local`,
-    username: `admin-${Date.now()}-${Math.random()}`,
-    name: 'admin test',
+    email: `${role}-${Date.now()}-${Math.random()}@test.local`,
+    username: `${role}-${Date.now()}-${Math.random()}`,
+    name: `${role} test`,
     password: 'x',
-    role: 'super_admin',
+    role,
     isActive: true,
   });
-  return jwt.sign({ userId: String(u._id), role: 'super_admin' }, process.env.JWT_SECRET!, { expiresIn: '1h' });
+  return jwt.sign({ userId: String(u._id), role }, process.env.JWT_SECRET!, { expiresIn: '1h' });
 }
+
+const makeAdminToken = () => makeToken('admin');
+const makeSuperAdminToken = () => makeToken('super_admin');
 
 async function seedProduct(overrides: Parameters<typeof createTestProduct>[0] = {}, flags?: { discountableForAll?: boolean; discountableForMembers?: boolean; discountableInBlends?: boolean }) {
   const unit = await createTestUnit({ name: `unit-${Date.now()}-${Math.random()}` });
@@ -167,6 +170,340 @@ describe('SMOKE — discountFlags at the HTTP boundary', () => {
 
     expect(res.status).toBe(400);
     expect(String(res.body.error || res.body.message || '')).toMatch(/Blocked|non-discountable|not eligible/i);
+  });
+
+  it('super_admin can apply a full bill discount across non-eligible lines', async () => {
+    const token = await makeSuperAdminToken();
+    const blocked = await seedProduct(
+      { name: 'Blocked Book', sellingPrice: 100, currentStock: 10 },
+      { discountableForAll: false }
+    );
+    const unitId = String((blocked as any).unitOfMeasurement);
+    const items = [
+      buildItem(blocked as any, 1),
+      {
+        productId: `custom_blend_${Date.now()}`,
+        name: 'Custom blend',
+        quantity: 1,
+        convertedQuantity: 1,
+        unitOfMeasurementId: unitId,
+        baseUnit: 'unit',
+        itemType: 'custom_blend' as const,
+        saleType: 'quantity' as const,
+        unitPrice: 50,
+        totalPrice: 50,
+        discountAmount: 0,
+      },
+      {
+        productId: 'consultation-fee',
+        name: 'Consultation Fee',
+        quantity: 1,
+        convertedQuantity: 1,
+        unitOfMeasurementId: unitId,
+        baseUnit: 'unit',
+        itemType: 'consultation' as const,
+        saleType: 'quantity' as const,
+        unitPrice: 25,
+        totalPrice: 25,
+        discountAmount: 0,
+        isService: true,
+      },
+    ];
+
+    const res = await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        customerName: 'Walk-in',
+        items,
+        discountAmount: 175,
+        paymentMethod: 'cash',
+        paymentStatus: 'paid',
+        paidAmount: 0,
+        status: 'completed',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.totalAmount).toBe(0);
+    expect(res.body.discountAmount).toBe(175);
+    expect((await Product.findById(blocked._id))!.currentStock).toBe(9);
+  });
+
+  it('super_admin can gift a product line while still deducting stock', async () => {
+    const token = await makeSuperAdminToken();
+    const book = await seedProduct({ name: 'Gift Book', sellingPrice: 40, currentStock: 10 });
+
+    const res = await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        customerName: 'Walk-in',
+        items: [{
+          ...buildItem(book as any, 2, { discountAmount: 80 }),
+          discountSource: 'gift',
+          discountReason: 'Gift / free of charge',
+        }],
+        paymentMethod: 'cash',
+        paymentStatus: 'paid',
+        paidAmount: 0,
+        status: 'completed',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.totalAmount).toBe(0);
+    expect(res.body.items[0].discountAmount).toBe(80);
+    expect(res.body.items[0].discountSource).toBe('gift');
+    expect(res.body.items[0].totalPrice).toBe(0);
+    expect((await Product.findById(book._id))!.currentStock).toBe(8);
+  });
+
+  it('gifted drafts complete once, stay free, and deduct stock on completion', async () => {
+    const token = await makeSuperAdminToken();
+    const book = await seedProduct({ name: 'Gift Draft Book', sellingPrice: 40, currentStock: 10 });
+
+    const draft = await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        customerName: 'Walk-in',
+        items: [{
+          ...buildItem(book as any, 2, { discountAmount: 80 }),
+          discountSource: 'gift',
+          discountReason: 'Gift / free of charge',
+        }],
+        paymentMethod: 'cash',
+        paymentStatus: 'pending',
+        paidAmount: 0,
+        status: 'draft',
+      });
+
+    expect(draft.status).toBe(201);
+    expect((await Product.findById(book._id))!.currentStock).toBe(10);
+
+    const completed = await request(app)
+      .put(`/api/transactions/${draft.body._id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        ...draft.body,
+        status: 'completed',
+        paymentStatus: 'paid',
+        paidAmount: 0,
+      });
+
+    expect(completed.status).toBe(200);
+    expect(completed.body.totalAmount).toBe(0);
+    expect(completed.body.items[0].discountSource).toBe('gift');
+    expect(completed.body.items[0].discountAmount).toBe(80);
+    expect(completed.body.items[0].totalPrice).toBe(0);
+    expect((await Product.findById(book._id))!.currentStock).toBe(8);
+  });
+
+  it('editing a completed gifted transaction preserves free pricing and applies only inventory delta', async () => {
+    const token = await makeSuperAdminToken();
+    const book = await seedProduct({ name: 'Completed Gift Book', sellingPrice: 40, currentStock: 10 });
+
+    const created = await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        customerName: 'Walk-in',
+        items: [{
+          ...buildItem(book as any, 1, { discountAmount: 40 }),
+          discountSource: 'gift',
+          discountReason: 'Gift / free of charge',
+        }],
+        paymentMethod: 'cash',
+        paymentStatus: 'paid',
+        paidAmount: 0,
+        status: 'completed',
+      });
+
+    expect(created.status).toBe(201);
+    expect((await Product.findById(book._id))!.currentStock).toBe(9);
+
+    const editedItem = {
+      ...created.body.items[0],
+      quantity: 3,
+      convertedQuantity: 3,
+    };
+    const edited = await request(app)
+      .put(`/api/transactions/${created.body._id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        ...created.body,
+        items: [editedItem],
+        subtotal: 120,
+        totalAmount: 0,
+        paymentStatus: 'paid',
+        paidAmount: 0,
+      });
+
+    expect(edited.status).toBe(200);
+    expect(edited.body.totalAmount).toBe(0);
+    expect(edited.body.items[0].discountSource).toBe('gift');
+    expect(edited.body.items[0].discountAmount).toBe(120);
+    expect(edited.body.items[0].totalPrice).toBe(0);
+    expect((await Product.findById(book._id))!.currentStock).toBe(7);
+  });
+
+  it('non-super-admin cannot smuggle a gift source with zero client discount', async () => {
+    const token = await makeAdminToken();
+    const book = await seedProduct({ name: 'Not A Gift Book', sellingPrice: 40, currentStock: 10 });
+
+    const res = await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        customerName: 'Walk-in',
+        items: [{
+          ...buildItem(book as any, 1, { discountAmount: 0 }),
+          discountSource: 'gift',
+          discountReason: 'Gift / free of charge',
+        }],
+        paymentMethod: 'cash',
+        paymentStatus: 'paid',
+        paidAmount: 40,
+        status: 'completed',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MANUAL_OVERRIDE_FORBIDDEN');
+    expect(String(res.body.allErrors?.[0]?.code || '')).toBe('MANUAL_OVERRIDE_FORBIDDEN');
+    expect((await Product.findById(book._id))!.currentStock).toBe(10);
+  });
+
+  it('POST /api/transactions/calculate rejects non-super gift metadata', async () => {
+    const token = await makeAdminToken();
+    const book = await seedProduct({ name: 'Preview Gift Book', sellingPrice: 40, currentStock: 10 });
+
+    const res = await request(app)
+      .post('/api/transactions/calculate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        items: [{
+          ...buildItem(book as any, 1),
+          discountSource: 'gift',
+          discountReason: 'Gift / free of charge',
+        }],
+        discountAmount: 0,
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MANUAL_OVERRIDE_FORBIDDEN');
+  });
+
+  it('POST /api/transactions/drafts/autosave rejects non-super gift metadata', async () => {
+    const token = await makeAdminToken();
+    const book = await seedProduct({ name: 'Draft Gift Book', sellingPrice: 40, currentStock: 10 });
+
+    const res = await request(app)
+      .post('/api/transactions/drafts/autosave')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        draftId: `draft-${Date.now()}`,
+        draftName: 'Gift draft',
+        formData: {
+          customerName: 'Walk-in',
+          items: [{
+            ...buildItem(book as any, 1),
+            discountSource: 'gift',
+            discountReason: 'Gift / free of charge',
+          }],
+          subtotal: 40,
+          discount: 0,
+          total: 40,
+          paymentMethod: 'cash',
+        },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MANUAL_OVERRIDE_FORBIDDEN');
+  });
+
+  it('PUT /api/transactions/:id rejects non-super gift metadata on update', async () => {
+    const token = await makeAdminToken();
+    const book = await seedProduct({ name: 'Update Gift Book', sellingPrice: 40, currentStock: 10 });
+
+    const created = await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        customerName: 'Walk-in',
+        items: [buildItem(book as any, 1)],
+        paymentMethod: 'cash',
+        paymentStatus: 'paid',
+        paidAmount: 40,
+        status: 'completed',
+      });
+
+    expect(created.status).toBe(201);
+    expect((await Product.findById(book._id))!.currentStock).toBe(9);
+
+    const res = await request(app)
+      .put(`/api/transactions/${created.body._id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        ...created.body,
+        items: [{
+          ...created.body.items[0],
+          discountSource: 'gift',
+          discountReason: 'Gift / free of charge',
+        }],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MANUAL_OVERRIDE_FORBIDDEN');
+    expect((await Product.findById(book._id))!.currentStock).toBe(9);
+  });
+
+  it('super_admin cannot gift custom blends but can manually override them', async () => {
+    const token = await makeSuperAdminToken();
+    const product = await seedProduct({ name: 'Manual Anchor', sellingPrice: 100 });
+    const unitId = String((product as any).unitOfMeasurement);
+    const customBlend = {
+      productId: `custom_blend_${Date.now()}`,
+      name: 'Manual blend',
+      quantity: 1,
+      convertedQuantity: 1,
+      unitOfMeasurementId: unitId,
+      baseUnit: 'unit',
+      itemType: 'custom_blend' as const,
+      saleType: 'quantity' as const,
+      unitPrice: 80,
+      totalPrice: 80,
+      discountAmount: 80,
+    };
+
+    const giftRes = await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        customerName: 'Walk-in',
+        items: [{ ...customBlend, discountSource: 'gift', discountReason: 'Gift / free of charge' }],
+        paymentMethod: 'cash',
+        paymentStatus: 'paid',
+        paidAmount: 0,
+        status: 'completed',
+      });
+
+    expect(giftRes.status).toBe(400);
+    expect(giftRes.body.code).toBe('GIFT_ITEM_NOT_ELIGIBLE');
+
+    const manualRes = await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        customerName: 'Walk-in',
+        items: [{ ...customBlend, discountSource: 'manual_override', discountReason: 'VIP override' }],
+        paymentMethod: 'cash',
+        paymentStatus: 'paid',
+        paidAmount: 0,
+        status: 'completed',
+      });
+
+    expect(manualRes.status).toBe(201);
+    expect(manualRes.body.totalAmount).toBe(0);
+    expect(manualRes.body.items[0].discountSource).toBe('manual_override');
   });
 
   it('POST /api/transactions with no discount on a flagged product → 201', async () => {

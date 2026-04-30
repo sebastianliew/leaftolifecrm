@@ -25,6 +25,13 @@
  */
 
 import { Product } from '../models/Product.js';
+import {
+  getManualOverrideItems,
+  validateDiscountOverrideMetadata,
+  type DiscountOverrideOptions,
+  type DiscountSource,
+  type DiscountOverrideErrorCode,
+} from './discountOverridePolicy.js';
 
 // Item types eligible for membership discounts
 const DISCOUNT_ELIGIBLE_ITEM_TYPES = new Set(['product', 'fixed_blend']);
@@ -39,20 +46,25 @@ export interface TransactionItem {
   unitPrice?: number;
   totalPrice?: number;
   discountAmount?: number;
+  discountSource?: DiscountSource | string;
+  discountReason?: string;
   isService?: boolean;
   itemType?: string;
+  miscellaneousCategory?: string;
 }
 
 export interface DiscountValidationError {
   error: string;
   item?: string;
-  code: 'ITEM_TYPE_NOT_ELIGIBLE' | 'PRODUCT_NOT_DISCOUNTABLE' | 'EXCEEDS_TIER_LIMIT';
+  code: 'ITEM_TYPE_NOT_ELIGIBLE' | 'PRODUCT_NOT_DISCOUNTABLE' | 'EXCEEDS_TIER_LIMIT' | DiscountOverrideErrorCode;
 }
 
 export interface DiscountValidationResult {
   valid: boolean;
   errors: DiscountValidationError[];
 }
+
+export type DiscountValidationOptions = DiscountOverrideOptions;
 
 export class DiscountValidationService {
   /**
@@ -66,9 +78,19 @@ export class DiscountValidationService {
   static async validateItemDiscounts(
     items: TransactionItem[],
     customerId: string | null | undefined,
-    maxDiscountPct: number
+    maxDiscountPct: number,
+    options: DiscountValidationOptions = {}
   ): Promise<DiscountValidationResult> {
     const errors: DiscountValidationError[] = [];
+
+    const overrideValidation = validateDiscountOverrideMetadata(items, options);
+    if (!overrideValidation.valid) {
+      return { valid: false, errors: overrideValidation.errors };
+    }
+
+    if (options.allowDiscountOverride) {
+      return { valid: true, errors };
+    }
 
     // Collect product IDs that have discounts so we can batch-fetch discountFlags
     const discountedProductIds: string[] = [];
@@ -180,9 +202,14 @@ export class DiscountValidationService {
    */
   static async validateBillDiscount(
     billDiscountAmount: number,
-    items: TransactionItem[]
+    items: TransactionItem[],
+    options: DiscountValidationOptions = {}
   ): Promise<{ valid: boolean; error?: string }> {
     if (!billDiscountAmount || billDiscountAmount <= 0) {
+      return { valid: true };
+    }
+
+    if (options.allowDiscountOverride) {
       return { valid: true };
     }
 
@@ -275,11 +302,23 @@ export class DiscountValidationService {
    */
   static async validateTransaction(
     items: TransactionItem[],
-    customerId: string | null | undefined
+    customerId: string | null | undefined,
+    options: DiscountValidationOptions = {}
   ): Promise<DiscountValidationResult & { patientStatus?: string }> {
+    const overrideValidation = validateDiscountOverrideMetadata(items, options);
+    if (!overrideValidation.valid) {
+      return { valid: false, errors: overrideValidation.errors };
+    }
+
     // If no items have discounts, short-circuit
-    const hasAnyDiscount = items.some(i => (i.discountAmount ?? 0) > 0);
+    const hasAnyDiscount = items.some(i =>
+      (i.discountAmount ?? 0) > 0 || getManualOverrideItems([i]).length > 0
+    );
     if (!hasAnyDiscount) {
+      return { valid: true, errors: [] };
+    }
+
+    if (options.allowDiscountOverride) {
       return { valid: true, errors: [] };
     }
 
@@ -290,7 +329,7 @@ export class DiscountValidationService {
       console.warn('[DiscountValidation] Transaction for INACTIVE patient:', customerId);
     }
 
-    const result = await this.validateItemDiscounts(items, customerId, maxDiscountPct);
+    const result = await this.validateItemDiscounts(items, customerId, maxDiscountPct, options);
     return { ...result, patientStatus };
   }
 }
