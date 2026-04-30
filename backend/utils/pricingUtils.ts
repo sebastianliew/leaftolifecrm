@@ -63,7 +63,8 @@ export function perUnitCostOr(product: PricingInput, fallback: number): PerUnitP
  *  - saleType 'quantity' → unitPrice is the per-container sellingPrice
  *  - saleType 'volume'   → unitPrice is sellingPrice ÷ containerCapacity  (per base-unit)
  *
- * The result is rounded to 2 decimal places.
+ * Volume prices keep 4 decimal places so very small per-base-unit prices do
+ * not collapse to zero while bad legacy data is being repaired.
  */
 export function computeUnitPrice(
   sellingPrice: number,
@@ -72,7 +73,7 @@ export function computeUnitPrice(
 ): number {
   if (saleType === 'volume') {
     const cap = safeContainerCapacity(containerCapacity);
-    return Math.round((sellingPrice / cap) * 100) / 100;
+    return Math.round((sellingPrice / cap) * 10000) / 10000;
   }
   return sellingPrice;
 }

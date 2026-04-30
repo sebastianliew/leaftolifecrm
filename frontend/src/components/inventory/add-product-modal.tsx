@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { EditorialModal } from "@/components/ui/editorial"
 import { Package } from "lucide-react"
 import { formatContainerBreakdown } from "@/lib/pricing"
+import { getProductPricePreview, type ProductPriceBasis } from "@/lib/productPricing"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import type { ProductCategory, Brand } from "@/types/inventory/product.types"
@@ -27,6 +28,8 @@ const productSchema = z.object({
   brand: z.string().optional(),
   costPrice: z.number().min(0, "Cost price must be positive").optional(),
   sellingPrice: z.number().min(0, "Selling price must be positive").optional(),
+  costPriceBasis: z.enum(['container', 'unit']).default('container'),
+  sellingPriceBasis: z.enum(['container', 'unit']).default('container'),
   currentStock: z.number().min(0, "Stock must be positive"),
   bundleInfo: z.string().optional(),
   bundlePrice: z.number().min(0, "Bundle price must be positive").optional(),
@@ -54,6 +57,8 @@ export interface AddProductSubmitData {
   canSellLoose?: boolean
   costPrice?: number
   sellingPrice?: number
+  costPriceBasis?: ProductPriceBasis
+  sellingPriceBasis?: ProductPriceBasis
   currentStock: number
   totalQuantity?: number
   expiryDate?: string
@@ -134,6 +139,8 @@ export function AddProductModal({
       brand: "",
       costPrice: undefined,
       sellingPrice: undefined,
+      costPriceBasis: 'container',
+      sellingPriceBasis: 'container',
       currentStock: 0,
       bundleInfo: "",
       bundlePrice: undefined,
@@ -176,6 +183,8 @@ export function AddProductModal({
         // Only super admins can submit cost price.
         costPrice: canEditCostPrices ? data.costPrice : undefined,
         sellingPrice: data.sellingPrice,
+        costPriceBasis: data.canSellLoose && (data.containerCapacity || 1) > 1 ? data.costPriceBasis : 'container',
+        sellingPriceBasis: data.canSellLoose && (data.containerCapacity || 1) > 1 ? data.sellingPriceBasis : 'container',
         // Always include current stock for product creation
         currentStock: data.currentStock || 0,
         bundleInfo: data.bundleInfo,
@@ -517,54 +526,92 @@ export function AddProductModal({
             const unitLabel = selUnit?.abbreviation || 'units'
             const costVal = watch('costPrice') || 0
             const sellVal = watch('sellingPrice') || 0
+            const costBasis = watch('costPriceBasis') || 'container'
+            const sellingBasis = watch('sellingPriceBasis') || 'container'
+            const preview = getProductPricePreview({
+              costPrice: costVal,
+              sellingPrice: sellVal,
+              costPriceBasis: costBasis,
+              sellingPriceBasis: sellingBasis,
+              containerCapacity: cap,
+              canSellLoose: hasLoose,
+            })
+            const BasisButtons = ({ value, onChange }: { value: ProductPriceBasis, onChange: (basis: ProductPriceBasis) => void }) => (
+              <div className="inline-flex rounded-md border bg-white p-0.5 text-xs">
+                {(['container', 'unit'] as ProductPriceBasis[]).map((basis) => (
+                  <button
+                    key={basis}
+                    type="button"
+                    onClick={() => onChange(basis)}
+                    className={`px-2 py-1 rounded ${value === basis ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+                  >
+                    Per {basis === 'container' ? 'container' : unitLabel}
+                  </button>
+                ))}
+              </div>
+            )
             return (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium">Pricing</p>
-                  {hasLoose && (
-                    <p className="text-xs text-muted-foreground">Enter price for one {cap}{unitLabel} container</p>
-                  )}
+	                  {hasLoose && (
+	                    <p className="text-xs text-muted-foreground">Stored inventory price remains per container</p>
+	                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   {canEditCostPrices && (
-                    <div className="space-y-2">
-                      <Label htmlFor="costPrice">
-                        Cost Price{hasLoose ? ' (per container)' : ''}
-                      </Label>
-                      <Input
+	                    <div className="space-y-2">
+	                      <div className="flex items-center justify-between gap-2">
+	                        <Label htmlFor="costPrice">Cost Price</Label>
+	                        {hasLoose && (
+	                          <BasisButtons
+	                            value={costBasis}
+	                            onChange={(basis) => setValue('costPriceBasis', basis)}
+	                          />
+	                        )}
+	                      </div>
+	                      <Input
                         id="costPrice"
                         type="number"
                         step="0.01"
                         {...register("costPrice", { valueAsNumber: true })}
                         placeholder="0.00"
                       />
-                      {hasLoose && costVal > 0 && (
-                        <p className="text-xs text-blue-600">
-                          = ${(costVal / cap).toFixed(4)} per {unitLabel}
-                        </p>
-                      )}
+	                      {hasLoose && costVal > 0 && (
+	                        <p className="text-xs text-blue-600">
+	                          Stores ${preview.costPrice?.toFixed(2)} per container
+	                          {preview.costPricePerUnit !== undefined ? ` = $${preview.costPricePerUnit.toFixed(4)} per ${unitLabel}` : ''}
+	                        </p>
+	                      )}
                       {errors.costPrice && (
                         <p className="text-sm text-red-500">{errors.costPrice.message}</p>
                       )}
                     </div>
                   )}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="sellingPrice">
-                      Selling Price{hasLoose ? ' (per container)' : ''}
-                    </Label>
-                    <Input
+	                  <div className="space-y-2">
+	                    <div className="flex items-center justify-between gap-2">
+	                      <Label htmlFor="sellingPrice">Selling Price</Label>
+	                      {hasLoose && (
+	                        <BasisButtons
+	                          value={sellingBasis}
+	                          onChange={(basis) => setValue('sellingPriceBasis', basis)}
+	                        />
+	                      )}
+	                    </div>
+	                    <Input
                       id="sellingPrice"
                       type="number"
                       step="0.01"
                       {...register("sellingPrice", { valueAsNumber: true })}
                       placeholder="0.00"
                     />
-                    {hasLoose && sellVal > 0 && (
-                      <p className="text-xs text-blue-600">
-                        = ${(sellVal / cap).toFixed(4)} per {unitLabel}
-                      </p>
-                    )}
+	                    {hasLoose && sellVal > 0 && (
+	                      <p className="text-xs text-blue-600">
+	                        Stores ${preview.sellingPrice?.toFixed(2)} per container
+	                        {preview.sellingPricePerUnit !== undefined ? ` = $${preview.sellingPricePerUnit.toFixed(4)} per ${unitLabel}` : ''}
+	                      </p>
+	                    )}
                     {errors.sellingPrice && (
                       <p className="text-sm text-red-500">{errors.sellingPrice.message}</p>
                     )}

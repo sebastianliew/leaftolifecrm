@@ -144,6 +144,61 @@ describe('STRESS — bill-level discount with mixed eligibility', () => {
   });
 });
 
+describe('SUPER ADMIN BYPASS — mixed and pre-priced charges', () => {
+  it('allows bill discounts on mixed carts only when bypass is enabled', async () => {
+    const blocked = await makeProduct({
+      name: 'Flagged Product',
+      flags: { discountableForAll: false, discountableForMembers: true },
+    });
+    const items = [
+      { productId: String(blocked._id), name: 'Flagged Product', itemType: 'product', unitPrice: 100, quantity: 1 },
+      { name: 'Bundle', itemType: 'bundle', unitPrice: 80, quantity: 1 },
+      { name: 'Consultation', itemType: 'consultation', isService: true, unitPrice: 50, quantity: 1 },
+    ];
+
+    const normal = await DiscountValidationService.validateBillDiscount(25, items);
+    const superAdmin = await DiscountValidationService.validateBillDiscount(25, items, { allowDiscountOverride: true });
+
+    expect(normal.valid).toBe(false);
+    expect(superAdmin.valid).toBe(true);
+  });
+
+  it('allows super-admin manual and gift overrides on any positive charge line', async () => {
+    const items = [
+      { name: 'Bundle', itemType: 'bundle', unitPrice: 80, quantity: 1, discountAmount: 15, discountSource: 'manual_override' },
+      { name: 'Custom Blend', itemType: 'custom_blend', unitPrice: 60, quantity: 1, discountAmount: 10, discountSource: 'manual_override' },
+      { name: 'Consultation', itemType: 'consultation', isService: true, unitPrice: 50, quantity: 1, discountSource: 'gift' },
+      { name: 'Misc Fee', itemType: 'miscellaneous', unitPrice: 20, quantity: 1, discountSource: 'gift' },
+    ];
+
+    const normal = await DiscountValidationService.validateTransaction(items, null);
+    const superAdmin = await DiscountValidationService.validateTransaction(items, null, { allowDiscountOverride: true });
+
+    expect(normal.valid).toBe(false);
+    expect(normal.errors[0].code).toBe('MANUAL_OVERRIDE_FORBIDDEN');
+    expect(superAdmin.valid).toBe(true);
+  });
+
+  it('clamps line and bill discounts so totals never go negative', async () => {
+    const result = await transactionCalculationService.calculateTransaction({
+      items: [
+        { name: 'Bundle', itemType: 'bundle', unitPrice: 80, quantity: 1, discountAmount: 999, discountSource: 'manual_override' },
+        { name: 'Consultation', itemType: 'consultation', isService: true, unitPrice: 50, quantity: 1, discountSource: 'gift' },
+      ],
+      customerId: null,
+      discountAmount: 999,
+      allowDiscountOverride: true,
+    });
+
+    expect(result.items[0].discountAmount).toBe(80);
+    expect(result.items[0].totalPrice).toBe(0);
+    expect(result.items[1].discountAmount).toBe(50);
+    expect(result.items[1].totalPrice).toBe(0);
+    expect(result.billDiscountAmount).toBe(0);
+    expect(result.totalAmount).toBe(0);
+  });
+});
+
 describe('EDGE — tier limit and flags compose correctly', () => {
   it('flag rejection takes precedence over (would-have-been-passing) tier check', async () => {
     const blocked = await makeProduct({

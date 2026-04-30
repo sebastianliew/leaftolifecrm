@@ -6,6 +6,7 @@ import { getInvoiceItemDiscountLabel } from './discountOverridePolicy.js';
 interface InvoiceItem {
   name: string;
   quantity: number;
+  quantityDisplay?: string;
   unitPrice: number;
   totalPrice: number;
   discountAmount?: number;
@@ -309,7 +310,7 @@ export class InvoiceGenerator {
       this.doc.text(itemDescription, col1X, this.yPosition, { width: maxWidth });
 
       // Quantity
-      this.doc.text(item.quantity.toString(), col2X, this.yPosition);
+      this.doc.text(item.quantityDisplay || item.quantity.toString(), col2X, this.yPosition);
 
       // Unit Price
       const currency = data.currency || 'SGD';

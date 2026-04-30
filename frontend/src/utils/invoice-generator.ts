@@ -4,6 +4,7 @@ import type { Transaction } from "@/types/transaction"
 import { jsPDF } from "jspdf"
 import { formatInvoiceFilename } from "./invoice-filename"
 import { getInvoiceItemDiscountLabel, getItemDiscountLabel } from "@/lib/transactions/discountOverrides"
+import { formatTransactionQuantityDisplay } from "@/lib/pricing"
 
 // Company information
 const defaultCompanyInfo = {
@@ -237,9 +238,17 @@ export function generateInvoicePDF(transaction: Transaction): void {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.setTextColor(...darkGray);
-      const qtyText = item.saleType === 'volume' && item.baseUnit
-        ? `${item.quantity} ${item.baseUnit}`
-        : item.quantity.toString();
+      const qtyText = formatTransactionQuantityDisplay({
+        quantity: item.quantity,
+        saleType: item.saleType,
+        baseUnit: item.baseUnit,
+        convertedQuantity: item.convertedQuantity,
+        unitPrice: item.unitPrice,
+        containerCapacity: item.containerCapacity,
+        containerCapacityAtSale: item.containerCapacityAtSale,
+        containerType: item.containerType,
+        product: item.product,
+      });
       doc.text(qtyText, xOffset, yPos + 5);
 
       xOffset += colWidths[1];
@@ -714,7 +723,17 @@ export function generateInvoiceHTML(transaction: Transaction): string {
                   </div>
                   ${item.description ? `<div class="item-description">${item.description}</div>` : ''}
                 </td>
-                <td class="text-right">${item.saleType === 'volume' && item.baseUnit ? `${item.quantity} ${item.baseUnit}` : (item.saleType === 'quantity' ? (item.quantity === 1 ? '1 unit' : `${item.quantity} units`) : item.quantity)}</td>
+                <td class="text-right">${formatTransactionQuantityDisplay({
+                  quantity: item.quantity,
+                  saleType: item.saleType,
+                  baseUnit: item.baseUnit,
+                  convertedQuantity: item.convertedQuantity,
+                  unitPrice: item.unitPrice,
+                  containerCapacity: item.containerCapacity,
+                  containerCapacityAtSale: item.containerCapacityAtSale,
+                  containerType: item.containerType,
+                  product: item.product,
+                })}</td>
                 <td class="text-right">${transaction.currency} ${item.unitPrice.toFixed(2)}</td>
                 <td class="text-right">
                   ${(item.discountAmount && item.discountAmount > 0)

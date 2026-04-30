@@ -19,6 +19,7 @@ import mongoose from 'mongoose';
 import dns from 'dns';
 import { readFileSync } from 'fs';
 import XLSX from 'xlsx';
+import { normalizeProductPricing } from '../services/productPricingPolicy.js';
 
 dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
 
@@ -270,14 +271,17 @@ async function run() {
     const excelPricePerContainer = parseFloat((row['Price per Container'] || '0').toString()) || 0;
     const excelPricePerUnit = parseFloat((row['Price per Unit/Content'] || '0').toString()) || 0;
 
-    let sellingPrice: number;
-    if (excelPricePerContainer > 0) {
-      // Excel Selling Price is per-unit; use the provided per-container price
-      sellingPrice = excelPricePerContainer;
-    } else {
-      // Excel Selling Price is already per-container
-      sellingPrice = rawSellingPrice;
-    }
+    const sellingPriceBasis = excelPricePerContainer > 0 ? 'container' : (canSellLoose && excelPricePerUnit > 0 ? 'unit' : 'container');
+    const pricing = normalizeProductPricing({
+      sellingPrice: excelPricePerContainer > 0 ? excelPricePerContainer : rawSellingPrice,
+      costPrice: rawCostPrice,
+      containerCapacity,
+      canSellLoose,
+      sellingPriceBasis,
+      costPriceBasis: 'container',
+    });
+    const sellingPrice = pricing.sellingPrice ?? 0;
+    const costPrice = pricing.costPrice ?? 0;
 
     // Cross-verify: sellingPrice / containerCapacity should ≈ per-unit price
     if (excelPricePerUnit > 0 && containerCapacity > 1) {
@@ -318,7 +322,7 @@ async function run() {
       canSellLoose,
       looseStock,
       sellingPrice,
-      costPrice: rawCostPrice,
+      costPrice,
       currentStock,
       quantity: Math.max(0, currentStock),
       totalQuantity: Math.max(0, currentStock),

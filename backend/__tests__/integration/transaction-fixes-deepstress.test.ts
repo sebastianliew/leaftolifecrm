@@ -1,7 +1,7 @@
 /**
  * Deep stress test specifically targeting the fixes shipped in this session:
  *
- *   #2  TOTAL_NEGATIVE guard on POST + PUT
+ *   #2  zero-floor bill discount clamp on POST + PUT
  *   #3  withTransaction retry on TransientTransactionError
  *   #4  Role-based discount permission gate on PUT
  *   #5  409 on cancel-twice
@@ -277,7 +277,7 @@ describe('#3 STRESS — withTransaction retries handle heavy contention', () => 
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// #2  TOTAL_NEGATIVE guard — boundary cases
+// #2  zero-floor bill discount clamp — boundary cases
 // ═══════════════════════════════════════════════════════════════════
 describe('#2 STRESS — total guard handles boundaries cleanly', () => {
   it('exactly-zero total is allowed (subtotal == bill discount)', async () => {
@@ -298,7 +298,7 @@ describe('#2 STRESS — total guard handles boundaries cleanly', () => {
     expect(res.body.totalAmount).toBe(0);
   });
 
-  it('one-cent-over rejects with TOTAL_NEGATIVE', async () => {
+  it('one-cent-over clamps to a zero total', async () => {
     const token = await makeUser('super_admin');
     const product = await seedProduct({ sellingPrice: 50, currentStock: 50 });
 
@@ -312,11 +312,12 @@ describe('#2 STRESS — total guard handles boundaries cleanly', () => {
         paymentMethod: 'cash',
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('TOTAL_NEGATIVE');
+    expect(res.status).toBe(201);
+    expect(res.body.discountAmount).toBe(50);
+    expect(res.body.totalAmount).toBe(0);
   });
 
-  it('item discount + bill discount combined push total negative — caught by item-discount validation first', async () => {
+  it('item discount + bill discount combined overage clamps bill discount to the remaining total', async () => {
     const token = await makeUser('super_admin');
     const product = await seedProduct({ sellingPrice: 100, currentStock: 50 });
 
@@ -330,10 +331,9 @@ describe('#2 STRESS — total guard handles boundaries cleanly', () => {
         paymentMethod: 'cash',
       });
 
-    // Either the discount-validation pipeline rejects (because no patient
-    // memberBenefits backs a 60% item discount) or the TOTAL_NEGATIVE guard
-    // does. Both paths result in a 400 — accept either.
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
+    expect(res.body.discountAmount).toBe(40);
+    expect(res.body.totalAmount).toBe(0);
   });
 
   it('zero-quantity item with no discount → zero total → 201 (no spurious TOTAL_NEGATIVE)', async () => {

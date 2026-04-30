@@ -4,6 +4,7 @@ export type DiscountSource = NonNullable<TransactionItem["discountSource"]>
 
 const MANUAL_DISCOUNT_SOURCES = new Set<DiscountSource>(["gift", "manual_override"])
 const DEFAULT_GIFT_REASON = "Gift / free of charge"
+const DISCOUNT_ELIGIBLE_ITEM_TYPES = new Set(["product", "fixed_blend"])
 
 type DiscountPermissionBag = {
   canApplyDiscounts?: boolean | number
@@ -26,25 +27,8 @@ export const roundCurrency = (value: number) => {
   return Object.is(rounded, -0) ? 0 : rounded
 }
 
-const hasUnlimitedDiscountAuthority = (permissions?: DiscountPermissionBag) => {
-  if (!permissions?.unlimitedDiscounts) return false
-
-  return Boolean(
-    permissions.canApplyDiscounts ||
-    permissions.canApplyBillDiscounts ||
-    permissions.canApplyProductDiscounts
-  )
-}
-
 export const canUseDiscountOverride = (user?: DiscountOverrideUser | null) => {
-  if (!user) return false
-  if (user.role === "super_admin") return true
-
-  return (
-    hasUnlimitedDiscountAuthority(user.featurePermissions?.discounts) ||
-    hasUnlimitedDiscountAuthority(user.effectivePermissions?.discounts) ||
-    hasUnlimitedDiscountAuthority(user.discountPermissions)
-  )
+  return user?.role === "super_admin"
 }
 
 export const getLineSubtotal = (item: TransactionItem) =>
@@ -64,7 +48,18 @@ export const isPositiveChargeLine = (item: TransactionItem) =>
 export const isGiftEligibleItem = (item: TransactionItem) =>
   isPositiveChargeLine(item) &&
   !item.isService &&
-  (item.itemType === "product" || item.itemType === "fixed_blend")
+  DISCOUNT_ELIGIBLE_ITEM_TYPES.has(item.itemType || "")
+
+export const isDiscountOverrideEligibleItem = (item: TransactionItem) =>
+  isPositiveChargeLine(item)
+
+export const isBillDiscountEligibleItem = (item: TransactionItem) => {
+  if (!isPositiveChargeLine(item) || item.isService) return false
+  if (!DISCOUNT_ELIGIBLE_ITEM_TYPES.has(item.itemType || "")) return false
+
+  const discountFlags = item.product?.discountFlags
+  return discountFlags?.discountableForAll !== false && discountFlags?.discountableForMembers !== false
+}
 
 export const normalizeManualDiscount = (item: TransactionItem): TransactionItem => {
   if (!isManualDiscountItem(item)) return item
@@ -116,6 +111,26 @@ export const getAdditionalDiscountBase = (items: TransactionItem[]) =>
     if (subtotal <= 0 || isCreditAdjustmentLine(item)) return sum
     return sum + Math.max(0, subtotal - (item.discountAmount || 0))
   }, 0))
+
+export const getBillDiscountBase = (
+  items: TransactionItem[],
+  allowDiscountOverride: boolean
+) => {
+  if (allowDiscountOverride) return getAdditionalDiscountBase(items)
+
+  return roundCurrency(items.reduce((sum, item) => {
+    if (!isBillDiscountEligibleItem(item)) return sum
+    return sum + Math.max(0, getLineSubtotal(item) - (item.discountAmount || 0))
+  }, 0))
+}
+
+export const getBillDiscountBlockedItems = (
+  items: TransactionItem[],
+  allowDiscountOverride: boolean
+) => {
+  if (allowDiscountOverride) return []
+  return items.filter(item => isPositiveChargeLine(item) && !isBillDiscountEligibleItem(item))
+}
 
 export const getItemDiscountLabel = (
   item: TransactionItem,

@@ -288,6 +288,61 @@ describe('Product CRUD — create / read / update via HTTP', () => {
     expect(res.body.availableStock).toBe(42);
   });
 
+  it('POST /products normalizes per-unit loose prices to canonical per-container prices', async () => {
+    const unit = await createTestUnit({ name: 'price-basis-ml', abbreviation: 'ml', type: 'volume' });
+    const cat = await createTestCategory();
+
+    const res = await request(app)
+      .post('/api/inventory/products')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        name: `Loose Price Basis ${Date.now()}`,
+        sku: `LPB-${Date.now()}`,
+        category: String(cat._id),
+        unitOfMeasurement: String(unit._id),
+        currentStock: 1000,
+        canSellLoose: true,
+        containerCapacity: 500,
+        costPrice: 0.13,
+        costPriceBasis: 'unit',
+        sellingPrice: 0.4,
+        sellingPriceBasis: 'unit',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.sellingPrice).toBe(200);
+    expect(res.body.costPrice).toBe(65);
+    expect(res.body.sellingPricePerUnit).toBe(0.4);
+    expect(res.body.costPricePerUnit).toBe(0.13);
+  });
+
+  it('PUT /products/:id normalizes per-unit loose prices to canonical per-container prices', async () => {
+    const product = await seedProduct({
+      currentStock: 1000,
+      containerCapacity: 500,
+      sellingPrice: 100,
+      costPrice: 40,
+    } as any);
+    await Product.updateOne({ _id: product._id }, { canSellLoose: true, looseStock: 500, containerCapacity: 500 });
+
+    const res = await request(app)
+      .put(`/api/inventory/products/${product._id}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        sellingPrice: 0.4,
+        sellingPriceBasis: 'unit',
+        costPrice: 0.13,
+        costPriceBasis: 'unit',
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.sellingPrice).toBe(200);
+    expect(res.body.costPrice).toBe(65);
+    const after = await Product.findById(product._id).lean() as { sellingPrice?: number; costPrice?: number } | null;
+    expect(after!.sellingPrice).toBe(200);
+    expect(after!.costPrice).toBe(65);
+  });
+
   it('GET /products/:id reflects the database state immediately after a mutation', async () => {
     const product = await seedProduct({ currentStock: 100 });
 

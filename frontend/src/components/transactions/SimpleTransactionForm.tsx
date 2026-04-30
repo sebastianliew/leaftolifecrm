@@ -4,11 +4,11 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { FaTrash, FaShoppingCart, FaUserPlus, FaEdit, FaGift } from "react-icons/fa"
+import { FaTrash, FaShoppingCart, FaUserPlus, FaEdit, FaGift, FaPercent } from "react-icons/fa"
 import { FiRefreshCw, FiAlertTriangle } from "react-icons/fi"
 import { ImSpinner8 } from "react-icons/im"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { EditorialButton, EditorialPill } from "@/components/ui/editorial"
+import { EditorialButton, EditorialModal, EditorialModalFooter, EditorialPill } from "@/components/ui/editorial"
 import type { TransactionFormData, TransactionItem, PaymentMethod, PaymentStatus } from "@/types/transaction"
 import type { Product } from "@/types/inventory"
 import type { Transaction } from "@/types/transaction"
@@ -25,7 +25,7 @@ import { PatientSelector } from "./PatientSelector"
 import { ConsultationSelector } from "./ConsultationSelector"
 import { MiscellaneousSelector } from "./MiscellaneousSelector"
 import { useUnits } from "@/hooks/useUnits"
-import { computeUnitPrice, detectPriceMismatch, getDisplayQuantity, perUnitCost } from "@/lib/pricing"
+import { computeUnitPrice, detectPriceMismatch, getTransactionQuantityDisplayParts, perUnitCost } from "@/lib/pricing"
 import { DiscountService } from "@/services/DiscountService"
 import { formatCurrency } from "@/utils/currency"
 import { useToast } from "@/hooks/use-toast"
@@ -34,14 +34,17 @@ import { usePermissions } from "@/hooks/usePermissions"
 import {
   canUseDiscountOverride,
   clearDiscountMetadata,
-  getAdditionalDiscountBase,
+  getBillDiscountBase,
+  getBillDiscountBlockedItems,
   getItemDiscountLabel,
   getLineSubtotal,
+  isDiscountOverrideEligibleItem,
   isGiftEligibleItem,
   isGiftItem,
   isManualDiscountItem,
   normalizeManualDiscount,
   prepareDiscountOverrideItem,
+  roundCurrency,
 } from "@/lib/transactions/discountOverrides"
 
 /** Fetch a patient by ID from the backend and normalize _id → id. */
@@ -59,6 +62,15 @@ interface SimpleTransactionFormProps {
   onCancel: () => void
   loading?: boolean
   initialData?: Transaction
+}
+
+interface ManualDiscountDraft {
+  itemId: string
+  itemName: string
+  mode: 'amount' | 'percentage'
+  value: string
+  reason: string
+  subtotal: number
 }
 
 export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCancel, loading, initialData }: SimpleTransactionFormProps) {
@@ -85,6 +97,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   // const [hasPurchaseHistory, setHasPurchaseHistory] = useState(false) // See purchase history TODO above
   const [discountMode, setDiscountMode] = useState<'amount' | 'percentage'>('amount')
   const [discountValue, setDiscountValue] = useState<string>('')
+  const [manualDiscountDraft, setManualDiscountDraft] = useState<ManualDiscountDraft | null>(null)
   const [isTyping, setIsTyping] = useState(false)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
   // Ref-based submission lock to prevent double-clicks (independent of React state timing)
@@ -360,9 +373,22 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     debounceRef.current = setTimeout(async () => {
       const numValue = Number.parseFloat(value) || 0
 
+      const blockedItems = getBillDiscountBlockedItems(formData.items, allowDiscountOverride)
+      if (numValue > 0 && blockedItems.length > 0) {
+        setFormData(prev => ({ ...prev, discountAmount: 0 }))
+        setDiscountValue('')
+        setIsTyping(false)
+        toast({
+          title: "Discount not applied",
+          description: `Bill-level discounts cannot include pre-priced or non-discountable lines: ${blockedItems.slice(0, 3).map(item => item.name).join(', ')}${blockedItems.length > 3 ? '...' : ''}`,
+          variant: "destructive",
+        })
+        return
+      }
+
       // Calculate bill-level discount amount from remaining positive charge lines.
       // Negative credit adjustment lines do not expand the percentage base.
-      const additionalDiscountBase = getAdditionalDiscountBase(formData.items)
+      const additionalDiscountBase = getBillDiscountBase(formData.items, allowDiscountOverride)
       const billDiscountAmount = discountMode === 'percentage'
         ? (additionalDiscountBase * numValue / 100)
         : numValue
@@ -397,6 +423,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
           setFormData(prev => ({
             ...prev,
             subtotal: result.subtotal,
+            discountAmount: result.billDiscountAmount ?? sanitizedAmount,
             totalAmount: result.totalAmount,
           }))
         }
@@ -406,7 +433,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
 
       setIsTyping(false)
     }, 1000)
-  }, [formData.items, formData.customerId, discountMode, allowDiscountOverride])
+  }, [formData.items, formData.customerId, discountMode, allowDiscountOverride, toast])
 
   // Sync discount value with mode changes (but not when user is typing)
   useEffect(() => {
@@ -414,14 +441,14 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       if (discountMode === 'amount') {
         setDiscountValue(formData.discountAmount.toString())
       } else {
-        const additionalDiscountBase = getAdditionalDiscountBase(formData.items)
+        const additionalDiscountBase = getBillDiscountBase(formData.items, allowDiscountOverride)
         const percentage = additionalDiscountBase > 0 ? (formData.discountAmount / additionalDiscountBase * 100) : 0
         setDiscountValue(percentage.toFixed(2))
       }
     } else if (!isTyping && formData.discountAmount === 0) {
       setDiscountValue('')
     }
-  }, [formData.discountAmount, discountMode, formData.items, isTyping])
+  }, [formData.discountAmount, discountMode, formData.items, isTyping, allowDiscountOverride])
 
   // Note: Membership discounts are now applied at the item level, not transaction level
   // The bottom discount section is for additional manual discounts only
@@ -1182,7 +1209,10 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     setFormData(prev => ({
       ...prev,
       items: prev.items.map(item => {
-        if (item.id !== itemId || !isGiftEligibleItem(item)) return item
+        const canGiftItem = allowDiscountOverride
+          ? isDiscountOverrideEligibleItem(item)
+          : isGiftEligibleItem(item)
+        if (item.id !== itemId || !canGiftItem) return item
 
         if (isGiftItem(item)) {
           const restoredItem = {
@@ -1200,6 +1230,72 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
         })
       })
     }))
+  }
+
+  const handleManualDiscountOverride = (itemId: string) => {
+    const item = formData.items.find(cartItem => cartItem.id === itemId)
+    if (!item || !isDiscountOverrideEligibleItem(item)) return
+
+    const subtotal = getLineSubtotal(item)
+    const currentDiscount = item.discountAmount || 0
+    setManualDiscountDraft({
+      itemId,
+      itemName: item.name,
+      mode: 'amount',
+      value: currentDiscount.toString(),
+      reason: item.discountReason || '',
+      subtotal,
+    })
+  }
+
+  const applyManualDiscountOverride = () => {
+    if (!manualDiscountDraft) return
+
+    const parsedValue = Number.parseFloat(manualDiscountDraft.value)
+    if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+      toast({
+        title: "Discount not applied",
+        description: "Enter a positive amount, 0, or a percentage.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const requestedDiscount = manualDiscountDraft.mode === 'percentage'
+      ? manualDiscountDraft.subtotal * parsedValue / 100
+      : parsedValue
+    const clampedDiscount = Math.min(Math.max(roundCurrency(requestedDiscount), 0), manualDiscountDraft.subtotal)
+
+    if (clampedDiscount === 0) {
+      setFormData(prev => ({
+        ...prev,
+        items: prev.items.map(cartItem => {
+          if (cartItem.id !== manualDiscountDraft.itemId) return cartItem
+          const restoredItem = {
+            ...clearDiscountMetadata(cartItem),
+            discountAmount: 0,
+            totalPrice: getLineSubtotal(cartItem),
+          }
+          return applyMemberDiscount(restoredItem)
+        })
+      }))
+      setManualDiscountDraft(null)
+      return
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      items: prev.items.map(cartItem => {
+        if (cartItem.id !== manualDiscountDraft.itemId) return cartItem
+        return normalizeManualDiscount({
+          ...cartItem,
+          discountAmount: clampedDiscount,
+          discountSource: 'manual_override' as const,
+          discountReason: manualDiscountDraft.reason.trim() || undefined,
+        })
+      })
+    }))
+    setManualDiscountDraft(null)
   }
 
   // const handleAddReorderItems = (items: Array<{ productId: string; name: string; quantity?: number; itemType: string }>) => { ... } // See purchase history TODO above
@@ -1301,7 +1397,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     // Convert current value to new mode
     if (discountValue) {
       const numValue = Number.parseFloat(discountValue) || 0
-      const additionalDiscountBase = getAdditionalDiscountBase(formData.items)
+      const additionalDiscountBase = getBillDiscountBase(formData.items, allowDiscountOverride)
       
       // Convert between discount modes manually
       if (discountMode === 'percentage') {
@@ -1439,6 +1535,17 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                 const priceMismatch = getPriceMismatch(item);
                 const customBlendMismatch = getCustomBlendMismatch(item);
                 const discountLabel = getItemDiscountLabel(item, selectedPatient?.memberBenefits?.discountPercentage);
+                const quantityDisplay = getTransactionQuantityDisplayParts({
+                  quantity: item.quantity,
+                  saleType: item.saleType,
+                  baseUnit: item.baseUnit,
+                  convertedQuantity: item.convertedQuantity,
+                  unitPrice: item.unitPrice,
+                  containerCapacity: item.containerCapacity,
+                  containerCapacityAtSale: item.containerCapacityAtSale,
+                  containerType: item.containerType,
+                  product: item.product,
+                });
 
                 return (
                 <div key={item.id} className={`flex items-center gap-4 py-4 ${
@@ -1507,8 +1614,8 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                         −
                       </button>
                       <span className="w-20 text-center text-[12px] text-[#0A0A0A] tabular-nums">
-                        {getDisplayQuantity(item.quantity, item.saleType, item.product?.containerCapacity)}{' '}
-                        <span className="text-[#9CA3AF]">{item.baseUnit || ''}</span>
+                        {quantityDisplay.quantityText}{' '}
+                        <span className="text-[#9CA3AF]">{quantityDisplay.unitLabel}</span>
                       </span>
                       <button
                         type="button"
@@ -1521,7 +1628,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                   )}
                   {isConsultationItem(item) && (
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[10px] uppercase tracking-[0.22em] text-[#6B7280]">Qty <span className="tabular-nums text-[#0A0A0A] normal-case tracking-normal text-sm ml-1">{item.quantity}</span></span>
+                      <span className="text-[10px] uppercase tracking-[0.22em] text-[#6B7280]">Qty <span className="tabular-nums text-[#0A0A0A] normal-case tracking-normal text-sm ml-1">{quantityDisplay.quantityText}</span></span>
                     </div>
                   )}
                   <div className="text-right shrink-0">
@@ -1568,7 +1675,26 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                     )}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    {allowDiscountOverride && isGiftEligibleItem(item) && (
+                    {allowDiscountOverride && isDiscountOverrideEligibleItem(item) && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className={`transition-colors ${item.discountSource === 'manual_override' ? 'text-[#0F766E] hover:text-[#0A0A0A]' : 'text-[#6B7280] hover:text-[#0F766E]'}`}
+                              onClick={() => handleManualDiscountOverride(item.id!)}
+                              title={item.discountSource === 'manual_override' ? 'Edit manual discount' : 'Add manual discount'}
+                            >
+                              <FaPercent className="h-3.5 w-3.5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            <p>{item.discountSource === 'manual_override' ? 'Edit manual discount' : 'Add manual discount'}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                    {allowDiscountOverride && isDiscountOverrideEligibleItem(item) && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -1769,7 +1895,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                     {discountMode === 'percentage' 
                       ? `= ${formatCurrency(formData.discountAmount)}`
                       : (() => {
-                          const additionalDiscountBase = getAdditionalDiscountBase(formData.items)
+                          const additionalDiscountBase = getBillDiscountBase(formData.items, allowDiscountOverride)
                           return additionalDiscountBase > 0 ? `= ${(formData.discountAmount / additionalDiscountBase * 100).toFixed(1)}%` : ''
                         })()
                     }
@@ -1839,6 +1965,94 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       </div>
 
       {/* Modals */}
+      <EditorialModal
+        open={!!manualDiscountDraft}
+        onOpenChange={(open) => {
+          if (!open) setManualDiscountDraft(null)
+        }}
+        kicker="Super admin"
+        title="Manual line discount"
+        description={manualDiscountDraft ? manualDiscountDraft.itemName : undefined}
+        size="sm"
+      >
+        {manualDiscountDraft && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-[140px_1fr] gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="manualDiscountMode">Mode</Label>
+                <Select
+                  value={manualDiscountDraft.mode}
+                  onValueChange={(mode) => {
+                    setManualDiscountDraft(prev => prev ? { ...prev, mode: mode as 'amount' | 'percentage' } : prev)
+                  }}
+                >
+                  <SelectTrigger id="manualDiscountMode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="amount">SGD</SelectItem>
+                    <SelectItem value="percentage">Percent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="manualDiscountValue">Discount</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="manualDiscountValue"
+                    type="number"
+                    min="0"
+                    step={manualDiscountDraft.mode === 'percentage' ? "0.1" : "0.01"}
+                    max={manualDiscountDraft.mode === 'percentage' ? "100" : undefined}
+                    value={manualDiscountDraft.value}
+                    onChange={(event) => {
+                      setManualDiscountDraft(prev => prev ? { ...prev, value: event.target.value } : prev)
+                    }}
+                  />
+                  <span className="w-8 text-sm text-[#6B7280]">
+                    {manualDiscountDraft.mode === 'percentage' ? '%' : ''}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="manualDiscountReason">Reason</Label>
+              <Input
+                id="manualDiscountReason"
+                value={manualDiscountDraft.reason}
+                onChange={(event) => {
+                  setManualDiscountDraft(prev => prev ? { ...prev, reason: event.target.value } : prev)
+                }}
+                placeholder="B2B discount"
+                maxLength={200}
+              />
+            </div>
+
+            <div className="border-t border-[#E5E7EB] pt-4 text-[12px] text-[#6B7280]">
+              Line subtotal: {formatCurrency(manualDiscountDraft.subtotal)}
+            </div>
+
+            <EditorialModalFooter>
+              <EditorialButton
+                type="button"
+                variant="ghost"
+                onClick={() => setManualDiscountDraft(null)}
+              >
+                Cancel
+              </EditorialButton>
+              <EditorialButton
+                type="button"
+                variant="primary"
+                onClick={applyManualDiscountOverride}
+              >
+                Apply discount
+              </EditorialButton>
+            </EditorialModalFooter>
+          </div>
+        )}
+      </EditorialModal>
+
       <TransactionTypeSelector
         open={showTypeSelector}
         onClose={() => setShowTypeSelector(false)}

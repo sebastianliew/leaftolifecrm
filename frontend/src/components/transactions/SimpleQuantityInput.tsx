@@ -11,7 +11,8 @@ import {
   EditorialButton,
 } from "@/components/ui/editorial"
 import type { Product } from "@/types/inventory"
-import { computeUnitPrice, safeContainerCapacity } from "@/lib/pricing"
+import { computeUnitPrice, getTransactionQuantityDisplayParts, safeContainerCapacity } from "@/lib/pricing"
+import { formatLooseUnitPrice } from "@/lib/productPricing"
 import { getUomBehavior } from "@/lib/uom"
 
 interface SimpleQuantityInputProps {
@@ -68,6 +69,17 @@ export function SimpleQuantityInput({ open, onClose, onConfirm, product, initial
       : null
   ) || 'units'
 
+  const sealedSingularLabel = getTransactionQuantityDisplayParts({
+    quantity: 1,
+    saleType: 'quantity',
+    product,
+  }).unitLabel
+  const sealedPluralLabel = getTransactionQuantityDisplayParts({
+    quantity: 2,
+    saleType: 'quantity',
+    product,
+  }).unitLabel
+
   // ── Pricing ──
   const unitPrice = computeUnitPrice(product.sellingPrice, product.containerCapacity, isLoose ? 'volume' : 'quantity')
   const totalPrice = unitPrice * quantity
@@ -90,19 +102,23 @@ export function SimpleQuantityInput({ open, onClose, onConfirm, product, initial
   const minValue = isLoose ? (uomCfg.allowsDecimal ? uomCfg.step : 1) : 1
 
   // ── Labels ──
-  const quantityUnitLabel = isLoose ? baseUnitLabel : isSimple ? baseUnitLabel : 'container(s)'
+  const quantityUnitLabel = isLoose ? baseUnitLabel : isSimple ? baseUnitLabel : sealedPluralLabel
 
   const priceLabel = isLoose
-    ? `$${(unitPrice ?? 0).toFixed(2)} per ${baseUnitLabel}`
+    ? `$${formatLooseUnitPrice(unitPrice ?? 0)} per ${baseUnitLabel}`
     : isSimple
       ? `$${(unitPrice ?? 0).toFixed(2)} per ${baseUnitLabel}`
-      : `$${(unitPrice ?? 0).toFixed(2)} per container (${containerCapacity} ${baseUnitLabel})`
+      : `$${(unitPrice ?? 0).toFixed(2)} per ${sealedSingularLabel} (${containerCapacity} ${baseUnitLabel})`
 
   const stockLabel = isLoose
     ? `${loosePool} ${baseUnitLabel} in loose pool`
     : isSimple
       ? `${totalBaseStock} ${baseUnitLabel} available`
-      : `${sealedContainers} sealed container${sealedContainers !== 1 ? 's' : ''} available`
+      : `${sealedContainers} sealed ${getTransactionQuantityDisplayParts({
+          quantity: sealedContainers,
+          saleType: 'quantity',
+          product,
+        }).unitLabel} available`
 
   const percentageUsed = isLoose
     ? (loosePool > 0 ? (quantity / loosePool) * 100 : 0)
@@ -189,7 +205,7 @@ export function SimpleQuantityInput({ open, onClose, onConfirm, product, initial
               <button type="button"
                 className={`px-3 py-1.5 rounded ${saleMode === 'sealed' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600'}`}
                 onClick={() => handleModeSwitch('sealed')}>
-                Sealed containers
+                Sealed {sealedPluralLabel}
               </button>
             </div>
           )}
@@ -239,10 +255,10 @@ export function SimpleQuantityInput({ open, onClose, onConfirm, product, initial
           <div className="border-t pt-4">
             <div className="space-y-1">
               {isLoose && (
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Price per {baseUnitLabel}:</span>
-                  <span>${(unitPrice ?? 0).toFixed(2)}</span>
-                </div>
+	                <div className="flex justify-between text-sm text-gray-600">
+	                  <span>Price per {baseUnitLabel}:</span>
+	                  <span>${formatLooseUnitPrice(unitPrice ?? 0)}</span>
+	                </div>
               )}
               <div className="flex justify-between items-center text-lg font-medium">
                 <span>Total:</span>

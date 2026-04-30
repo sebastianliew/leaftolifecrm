@@ -204,6 +204,33 @@ describe('POST /api/transactions/calculate — preview edge cases', () => {
     expect(res.status).toBe(200);
     expect(res.body.warnings.some((w: string) => /cannot be sold loose/i.test(w))).toBe(true);
   });
+
+  it('uses canonical inventory price for loose sales after per-unit product input normalization', async () => {
+    const { token } = await makeUser('super_admin');
+    const product = await seedProduct({
+      sellingPrice: 200,
+      costPrice: 65,
+      currentStock: 1000,
+      containerCapacity: 500,
+    } as any);
+    await Product.updateOne({ _id: product._id }, { canSellLoose: true, looseStock: 500, containerCapacity: 500 });
+
+    const res = await request(app)
+      .post('/api/transactions/calculate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        items: [{
+          ...buildItem(product as any, 10, { saleType: 'volume' }),
+          unitPrice: 0,
+          totalPrice: 0,
+        }],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.items[0].unitPrice).toBe(0.4);
+    expect(res.body.subtotal).toBe(4);
+    expect(res.body.totalAmount).toBe(4);
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -255,12 +282,7 @@ describe('POST /api/transactions — input validation', () => {
     expect(res.body.error).toMatch(/missing or invalid names/i);
   });
 
-  it('NOTE: negative quantity is now indirectly rejected via the TOTAL_NEGATIVE guard', async () => {
-    // No server-side guard on item.quantity sign exists per se, but the
-    // total-clamp added for the bill-discount fix catches the common shape:
-    // a -5 qty × $25 unit price produces a -$125 subtotal, which the
-    // negative-total guard rejects. Hand-crafted payloads that balance the
-    // sign could still slip through — left as a separate, narrower gap.
+  it('rejects negative quantity explicitly', async () => {
     const { token } = await makeUser('super_admin');
     const product = await seedProduct({ currentStock: 50 });
 
@@ -275,13 +297,13 @@ describe('POST /api/transactions — input validation', () => {
       });
 
     expect(res.status).toBe(400);
-    expect(res.body.code).toBe('TOTAL_NEGATIVE');
+    expect(res.body.code).toBe('INVALID_ITEM_QUANTITY');
 
     const after = await Product.findById(product._id);
     expect(after!.currentStock).toBe(50);   // untouched
   });
 
-  it('rejects a bill discount that would push totalAmount below zero', async () => {
+  it('clamps a bill discount that would push totalAmount below zero', async () => {
     const { token } = await makeUser('super_admin');
     const product = await seedProduct({ sellingPrice: 10, currentStock: 50 });
 
@@ -295,12 +317,12 @@ describe('POST /api/transactions — input validation', () => {
         paymentMethod: 'cash',
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('TOTAL_NEGATIVE');
+    expect(res.status).toBe(201);
+    expect(res.body.discountAmount).toBe(10);
+    expect(res.body.totalAmount).toBe(0);
 
-    // Stock untouched.
     const after = await Product.findById(product._id);
-    expect(after!.currentStock).toBe(50);
+    expect(after!.currentStock).toBe(49);
   });
 });
 

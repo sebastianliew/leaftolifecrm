@@ -56,6 +56,10 @@ export interface Product {
   reservedStock: number;
   costPrice?: number;
   sellingPrice: number;
+  costPricePerUnit?: number;
+  sellingPricePerUnit?: number;
+  costPriceBasis?: 'container' | 'unit';
+  sellingPriceBasis?: 'container' | 'unit';
   status: 'active' | 'inactive';
   isActive: boolean;
   expiryDate?: string | Date;
@@ -94,6 +98,8 @@ export interface ProductFormData {
   totalQuantity?: number;
   costPrice?: number;
   sellingPrice: number;
+  costPriceBasis?: 'container' | 'unit';
+  sellingPriceBasis?: 'container' | 'unit';
   status: 'active' | 'inactive';
   expiryDate?: string;
 }

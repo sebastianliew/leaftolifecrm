@@ -243,7 +243,7 @@ describe('SMOKE — discountFlags at the HTTP boundary', () => {
     expect((await Product.findById(blocked._id))!.currentStock).toBe(9);
   });
 
-  it('explicit unlimited discount user can complete a draft with bill discount across credit, consultation, custom blend, and blocked product lines', async () => {
+  it('explicit unlimited discount user cannot complete a draft with bill discount across pre-priced and blocked lines', async () => {
     const token = await makeUnlimitedDiscountToken();
     const blocked = await seedProduct(
       { name: 'Virita Fennel Tab', sellingPrice: 660, currentStock: 10 },
@@ -325,11 +325,9 @@ describe('SMOKE — discountFlags at the HTTP boundary', () => {
         status: 'completed',
       });
 
-    expect(completed.status).toBe(200);
-    expect(completed.body.status).toBe('completed');
-    expect(completed.body.discountAmount).toBe(69.63);
-    expect(completed.body.totalAmount).toBe(626.62);
-    expect((await Product.findById(blocked._id))!.currentStock).toBe(9);
+    expect(completed.status).toBe(400);
+    expect(completed.body.code).toBe('BILL_DISCOUNT_INELIGIBLE_ITEMS');
+    expect((await Product.findById(blocked._id))!.currentStock).toBe(10);
   });
 
   it('super_admin can gift a product line while still deducting stock', async () => {
@@ -559,7 +557,7 @@ describe('SMOKE — discountFlags at the HTTP boundary', () => {
     expect((await Product.findById(book._id))!.currentStock).toBe(9);
   });
 
-  it('super_admin cannot gift custom blends but can manually override them', async () => {
+  it('super_admin can gift or manually override custom blends', async () => {
     const token = await makeSuperAdminToken();
     const product = await seedProduct({ name: 'Manual Anchor', sellingPrice: 100 });
     const unitId = String((product as any).unitOfMeasurement);
@@ -589,8 +587,9 @@ describe('SMOKE — discountFlags at the HTTP boundary', () => {
         status: 'completed',
       });
 
-    expect(giftRes.status).toBe(400);
-    expect(giftRes.body.code).toBe('GIFT_ITEM_NOT_ELIGIBLE');
+    expect(giftRes.status).toBe(201);
+    expect(giftRes.body.totalAmount).toBe(0);
+    expect(giftRes.body.items[0].discountSource).toBe('gift');
 
     const manualRes = await request(app)
       .post('/api/transactions')

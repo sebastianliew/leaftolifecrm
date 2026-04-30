@@ -8,6 +8,7 @@ import { validateRefs } from '../lib/validations/referenceValidator.js';
 import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 import { UnitOfMeasurement } from '../models/UnitOfMeasurement.js';
 import { stockAlertService } from '../services/StockAlertService.js';
+import { addDerivedProductPricing, normalizeProductPricing } from '../services/productPricingPolicy.js';
 
 // ── Types ──
 
@@ -29,13 +30,16 @@ const canViewCostPrices = (req: Request): boolean => {
   return authReq.user?.role === 'super_admin';
 };
 
-const stripCostPrice = <T extends Record<string, unknown>>(product: T): Omit<T, 'costPrice'> => {
-  const { costPrice: _costPrice, ...rest } = product;
+const stripCostPrice = (product: Record<string, unknown>): Record<string, unknown> => {
+  const rest = { ...product };
+  delete rest.costPrice;
+  delete rest.costPricePerUnit;
   return rest;
 };
 
-const sanitizeProductCost = <T extends Record<string, unknown>>(req: Request, product: T): T | Omit<T, 'costPrice'> => {
-  return canViewCostPrices(req) ? product : stripCostPrice(product);
+const sanitizeProductCost = (req: Request, product: Record<string, unknown>): Record<string, unknown> => {
+  const pricedProduct = addDerivedProductPricing(product);
+  return canViewCostPrices(req) ? pricedProduct : stripCostPrice(pricedProduct);
 };
 
 // ── Controllers ──
@@ -179,6 +183,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     name, sku, description, category, brand, unitOfMeasurement,
     containerType, quantity, currentStock, costPrice, sellingPrice,
     status = 'active', expiryDate, canSellLoose, containerCapacity,
+    sellingPriceBasis, costPriceBasis,
     bundleInfo, bundlePrice, hasBundle, discountFlags, supplierId
   } = req.body;
 
@@ -207,6 +212,14 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
       'Set the container capacity to the amount of base units per container (e.g. 75 for a 75ml bottle).'
     );
   }
+  const normalizedPricing = normalizeProductPricing({
+    sellingPrice,
+    costPrice: canViewCostPrices(req) ? costPrice : undefined,
+    containerCapacity: effectiveContainerCapacity,
+    canSellLoose: canSellLoose || false,
+    sellingPriceBasis,
+    costPriceBasis,
+  });
 
   const product = new Product({
     name, sku, description, category, containerType, brand, unitOfMeasurement,
@@ -215,8 +228,8 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     totalQuantity: currentStock || 0,
     availableStock: currentStock || 0,
     reservedStock: 0,
-    costPrice: canViewCostPrices(req) ? costPrice : undefined,
-    sellingPrice, status,
+    costPrice: normalizedPricing.costPrice,
+    sellingPrice: normalizedPricing.sellingPrice, status,
     isActive: status === 'active',
     expiryDate,
     looseStock: 0,
@@ -239,6 +252,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
 const ALLOWED_UPDATE_FIELDS = [
   'name', 'sku', 'description', 'category', 'containerType', 'brand', 'unitOfMeasurement',
   'currentStock', 'costPrice', 'sellingPrice', 'status',
+  'costPriceBasis', 'sellingPriceBasis',
   'expiryDate', 'canSellLoose', 'containerCapacity', 'bundleInfo',
   'bundlePrice', 'hasBundle', 'discountFlags', 'supplierId',
 ];
@@ -302,6 +316,18 @@ export const updateProduct = asyncHandler(async (req: Request<{ id: string }>, r
       delete updates.costPrice;
     }
   }
+  const normalizedPricing = normalizeProductPricing({
+    sellingPrice: updates.sellingPrice,
+    costPrice: updates.costPrice,
+    containerCapacity: effectiveContainerCapacity,
+    canSellLoose: effectiveCanSellLoose,
+    sellingPriceBasis: updates.sellingPriceBasis,
+    costPriceBasis: updates.costPriceBasis,
+  });
+  if (updates.sellingPrice !== undefined) updates.sellingPrice = normalizedPricing.sellingPrice;
+  if (updates.costPrice !== undefined) updates.costPrice = normalizedPricing.costPrice;
+  delete updates.sellingPriceBasis;
+  delete updates.costPriceBasis;
 
   const product = await Product.findByIdAndUpdate(
     req.params.id,

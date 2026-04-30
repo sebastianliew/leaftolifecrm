@@ -1,7 +1,10 @@
 import {
   canUseDiscountOverride,
   getAdditionalDiscountBase,
+  getBillDiscountBase,
+  getBillDiscountBlockedItems,
   getInvoiceItemDiscountLabel,
+  isDiscountOverrideEligibleItem,
   isGiftEligibleItem,
   normalizeManualDiscount,
   prepareDiscountOverrideItem,
@@ -26,7 +29,7 @@ const baseItem: TransactionItem = {
 }
 
 describe('transaction discount override utilities', () => {
-  it('allows override UI for super admins and explicit unlimited discount users', () => {
+  it('allows bypass UI only for super admins', () => {
     expect(canUseDiscountOverride({ role: 'super_admin' })).toBe(true)
     expect(canUseDiscountOverride({
       role: 'admin',
@@ -37,7 +40,7 @@ describe('transaction discount override utilities', () => {
           unlimitedDiscounts: true,
         },
       },
-    })).toBe(true)
+    })).toBe(false)
     expect(canUseDiscountOverride({
       role: 'admin',
       featurePermissions: {
@@ -76,6 +79,14 @@ describe('transaction discount override utilities', () => {
     expect(isGiftEligibleItem({ ...baseItem, itemType: 'miscellaneous', miscellaneousCategory: 'credit', unitPrice: -20 })).toBe(false)
   })
 
+  it('allows super-admin controls on every positive charge line', () => {
+    expect(isDiscountOverrideEligibleItem({ ...baseItem, itemType: 'bundle' })).toBe(true)
+    expect(isDiscountOverrideEligibleItem({ ...baseItem, itemType: 'custom_blend' })).toBe(true)
+    expect(isDiscountOverrideEligibleItem({ ...baseItem, itemType: 'consultation', isService: true })).toBe(true)
+    expect(isDiscountOverrideEligibleItem({ ...baseItem, itemType: 'miscellaneous' })).toBe(true)
+    expect(isDiscountOverrideEligibleItem({ ...baseItem, itemType: 'miscellaneous', miscellaneousCategory: 'credit', unitPrice: -20 })).toBe(false)
+  })
+
   it('strips stale manual metadata for non-super-admin payloads', () => {
     const prepared = prepareDiscountOverrideItem({
       ...baseItem,
@@ -96,6 +107,27 @@ describe('transaction discount override utilities', () => {
       { ...baseItem, id: 'line-2', name: 'Paid item', quantity: 1, unitPrice: 100, discountAmount: 10, totalPrice: 90 },
       { ...baseItem, id: 'line-3', name: 'Credit', itemType: 'miscellaneous', miscellaneousCategory: 'credit', quantity: 1, unitPrice: -20, totalPrice: -20 },
     ])).toBe(90)
+  })
+
+  it('uses different bill discount bases for super admin and normal users', () => {
+    const items: TransactionItem[] = [
+      { ...baseItem, name: 'Eligible item', quantity: 1, unitPrice: 100, discountAmount: 10, totalPrice: 90 },
+      { ...baseItem, id: 'line-2', name: 'Bundle', itemType: 'bundle', quantity: 1, unitPrice: 80, discountAmount: 0, totalPrice: 80 },
+      {
+        ...baseItem,
+        id: 'line-3',
+        name: 'Flagged product',
+        quantity: 1,
+        unitPrice: 40,
+        totalPrice: 40,
+        product: { discountFlags: { discountableForAll: false } } as TransactionItem['product'],
+      },
+    ]
+
+    expect(getBillDiscountBase(items, true)).toBe(210)
+    expect(getBillDiscountBase(items, false)).toBe(90)
+    expect(getBillDiscountBlockedItems(items, false).map(item => item.name)).toEqual(['Bundle', 'Flagged product'])
+    expect(getBillDiscountBlockedItems(items, true)).toEqual([])
   })
 
   it('rounds without negative zero and labels mixed invoice discounts', () => {

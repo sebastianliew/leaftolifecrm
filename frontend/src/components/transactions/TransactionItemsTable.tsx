@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { IoClose } from "react-icons/io5"
 import type { TransactionItem } from "@/types/transaction"
+import { getTransactionQuantityDisplayParts } from "@/lib/pricing"
 
 interface TransactionItemsTableProps {
   items: TransactionItem[]
@@ -69,7 +70,20 @@ export function TransactionItemsTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {items.map((item, index) => (
+        {items.map((item, index) => {
+          const quantityDisplay = getTransactionQuantityDisplayParts({
+            quantity: item.quantity,
+            saleType: item.saleType,
+            baseUnit: item.baseUnit,
+            convertedQuantity: item.convertedQuantity,
+            unitPrice: item.unitPrice,
+            containerCapacity: item.containerCapacity,
+            containerCapacityAtSale: item.containerCapacityAtSale,
+            containerType: item.containerType,
+            product: item.product,
+          })
+
+          return (
           <TableRow key={item.id || `item-${index}`}>
             <TableCell className="font-medium">
               <div className="flex items-center gap-2">
@@ -112,10 +126,10 @@ export function TransactionItemsTable({
                     step="0.1"
                     disabled={disabled}
                   />
-                  <span className="text-sm text-muted-foreground">{item.baseUnit || 'units'}</span>
+                  <span className="text-sm text-muted-foreground">{quantityDisplay.unitLabel || item.baseUnit || 'units'}</span>
                 </div>
               ) : (
-                <span>{item.quantity}</span>
+                <span>{quantityDisplay.quantityText} {quantityDisplay.unitLabel}</span>
               )}
             </TableCell>
             <TableCell className="font-medium">
@@ -133,7 +147,7 @@ export function TransactionItemsTable({
               </Button>
             </TableCell>
           </TableRow>
-        ))}
+        )})}
       </TableBody>
     </Table>
   )

@@ -61,7 +61,8 @@ export function perUnitCostOr(product: PricingInput, fallback: number): PerUnitP
  *  - saleType 'quantity' → unitPrice is the per-container sellingPrice
  *  - saleType 'volume'   → unitPrice is sellingPrice ÷ containerCapacity  (per base-unit)
  *
- * The result is rounded to 2 decimal places.
+ * Volume prices keep 4 decimal places so very small per-base-unit prices do
+ * not display as 0.00 while bad legacy data is being repaired.
  */
 export function computeUnitPrice(
   sellingPrice: number,
@@ -70,7 +71,7 @@ export function computeUnitPrice(
 ): number {
   if (saleType === 'volume') {
     const cap = safeContainerCapacity(containerCapacity);
-    return Math.round((sellingPrice / cap) * 100) / 100;
+    return Math.round((sellingPrice / cap) * 10000) / 10000;
   }
   return sellingPrice;
 }
@@ -135,6 +136,106 @@ export function getDisplayQuantity(
   if (saleType === 'volume') return quantity;
   const cap = safeContainerCapacity(containerCapacity);
   return cap > 1 ? quantity * cap : quantity;
+}
+
+type DisplayContainerType = string | { name?: string | null } | null | undefined;
+
+interface TransactionQuantityDisplayProduct {
+  sellingPrice?: number | null;
+  containerCapacity?: number | null;
+  containerType?: DisplayContainerType;
+  unitOfMeasurement?: { abbreviation?: string; name?: string } | string | null;
+}
+
+export interface TransactionQuantityDisplayInput {
+  quantity: number;
+  saleType: 'quantity' | 'volume';
+  baseUnit?: string | null;
+  convertedQuantity?: number | null;
+  unitPrice?: number | null;
+  containerCapacity?: number | null;
+  containerCapacityAtSale?: number | null;
+  containerType?: DisplayContainerType;
+  product?: TransactionQuantityDisplayProduct | null;
+}
+
+export interface TransactionQuantityDisplayParts {
+  quantityText: string;
+  unitLabel: string;
+}
+
+function formatQuantityValue(quantity: number): string {
+  if (!Number.isFinite(quantity)) return '0';
+  return Number.isInteger(quantity) ? String(quantity) : String(+quantity.toFixed(2));
+}
+
+function getContainerTypeName(input: TransactionQuantityDisplayInput): string | undefined {
+  const containerType = input.containerType ?? input.product?.containerType;
+  if (typeof containerType === 'string') return containerType;
+  return containerType?.name || undefined;
+}
+
+function pluralizeUnitLabel(label: string, quantity: number): string {
+  const normalized = label.trim();
+  if (!normalized) return '';
+
+  const lower = normalized.toLowerCase();
+  if (Math.abs(quantity) === 1) return lower;
+  if (/(ss|x|z|ch|sh)$/.test(lower)) return `${lower}es`;
+  if (lower.endsWith('s')) return lower;
+  if (/[^aeiou]y$/.test(lower)) return `${lower.slice(0, -1)}ies`;
+  return `${lower}s`;
+}
+
+function isApproximatelyEqual(a: number | null | undefined, b: number | null | undefined): boolean {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return Math.abs((a ?? 0) - (b ?? 0)) <= 0.01;
+}
+
+function shouldDisplayAsContainerSale(input: TransactionQuantityDisplayInput, containerCapacity: number): boolean {
+  if (containerCapacity <= 1) return false;
+  if (input.saleType === 'quantity') return true;
+
+  if (isApproximatelyEqual(input.unitPrice, input.product?.sellingPrice)) {
+    return true;
+  }
+
+  const expectedConvertedQuantity = input.quantity * containerCapacity;
+  return isApproximatelyEqual(input.convertedQuantity, expectedConvertedQuantity);
+}
+
+/**
+ * Format the client-facing quantity for a transaction line.
+ * This preserves sold quantity while convertedQuantity remains the stock unit.
+ */
+export function getTransactionQuantityDisplayParts(
+  input: TransactionQuantityDisplayInput,
+): TransactionQuantityDisplayParts {
+  const quantityText = formatQuantityValue(input.quantity);
+  const containerCapacity =
+    input.containerCapacityAtSale ??
+    input.product?.containerCapacity ??
+    input.containerCapacity;
+  const cap = safeContainerCapacity(containerCapacity);
+
+  if (shouldDisplayAsContainerSale(input, cap)) {
+    const containerLabel = getContainerTypeName(input) || 'container';
+    return {
+      quantityText,
+      unitLabel: pluralizeUnitLabel(containerLabel, input.quantity),
+    };
+  }
+
+  const baseUnit = input.baseUnit || getUnitLabel(input.product?.unitOfMeasurement);
+  return {
+    quantityText,
+    unitLabel: input.saleType === 'volume' ? baseUnit : pluralizeUnitLabel(baseUnit, input.quantity),
+  };
+}
+
+export function formatTransactionQuantityDisplay(input: TransactionQuantityDisplayInput): string {
+  const { quantityText, unitLabel } = getTransactionQuantityDisplayParts(input);
+  return unitLabel ? `${quantityText} ${unitLabel}` : quantityText;
 }
 
 export function detectPriceMismatch(

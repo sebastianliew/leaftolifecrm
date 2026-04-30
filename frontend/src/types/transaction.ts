@@ -132,6 +132,7 @@ export interface TransactionItem {
   containerVolume?: number
   containerType?: string | ContainerType | { id: string; _id?: string; name?: string }
   containerCapacity?: number
+  containerCapacityAtSale?: number
 
   // Blend and Bundle support
   itemType?: 'product' | 'fixed_blend' | 'custom_blend' | 'bundle' | 'miscellaneous' | 'consultation' | 'service'

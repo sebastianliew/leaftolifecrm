@@ -68,6 +68,7 @@ export interface CalculationResult {
   items: CalculatedItem[];
   subtotal: number;
   totalItemDiscounts: number;
+  billDiscountAmount: number;
   totalAmount: number;
   warnings: string[];
   memberDiscount?: {
@@ -117,13 +118,18 @@ class TransactionCalculationService {
       (sum, item) => sum + (item.discountAmount ?? 0),
       0
     );
-    const billDiscount = input.discountAmount ?? 0;
+    const remainingAfterItemDiscounts = Math.max(0, subtotal - totalItemDiscounts);
+    const billDiscount = Math.min(
+      Math.max(input.discountAmount ?? 0, 0),
+      remainingAfterItemDiscounts
+    );
     const totalAmount = subtotal - totalItemDiscounts - billDiscount;
 
     return {
       items,
       subtotal: roundCurrency(subtotal),
       totalItemDiscounts: roundCurrency(totalItemDiscounts),
+      billDiscountAmount: roundCurrency(billDiscount),
       totalAmount: roundCurrency(totalAmount),
       warnings,
       memberDiscount: memberDiscount || undefined,

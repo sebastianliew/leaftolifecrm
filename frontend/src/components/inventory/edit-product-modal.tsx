@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { formatContainerBreakdown } from "@/lib/pricing"
+import { getProductPricePreview, type ProductPriceBasis } from "@/lib/productPricing"
 import { z } from 'zod'
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
@@ -25,6 +26,8 @@ const productSchema = z.object({
   brand: z.string().optional(),
   costPrice: z.number().min(0, "Cost price must be positive").optional(),
   sellingPrice: z.number().min(0, "Selling price must be positive").optional(),
+  costPriceBasis: z.enum(['container', 'unit']).default('container'),
+  sellingPriceBasis: z.enum(['container', 'unit']).default('container'),
   currentStock: z.number().min(0, "Stock must be positive"),
   bundleInfo: z.string().optional(),
   bundlePrice: z.number().min(0, "Bundle price must be positive").optional(),
@@ -53,6 +56,8 @@ export interface EditProductSubmitData {
   canSellLoose?: boolean
   costPrice?: number
   sellingPrice?: number
+  costPriceBasis?: ProductPriceBasis
+  sellingPriceBasis?: ProductPriceBasis
   currentStock: number
   expiryDate?: string
   bundleInfo?: string
@@ -201,6 +206,8 @@ export function EditProductModal({
         brand: product.brand?._id || product.brand?.id || "_none",
         costPrice: product.costPrice || 0,
         sellingPrice: product.sellingPrice || 0,
+        costPriceBasis: 'container' as const,
+        sellingPriceBasis: 'container' as const,
         currentStock: product.currentStock || 0,
         bundleInfo: product.bundleInfo?.hasBundle ? "Yes" : "",
         bundlePrice: product.bundleInfo?.bundlePrice || 0,
@@ -243,6 +250,8 @@ export function EditProductModal({
         canSellLoose: data.canSellLoose ?? false,
         costPrice: canEditCostPrices ? data.costPrice : product.costPrice,
         sellingPrice: data.sellingPrice,
+        costPriceBasis: data.canSellLoose && (data.containerCapacity || 1) > 1 ? data.costPriceBasis : 'container',
+        sellingPriceBasis: data.canSellLoose && (data.containerCapacity || 1) > 1 ? data.sellingPriceBasis : 'container',
         currentStock: canManageStock ? data.currentStock : product.currentStock,
         bundleInfo: data.bundleInfo,
         bundlePrice: showBundlePrice ? data.bundlePrice : undefined,
@@ -317,6 +326,30 @@ export function EditProductModal({
   const costVal = watch('costPrice') || 0
   const sellVal = watch('sellingPrice') || 0
   const hasLoose = watch('canSellLoose') && cap > 1
+  const costBasis = watch('costPriceBasis') || 'container'
+  const sellingBasis = watch('sellingPriceBasis') || 'container'
+  const pricePreview = getProductPricePreview({
+    costPrice: costVal,
+    sellingPrice: sellVal,
+    costPriceBasis: costBasis,
+    sellingPriceBasis: sellingBasis,
+    containerCapacity: cap,
+    canSellLoose: hasLoose,
+  })
+  const BasisButtons = ({ value, onChange }: { value: ProductPriceBasis, onChange: (basis: ProductPriceBasis) => void }) => (
+    <div className="inline-flex rounded-md border border-[#E5E7EB] bg-white p-0.5 text-[11px]">
+      {(['container', 'unit'] as ProductPriceBasis[]).map((basis) => (
+        <button
+          key={basis}
+          type="button"
+          onClick={() => onChange(basis)}
+          className={`px-2 py-1 rounded ${value === basis ? 'bg-[#0A0A0A] text-white' : 'text-[#6B7280] hover:bg-[#F9FAFB]'}`}
+        >
+          Per {basis === 'container' ? 'container' : unitLabel}
+        </button>
+      ))}
+    </div>
+  )
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -496,9 +529,14 @@ export function EditProductModal({
               <SectionHeader kicker="iii.">Pricing</SectionHeader>
               <div className={`grid ${canEditCostPrices ? 'grid-cols-2' : 'grid-cols-1'} gap-x-10 gap-y-6`}>
                 {canEditCostPrices && (
-                  <div>
-                    <FieldLabel>Cost price{hasLoose ? ' (per container)' : ''}</FieldLabel>
-                    <div className="flex items-baseline gap-2">
+	                  <div>
+	                    <div className="flex items-center justify-between gap-2">
+	                      <FieldLabel>Cost price</FieldLabel>
+	                      {hasLoose && (
+	                        <BasisButtons value={costBasis} onChange={(basis) => setValue('costPriceBasis', basis)} />
+	                      )}
+	                    </div>
+	                    <div className="flex items-baseline gap-2">
                       <span className="leaf-display text-[#6B7280] text-lg">$</span>
                       <RuleInput
                         type="number" step="0.01"
@@ -506,16 +544,22 @@ export function EditProductModal({
                         placeholder="0.00"
                       />
                     </div>
-                    {hasLoose && costVal > 0 && (
-                      <p className="text-[11px] text-[#6B7280] mt-2 leaf-display italic">
-                        ${(costVal / cap).toFixed(4)} per {unitLabel}
-                      </p>
-                    )}
-                  </div>
-                )}
-                <div>
-                  <FieldLabel>Selling price{hasLoose ? ' (per container)' : ''}</FieldLabel>
-                  <div className="flex items-baseline gap-2">
+	                    {hasLoose && costVal > 0 && (
+	                      <p className="text-[11px] text-[#6B7280] mt-2 leaf-display italic">
+	                        Stores ${pricePreview.costPrice?.toFixed(2)} per container
+	                        {pricePreview.costPricePerUnit !== undefined ? ` = $${pricePreview.costPricePerUnit.toFixed(4)} per ${unitLabel}` : ''}
+	                      </p>
+	                    )}
+	                  </div>
+	                )}
+	                <div>
+	                  <div className="flex items-center justify-between gap-2">
+	                    <FieldLabel>Selling price</FieldLabel>
+	                    {hasLoose && (
+	                      <BasisButtons value={sellingBasis} onChange={(basis) => setValue('sellingPriceBasis', basis)} />
+	                    )}
+	                  </div>
+	                  <div className="flex items-baseline gap-2">
                     <span className="leaf-display text-[#16A34A] text-lg">$</span>
                     <RuleInput
                       type="number" step="0.01"
@@ -523,11 +567,12 @@ export function EditProductModal({
                       placeholder="0.00"
                     />
                   </div>
-                  {hasLoose && sellVal > 0 && (
-                    <p className="text-[11px] text-[#16A34A] mt-2 leaf-display italic">
-                      ${(sellVal / cap).toFixed(4)} per {unitLabel}
-                    </p>
-                  )}
+	                  {hasLoose && sellVal > 0 && (
+	                    <p className="text-[11px] text-[#16A34A] mt-2 leaf-display italic">
+	                      Stores ${pricePreview.sellingPrice?.toFixed(2)} per container
+	                      {pricePreview.sellingPricePerUnit !== undefined ? ` = $${pricePreview.sellingPricePerUnit.toFixed(4)} per ${unitLabel}` : ''}
+	                    </p>
+	                  )}
                 </div>
               </div>
 

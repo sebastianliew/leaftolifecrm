@@ -256,9 +256,9 @@ async function run() {
   // ═══════════════════════════════════════════════════════════
   console.log('🔍 TEST 16: Frontend — loose price rounding');
 
-  assert('16a. Loose price rounded to 2 decimals',
-    txForm.includes('Math.round') && txForm.includes('100'),
-    'Should round sellingPrice/containerCapacity to 2 decimal places');
+  assert('16a. Loose price rounded to 4 decimals',
+    txForm.includes('Math.round') && txForm.includes('10000'),
+    'Should round sellingPrice/containerCapacity to 4 decimal places');
 
   // ═══════════════════════════════════════════════════════════
   // TEST 17: FRONTEND — no containerCapacity multiply

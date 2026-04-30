@@ -15,6 +15,7 @@ import { createAuditLog } from '../models/AuditLog.js';
 import { transactionInventoryService } from '../services/TransactionInventoryService.js';
 import { AppError } from '../middlewares/errorHandler.middleware.js';
 import { computeUnitPrice, safeContainerCapacity, perUnitCost, perUnitSellingPrice } from '../utils/pricingUtils.js';
+import { formatTransactionQuantityDisplay } from '../utils/transactionQuantityDisplay.js';
 import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 import { normalizeTransactionForPayment, formatInvoiceFilename } from '../utils/transactionUtils.js';
 import {
@@ -50,6 +51,83 @@ type CustomBlendItemLike = {
     marginPercent?: number;
   };
 };
+
+type InvoiceItemSource = {
+  productId?: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  discountAmount?: number;
+  discountSource?: DiscountSource;
+  discountReason?: string;
+  itemType?: string;
+  saleType?: 'quantity' | 'volume';
+  baseUnit?: string;
+  convertedQuantity?: number;
+  containerCapacity?: number;
+  containerCapacityAtSale?: number;
+  containerType?: unknown;
+  customBlendData?: { containerType?: unknown };
+};
+
+function getContainerTypeName(containerType: unknown): string | undefined {
+  if (typeof containerType === 'string') return containerType;
+  if (containerType && typeof containerType === 'object' && 'name' in containerType) {
+    const name = (containerType as { name?: unknown }).name;
+    return typeof name === 'string' ? name : undefined;
+  }
+  return undefined;
+}
+
+async function buildInvoiceItems(items: InvoiceItemSource[]) {
+  const productIds = items
+    .map(item => item.productId)
+    .filter((id): id is string => !!id && mongoose.isValidObjectId(id));
+
+  const products = productIds.length > 0
+    ? await Product.find({ _id: { $in: productIds } })
+      .select('sellingPrice containerCapacity containerType unitOfMeasurement unitName')
+      .populate('containerType', 'name')
+      .lean()
+    : [];
+  const productMap = new Map(products.map(product => [String(product._id), product]));
+
+  return items.map(item => {
+    const product = item.productId ? productMap.get(item.productId) : undefined;
+    const quantity = item.quantity ?? 0;
+    const unitPrice = item.unitPrice ?? 0;
+    const discountAmount = item.discountAmount ?? 0;
+    const quantityDisplay = formatTransactionQuantityDisplay({
+      quantity,
+      saleType: item.saleType || 'quantity',
+      baseUnit: item.baseUnit,
+      convertedQuantity: item.convertedQuantity,
+      unitPrice,
+      containerCapacity: item.containerCapacity,
+      containerCapacityAtSale: item.containerCapacityAtSale,
+      containerType: getContainerTypeName(item.containerType ?? item.customBlendData?.containerType),
+      product: product ? {
+        sellingPrice: product.sellingPrice,
+        containerCapacity: product.containerCapacity,
+        containerType: getContainerTypeName(product.containerType),
+        unitName: product.unitName,
+        unitOfMeasurement: product.unitOfMeasurement as string | { abbreviation?: string; name?: string } | null | undefined,
+      } : undefined,
+    });
+
+    return {
+      name: item.name,
+      quantity,
+      quantityDisplay,
+      unitPrice,
+      totalPrice: unitPrice * quantity - discountAmount,
+      discountAmount: item.discountAmount,
+      discountSource: item.discountSource,
+      discountReason: item.discountReason,
+      itemType: item.itemType as 'product' | 'fixed_blend' | 'custom_blend' | 'bundle' | 'miscellaneous' | 'consultation' | 'service' | undefined
+    };
+  });
+}
 
 function shouldCorrectLegacyCostPricedBlend(
   item: CustomBlendItemLike,
@@ -149,15 +227,7 @@ async function generateInvoiceAsync(
     customerName: string;
     customerEmail?: string;
     customerPhone?: string;
-    items: Array<{
-      name: string;
-      quantity: number;
-      unitPrice: number;
-      discountAmount?: number;
-      discountSource?: DiscountSource;
-      discountReason?: string;
-      itemType?: string;
-    }>;
+    items: InvoiceItemSource[];
     discountAmount: number;
     totalAmount: number;
     paymentMethod: string;
@@ -189,6 +259,8 @@ async function generateInvoiceAsync(
     // Calculate correct total from subtotal minus discounts
     const calculatedTotal = subtotal - totalDiscounts - additionalDiscount;
 
+    const invoiceItems = await buildInvoiceItems(savedTransaction.items);
+
     const invoiceData = {
       invoiceNumber,
       transactionNumber: savedTransaction.transactionNumber,
@@ -196,16 +268,7 @@ async function generateInvoiceAsync(
       customerName: savedTransaction.customerName,
       customerEmail: savedTransaction.customerEmail,
       customerPhone: savedTransaction.customerPhone,
-      items: savedTransaction.items.map(item => ({
-        name: item.name,
-        quantity: item.quantity ?? 0,
-        unitPrice: item.unitPrice ?? 0,
-        totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
-        discountAmount: item.discountAmount,
-        discountSource: item.discountSource,
-        discountReason: item.discountReason,
-        itemType: item.itemType as 'product' | 'fixed_blend' | 'custom_blend' | 'bundle' | 'miscellaneous' | 'consultation' | 'service' | undefined
-      })),
+      items: invoiceItems,
       subtotal,
       discountAmount: totalDiscounts,
       additionalDiscount,
@@ -470,6 +533,18 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
       res.status(400).json({
         error: `${invalidItems.length} item(s) have missing or invalid names`,
         details: 'Items must have valid product names'
+      });
+      return;
+    }
+
+    const invalidQuantityItems = transactionData.items.filter((item: { name?: string; quantity?: number }) =>
+      !Number.isFinite(item.quantity) || (item.quantity ?? 0) < 0
+    );
+    if (invalidQuantityItems.length > 0) {
+      res.status(400).json({
+        error: `${invalidQuantityItems.length} item(s) have invalid quantities`,
+        code: 'INVALID_ITEM_QUANTITY',
+        details: 'Item quantities must be zero or greater'
       });
       return;
     }
@@ -750,22 +825,15 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
       const recalcItemDiscounts = transactionData.items.reduce(
         (sum: number, item: { discountAmount?: number }) => sum + (item.discountAmount ?? 0), 0
       );
-      const billDiscount = transactionData.discountAmount ?? 0;
+      const requestedBillDiscount = transactionData.discountAmount ?? 0;
+      const billDiscount = Math.min(
+        Math.max(requestedBillDiscount, 0),
+        Math.max(recalcSubtotal - recalcItemDiscounts, 0)
+      );
       const recalcTotal = recalcSubtotal - recalcItemDiscounts - billDiscount;
 
-      // A bill discount that exceeds the discounted subtotal would make the
-      // total negative — reject up front rather than persisting a refund-
-      // shaped sale.
-      if (recalcTotal < 0) {
-        res.status(400).json({
-          error: 'Bill discount exceeds the discounted subtotal',
-          code: 'TOTAL_NEGATIVE',
-          message: `Subtotal $${recalcSubtotal.toFixed(2)} − item discounts $${recalcItemDiscounts.toFixed(2)} − bill discount $${billDiscount.toFixed(2)} = $${recalcTotal.toFixed(2)}. Total cannot be negative.`,
-        });
-        return;
-      }
-
       transactionData.subtotal = Math.round(recalcSubtotal * 100) / 100;
+      transactionData.discountAmount = Math.round(billDiscount * 100) / 100;
       transactionData.totalAmount = Math.round(recalcTotal * 100) / 100;
     }
 
@@ -1095,26 +1163,15 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
         });
         return;
       }
-    }
 
-    // Reject any update payload whose items + bill discount produce a
-    // negative total, regardless of whether this is a draft edit, conversion,
-    // or completed-txn edit. Mirrors the create-path guard.
-    if (updateData.items && Array.isArray(updateData.items) && updateData.discountAmount !== undefined) {
-      const subtotal = updateData.items.reduce(
-        (sum: number, item: { unitPrice?: number; quantity?: number }) =>
-          sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)), 0
+      const invalidQuantityItems = updateData.items.filter((item: { name?: string; quantity?: number }) =>
+        !Number.isFinite(item.quantity) || (item.quantity ?? 0) < 0
       );
-      const itemDiscounts = updateData.items.reduce(
-        (sum: number, item: { discountAmount?: number }) => sum + (item.discountAmount ?? 0), 0
-      );
-      const billDiscount = updateData.discountAmount ?? 0;
-      const projectedTotal = subtotal - itemDiscounts - billDiscount;
-      if (projectedTotal < 0) {
+      if (invalidQuantityItems.length > 0) {
         res.status(400).json({
-          error: 'Bill discount exceeds the discounted subtotal',
-          code: 'TOTAL_NEGATIVE',
-          message: `Subtotal $${subtotal.toFixed(2)} − item discounts $${itemDiscounts.toFixed(2)} − bill discount $${billDiscount.toFixed(2)} = $${projectedTotal.toFixed(2)}. Total cannot be negative.`,
+          error: `${invalidQuantityItems.length} item(s) have invalid quantities`,
+          code: 'INVALID_ITEM_QUANTITY',
+          details: 'Item quantities must be zero or greater'
         });
         return;
       }
@@ -1374,6 +1431,7 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
         ...calculated.items[index],
       }));
       updateData.subtotal = calculated.subtotal;
+      updateData.discountAmount = calculated.billDiscountAmount;
       updateData.totalAmount = calculated.totalAmount;
     } else if (updateData.items && Array.isArray(updateData.items)) {
       normalizeManualItemDiscounts(updateData.items);
@@ -1440,14 +1498,32 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
     // owed" rather than blocking the consult.
     // ========================================================================
 
-    // Update the transaction first
-    const updatedTransaction = await Transaction.findByIdAndUpdate(
-      id,
+    // Update the transaction first. Cancellation needs an atomic state claim so
+    // concurrent cancel requests cannot all read "completed" and then all report
+    // success after one request has already won the transition.
+    const updatedTransaction = await Transaction.findOneAndUpdate(
+      isBeingCancelled
+        ? { _id: id, status: { $ne: 'cancelled' } }
+        : { _id: id },
       { ...updateData, lastModifiedBy: req.user?.id || 'system' },
       { new: true }
     );
 
     if (!updatedTransaction) {
+      if (isBeingCancelled) {
+        const currentTransaction = await Transaction.findById(id).select('status').lean();
+        if (!currentTransaction) {
+          res.status(404).json({ error: 'Transaction not found' });
+          return;
+        }
+        if (currentTransaction.status === 'cancelled') {
+          res.status(409).json({
+            error: 'Transaction is already cancelled',
+            message: 'This transaction has already been cancelled.'
+          });
+          return;
+        }
+      }
       res.status(404).json({ error: 'Transaction not found' });
       return;
     }
@@ -1593,6 +1669,8 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
         const subtotal = updatedTransaction.items.reduce((sum, item) => sum + ((item.unitPrice ?? 0) * (item.quantity ?? 0)), 0);
         const totalDiscounts = updatedTransaction.items.reduce((sum, item) => sum + (item.discountAmount ?? 0), 0);
 
+        const invoiceItems = await buildInvoiceItems(updatedTransaction.items);
+
         const invoiceData = {
           invoiceNumber,
           transactionNumber: updatedTransaction.transactionNumber,
@@ -1600,16 +1678,7 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
           customerName: updatedTransaction.customerName,
           customerEmail: updatedTransaction.customerEmail,
           customerPhone: updatedTransaction.customerPhone,
-          items: updatedTransaction.items.map(item => ({
-            name: item.name,
-            quantity: item.quantity ?? 0,
-            unitPrice: item.unitPrice ?? 0,
-            totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
-            discountAmount: item.discountAmount,
-            discountSource: item.discountSource,
-            discountReason: item.discountReason,
-            itemType: item.itemType
-          })),
+          items: invoiceItems,
           subtotal,
           discountAmount: totalDiscounts,
           additionalDiscount: updatedTransaction.discountAmount ?? 0,
@@ -1848,6 +1917,8 @@ export const generateTransactionInvoice = async (req: AuthenticatedRequest, res:
     const additionalDiscount = transaction.discountAmount ?? 0;
     const calculatedTotal = subtotal - totalDiscounts - additionalDiscount;
 
+    const invoiceItems = await buildInvoiceItems(transaction.items);
+
     const invoiceData = {
       invoiceNumber,
       transactionNumber: transaction.transactionNumber,
@@ -1855,16 +1926,7 @@ export const generateTransactionInvoice = async (req: AuthenticatedRequest, res:
       customerName: transaction.customerName,
       customerEmail: transaction.customerEmail,
       customerPhone: transaction.customerPhone,
-      items: transaction.items.map(item => ({
-        name: item.name,
-        quantity: item.quantity ?? 0,
-        unitPrice: item.unitPrice ?? 0,
-        totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
-        discountAmount: item.discountAmount,
-        discountSource: item.discountSource,
-        discountReason: item.discountReason,
-        itemType: item.itemType
-      })),
+      items: invoiceItems,
       subtotal,
       discountAmount: totalDiscounts,
       additionalDiscount,
@@ -2005,6 +2067,8 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
     const additionalDiscount = transaction.discountAmount ?? 0;
     const calculatedTotal = subtotal - totalDiscounts - additionalDiscount;
 
+    const invoiceItems = await buildInvoiceItems(transaction.items);
+
     const invoiceData = {
       invoiceNumber,
       transactionNumber: transaction.transactionNumber,
@@ -2012,16 +2076,7 @@ export const sendInvoiceEmail = async (req: AuthenticatedRequest, res: Response)
       customerName: transaction.customerName,
       customerEmail: transaction.customerEmail,
       customerPhone: transaction.customerPhone,
-      items: transaction.items.map(item => ({
-        name: item.name,
-        quantity: item.quantity ?? 0,
-        unitPrice: item.unitPrice ?? 0,
-        totalPrice: (item.unitPrice ?? 0) * (item.quantity ?? 0) - (item.discountAmount ?? 0),
-        discountAmount: item.discountAmount,
-        discountSource: item.discountSource,
-        discountReason: item.discountReason,
-        itemType: item.itemType
-      })),
+      items: invoiceItems,
       subtotal,
       discountAmount: totalDiscounts,
       additionalDiscount,

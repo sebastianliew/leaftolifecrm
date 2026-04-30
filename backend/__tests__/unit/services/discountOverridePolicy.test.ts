@@ -4,6 +4,7 @@ import {
   type DiscountOverrideItem,
   getAdditionalDiscountBase,
   getInvoiceItemDiscountLabel,
+  isDiscountOverrideEligibleItem,
   isGiftEligibleItem,
   normalizeManualItemDiscount,
   roundCurrency,
@@ -19,7 +20,7 @@ const productLine = {
 };
 
 describe('discountOverridePolicy', () => {
-  it('allows override access for super admins and explicit unlimited discount users', () => {
+  it('allows bypass access only for super admins', () => {
     expect(canUseDiscountOverride({ role: 'super_admin' })).toBe(true);
     expect(canUseDiscountOverride({
       role: 'admin',
@@ -30,14 +31,14 @@ describe('discountOverridePolicy', () => {
           unlimitedDiscounts: true,
         },
       },
-    })).toBe(true);
+    })).toBe(false);
     expect(canUseDiscountOverride({
       role: 'admin',
       discountPermissions: {
         canApplyDiscounts: true,
         unlimitedDiscounts: true,
       },
-    })).toBe(true);
+    })).toBe(false);
     expect(canUseDiscountOverride({
       role: 'admin',
       featurePermissions: {
@@ -58,6 +59,14 @@ describe('discountOverridePolicy', () => {
     expect(isGiftEligibleItem({ ...productLine, unitPrice: -25, miscellaneousCategory: 'credit' })).toBe(false);
   });
 
+  it('treats any positive charge line as a super-admin override target', () => {
+    expect(isDiscountOverrideEligibleItem({ ...productLine, itemType: 'bundle' })).toBe(true);
+    expect(isDiscountOverrideEligibleItem({ ...productLine, itemType: 'custom_blend' })).toBe(true);
+    expect(isDiscountOverrideEligibleItem({ ...productLine, itemType: 'consultation', isService: true })).toBe(true);
+    expect(isDiscountOverrideEligibleItem({ ...productLine, itemType: 'miscellaneous' })).toBe(true);
+    expect(isDiscountOverrideEligibleItem({ ...productLine, unitPrice: -10, miscellaneousCategory: 'credit' })).toBe(false);
+  });
+
   it('validates override access and invalid targets with explicit codes', () => {
     expect(validateDiscountOverrideMetadata([
       { ...productLine, discountSource: 'gift' },
@@ -69,8 +78,8 @@ describe('discountOverridePolicy', () => {
     expect(validateDiscountOverrideMetadata([
       { ...productLine, itemType: 'custom_blend', discountSource: 'gift' },
     ], { allowDiscountOverride: true })).toMatchObject({
-      valid: false,
-      errors: [{ code: 'GIFT_ITEM_NOT_ELIGIBLE' }],
+      valid: true,
+      errors: [],
     });
 
     expect(validateDiscountOverrideMetadata([

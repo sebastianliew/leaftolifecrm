@@ -1,4 +1,5 @@
 import type { Transaction } from '@/types/transaction';
+import { formatTransactionQuantityDisplay } from '@/lib/pricing';
 import { getInvoiceItemDiscountLabel, getItemDiscountLabel } from '@/lib/transactions/discountOverrides';
 
 const defaultCompanyInfo = {
@@ -515,7 +516,17 @@ export function generateInvoiceHTML(transaction: Transaction): string {
                             ${item.isService ? '<span class="service-badge">Service</span>' : ''}
                             ${(item.discountAmount || 0) > 0 ? `<span class="service-badge" style="background: #dcfce7; color: #15803d;">${getItemDiscountLabel(item)} Applied</span>` : ''}
                         </td>
-                        <td class="text-right">${item.quantity}</td>
+                        <td class="text-right">${formatTransactionQuantityDisplay({
+                            quantity: item.quantity,
+                            saleType: item.saleType,
+                            baseUnit: item.baseUnit,
+                            convertedQuantity: item.convertedQuantity,
+                            unitPrice: item.unitPrice,
+                            containerCapacity: item.containerCapacity,
+                            containerCapacityAtSale: item.containerCapacityAtSale,
+                            containerType: item.containerType,
+                            product: item.product,
+                        })}</td>
                         <td class="text-right">${transaction.currency} ${item.unitPrice.toFixed(2)}</td>
                         <td class="text-right">
                             ${(item.discountAmount || 0) > 0 ? 

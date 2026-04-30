@@ -86,32 +86,8 @@ export function isManualDiscountSource(value: unknown): value is ManualDiscountS
   return typeof value === 'string' && MANUAL_DISCOUNT_SOURCE_SET.has(value);
 }
 
-function hasUnlimitedDiscountAuthority(permissions?: DiscountPermissionBag): boolean {
-  if (!permissions?.unlimitedDiscounts) {
-    return false;
-  }
-
-  return Boolean(
-    permissions.canApplyDiscounts ||
-    permissions.canApplyBillDiscounts ||
-    permissions.canApplyProductDiscounts
-  );
-}
-
 export function canUseDiscountOverride(user?: DiscountOverrideUser | null): boolean {
-  if (!user) {
-    return false;
-  }
-
-  if (user.role === 'super_admin') {
-    return true;
-  }
-
-  return (
-    hasUnlimitedDiscountAuthority(user.featurePermissions?.discounts) ||
-    hasUnlimitedDiscountAuthority(user.effectivePermissions?.discounts) ||
-    hasUnlimitedDiscountAuthority(user.discountPermissions)
-  );
+  return user?.role === 'super_admin';
 }
 
 export function getLineSubtotal(item: DiscountOverrideItem): number {
@@ -132,6 +108,10 @@ export function isGiftEligibleItem(item: DiscountOverrideItem): boolean {
     !item.isService &&
     GIFT_ELIGIBLE_ITEM_TYPES.has(item.itemType || '')
   );
+}
+
+export function isDiscountOverrideEligibleItem(item: DiscountOverrideItem): boolean {
+  return isPositiveChargeLine(item);
 }
 
 export function getManualOverrideItems<T extends DiscountOverrideItem>(items: T[]): T[] {
@@ -177,9 +157,9 @@ export function validateDiscountOverrideMetadata(
       continue;
     }
 
-    if (item.discountSource === 'gift' && !isGiftEligibleItem(item)) {
+    if (item.discountSource === 'gift' && !isDiscountOverrideEligibleItem(item)) {
       errors.push({
-        error: `Item "${itemName}" cannot be marked as a gift. Gifts are only available for product and fixed-blend charge lines.`,
+        error: `Item "${itemName}" cannot be marked as a gift because it is not a positive charge line.`,
         item: itemName,
         code: 'GIFT_ITEM_NOT_ELIGIBLE',
       });

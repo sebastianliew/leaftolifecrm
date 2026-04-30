@@ -69,6 +69,7 @@ interface CalculateResponse {
   }>
   subtotal: number
   totalItemDiscounts: number
+  billDiscountAmount?: number
   totalAmount: number
   warnings: string[]
   memberDiscount?: {

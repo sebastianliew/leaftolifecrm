@@ -2,6 +2,7 @@ import type { Transaction, CompanyInfo as BaseCompanyInfo, Address } from '@/typ
 import { format } from 'date-fns';
 import { formatCurrency } from '@/utils/validators';
 import { getInvoiceItemDiscountLabel, getItemDiscountLabel } from '@/lib/transactions/discountOverrides';
+import { formatTransactionQuantityDisplay } from '@/lib/pricing';
 
 interface EmailTemplateOptions {
   customerName: string;
@@ -37,6 +38,20 @@ const defaultCompanyInfo: CompanyInfo = {
   taxId: "202527780C",
   logo: "/slc-logo.jpeg"
 };
+
+function formatEmailQuantity(item: Transaction['items'][number]): string {
+  return formatTransactionQuantityDisplay({
+    quantity: item.quantity,
+    saleType: item.saleType,
+    baseUnit: item.baseUnit,
+    convertedQuantity: item.convertedQuantity,
+    unitPrice: item.unitPrice,
+    containerCapacity: item.containerCapacity,
+    containerCapacityAtSale: item.containerCapacityAtSale,
+    containerType: item.containerType,
+    product: item.product,
+  });
+}
 
 export class InvoiceEmailTemplates {
   /**
@@ -549,7 +564,7 @@ export class InvoiceEmailTemplates {
         </div>
         <div class="item-details">
           <div style="font-size: 12px; color: #666;">
-            Qty: ${item.quantity} × ${formatCurrency(item.unitPrice, transaction.currency)}
+            Qty: ${formatEmailQuantity(item)} × ${formatCurrency(item.unitPrice, transaction.currency)}
             ${(item.discountAmount || 0) > 0 ? 
               ` | Discount: -${formatCurrency(item.discountAmount || 0, transaction.currency)}` : ''
             }
@@ -723,7 +738,7 @@ Note: We'll proceed to blend and arrange delivery after payment is received.
 ` : ''}
 
 ITEMS/SERVICES:
-${transaction.items.map(item => `- ${item.name} (Qty: ${item.quantity}): ${formatCurrency(item.totalPrice, transaction.currency)}`).join('\n')}
+${transaction.items.map(item => `- ${item.name} (Qty: ${formatEmailQuantity(item)}): ${formatCurrency(item.totalPrice, transaction.currency)}`).join('\n')}
 ${transaction.discountAmount > 0 ? `- Discount Applied: -${formatCurrency(transaction.discountAmount, transaction.currency)}` : ''}
 
 CONTACT US:
