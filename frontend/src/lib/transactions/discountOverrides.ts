@@ -5,9 +5,46 @@ export type DiscountSource = NonNullable<TransactionItem["discountSource"]>
 const MANUAL_DISCOUNT_SOURCES = new Set<DiscountSource>(["gift", "manual_override"])
 const DEFAULT_GIFT_REASON = "Gift / free of charge"
 
+type DiscountPermissionBag = {
+  canApplyDiscounts?: boolean | number
+  canApplyProductDiscounts?: boolean | number
+  canApplyBillDiscounts?: boolean | number
+  unlimitedDiscounts?: boolean | number
+  maxDiscountPercent?: number
+  maxDiscountAmount?: number
+}
+
+type DiscountOverrideUser = {
+  role?: string
+  featurePermissions?: { discounts?: DiscountPermissionBag }
+  effectivePermissions?: { discounts?: DiscountPermissionBag }
+  discountPermissions?: DiscountPermissionBag
+}
+
 export const roundCurrency = (value: number) => {
   const rounded = Math.round((Number.isFinite(value) ? value : 0) * 100) / 100
   return Object.is(rounded, -0) ? 0 : rounded
+}
+
+const hasUnlimitedDiscountAuthority = (permissions?: DiscountPermissionBag) => {
+  if (!permissions?.unlimitedDiscounts) return false
+
+  return Boolean(
+    permissions.canApplyDiscounts ||
+    permissions.canApplyBillDiscounts ||
+    permissions.canApplyProductDiscounts
+  )
+}
+
+export const canUseDiscountOverride = (user?: DiscountOverrideUser | null) => {
+  if (!user) return false
+  if (user.role === "super_admin") return true
+
+  return (
+    hasUnlimitedDiscountAuthority(user.featurePermissions?.discounts) ||
+    hasUnlimitedDiscountAuthority(user.effectivePermissions?.discounts) ||
+    hasUnlimitedDiscountAuthority(user.discountPermissions)
+  )
 }
 
 export const getLineSubtotal = (item: TransactionItem) =>

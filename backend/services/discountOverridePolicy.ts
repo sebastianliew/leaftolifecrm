@@ -34,6 +34,26 @@ export interface DiscountOverrideOptions {
   allowDiscountOverride?: boolean;
 }
 
+type DiscountPermissionBag = {
+  canApplyDiscounts?: boolean | number;
+  canApplyProductDiscounts?: boolean | number;
+  canApplyBillDiscounts?: boolean | number;
+  unlimitedDiscounts?: boolean | number;
+  maxDiscountPercent?: number;
+  maxDiscountAmount?: number;
+};
+
+export interface DiscountOverrideUser {
+  role?: string;
+  featurePermissions?: {
+    discounts?: DiscountPermissionBag;
+  };
+  effectivePermissions?: {
+    discounts?: DiscountPermissionBag;
+  };
+  discountPermissions?: DiscountPermissionBag;
+}
+
 export class DiscountOverridePolicyError extends Error {
   readonly statusCode = 400;
   readonly code: DiscountOverrideErrorCode;
@@ -64,6 +84,34 @@ export function isDiscountSource(value: unknown): value is DiscountSource {
 
 export function isManualDiscountSource(value: unknown): value is ManualDiscountSource {
   return typeof value === 'string' && MANUAL_DISCOUNT_SOURCE_SET.has(value);
+}
+
+function hasUnlimitedDiscountAuthority(permissions?: DiscountPermissionBag): boolean {
+  if (!permissions?.unlimitedDiscounts) {
+    return false;
+  }
+
+  return Boolean(
+    permissions.canApplyDiscounts ||
+    permissions.canApplyBillDiscounts ||
+    permissions.canApplyProductDiscounts
+  );
+}
+
+export function canUseDiscountOverride(user?: DiscountOverrideUser | null): boolean {
+  if (!user) {
+    return false;
+  }
+
+  if (user.role === 'super_admin') {
+    return true;
+  }
+
+  return (
+    hasUnlimitedDiscountAuthority(user.featurePermissions?.discounts) ||
+    hasUnlimitedDiscountAuthority(user.effectivePermissions?.discounts) ||
+    hasUnlimitedDiscountAuthority(user.discountPermissions)
+  );
 }
 
 export function getLineSubtotal(item: DiscountOverrideItem): number {

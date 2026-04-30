@@ -18,6 +18,7 @@ import { computeUnitPrice, safeContainerCapacity, perUnitCost, perUnitSellingPri
 import { InventoryMovement } from '../models/inventory/InventoryMovement.js';
 import { normalizeTransactionForPayment, formatInvoiceFilename } from '../utils/transactionUtils.js';
 import {
+  canUseDiscountOverride,
   DiscountOverridePolicyError,
   normalizeManualItemDiscount,
   normalizeManualItemDiscounts,
@@ -70,7 +71,7 @@ function shouldCorrectLegacyCostPricedBlend(
 export const calculateTransactionPreview = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { items, customerId, discountAmount } = req.body;
-    const allowDiscountOverride = req.user?.role === 'super_admin';
+    const allowDiscountOverride = canUseDiscountOverride(req.user);
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: 'Items array is required and must not be empty' });
@@ -440,7 +441,7 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
 
   try {
     const transactionData = req.body;
-    const allowDiscountOverride = req.user?.role === 'super_admin';
+    const allowDiscountOverride = canUseDiscountOverride(req.user);
 
     // Basic validation
     if (!transactionData.customerName || !transactionData.items || transactionData.items.length === 0) {
@@ -1051,7 +1052,7 @@ export const updateTransaction = async (req: AuthenticatedRequest, res: Response
   try {
     const { id } = req.params;
     const updateData = req.body;
-    const allowDiscountOverride = req.user?.role === 'super_admin';
+    const allowDiscountOverride = canUseDiscountOverride(req.user);
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       res.status(400).json({ error: 'Invalid transaction ID' });
@@ -2151,7 +2152,7 @@ export const saveDraft = async (req: AuthenticatedRequest, res: Response): Promi
       return;
     }
 
-    const allowDiscountOverride = req.user.role === 'super_admin';
+    const allowDiscountOverride = canUseDiscountOverride(req.user);
     const draftItems = Array.isArray(formData.items) ? formData.items : [];
 
     if (formData.paymentMethod === 'offset_from_credit') {

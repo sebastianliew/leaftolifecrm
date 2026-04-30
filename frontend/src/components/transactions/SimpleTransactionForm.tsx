@@ -32,6 +32,7 @@ import { useToast } from "@/hooks/use-toast"
 import { api } from "@/lib/api-client"
 import { usePermissions } from "@/hooks/usePermissions"
 import {
+  canUseDiscountOverride,
   clearDiscountMetadata,
   getAdditionalDiscountBase,
   getItemDiscountLabel,
@@ -64,7 +65,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
   const { units, getUnits } = useUnits()
   const { toast } = useToast()
   const { user } = usePermissions()
-  const isSuperAdmin = user?.role === 'super_admin'
+  const allowDiscountOverride = canUseDiscountOverride(user)
   const [showTypeSelector, setShowTypeSelector] = useState(false)
   const [showProductSelector, setShowProductSelector] = useState(false)
   const [showQuantityInput, setShowQuantityInput] = useState(false)
@@ -190,7 +191,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               try {
                 const result = await DiscountService.calculateTransactionServer(
                   formData.items.map(item => {
-                    const preparedItem = prepareDiscountOverrideItem(item, isSuperAdmin)
+                    const preparedItem = prepareDiscountOverrideItem(item, allowDiscountOverride)
                     return {
                       productId: preparedItem.productId,
                       name: preparedItem.name,
@@ -281,7 +282,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
               try {
                 const result = await DiscountService.calculateTransactionServer(
                   formData.items.map(item => {
-                    const preparedItem = prepareDiscountOverrideItem(item, isSuperAdmin)
+                    const preparedItem = prepareDiscountOverrideItem(item, allowDiscountOverride)
                     return {
                       productId: preparedItem.productId,
                       name: preparedItem.name,
@@ -334,7 +335,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
 
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
-  }, [selectedPatient?.id, selectedPatient?.memberBenefits?.discountPercentage, formData.items, formData.discountAmount, products, isSuperAdmin])
+  }, [selectedPatient?.id, selectedPatient?.memberBenefits?.discountPercentage, formData.items, formData.discountAmount, products, allowDiscountOverride])
 
   useEffect(() => {
     // Subtotal = sum of original prices (without any discounts)
@@ -374,7 +375,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       try {
         const result = await DiscountService.calculateTransactionServer(
           formData.items.map(item => {
-            const preparedItem = prepareDiscountOverrideItem(item, isSuperAdmin)
+            const preparedItem = prepareDiscountOverrideItem(item, allowDiscountOverride)
             return {
               productId: preparedItem.productId,
               name: preparedItem.name,
@@ -405,7 +406,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
 
       setIsTyping(false)
     }, 1000)
-  }, [formData.items, formData.customerId, discountMode, isSuperAdmin])
+  }, [formData.items, formData.customerId, discountMode, allowDiscountOverride])
 
   // Sync discount value with mode changes (but not when user is typing)
   useEffect(() => {
@@ -1267,7 +1268,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
       // Auto-set payment status based on paidAmount when completing a transaction
       const submitData = {
         ...formData,
-        items: formData.items.map(item => prepareDiscountOverrideItem(item, isSuperAdmin)),
+        items: formData.items.map(item => prepareDiscountOverrideItem(item, allowDiscountOverride)),
       }
       if (formData.paymentStatus === 'pending') {
         if (submitData.paidAmount >= submitData.totalAmount) {
@@ -1335,7 +1336,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
     try {
       const draftData = {
         ...formData,
-        items: formData.items.map(item => prepareDiscountOverrideItem(item, isSuperAdmin)),
+        items: formData.items.map(item => prepareDiscountOverrideItem(item, allowDiscountOverride)),
         isDraft: true,
         status: 'draft' as const
       }
@@ -1567,7 +1568,7 @@ export function SimpleTransactionForm({ products, onSubmit, onSaveDraft, onCance
                     )}
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    {isSuperAdmin && isGiftEligibleItem(item) && (
+                    {allowDiscountOverride && isGiftEligibleItem(item) && (
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>

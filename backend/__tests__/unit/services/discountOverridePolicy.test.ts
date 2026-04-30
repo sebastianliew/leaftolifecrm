@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  canUseDiscountOverride,
   type DiscountOverrideItem,
   getAdditionalDiscountBase,
   getInvoiceItemDiscountLabel,
@@ -18,6 +19,37 @@ const productLine = {
 };
 
 describe('discountOverridePolicy', () => {
+  it('allows override access for super admins and explicit unlimited discount users', () => {
+    expect(canUseDiscountOverride({ role: 'super_admin' })).toBe(true);
+    expect(canUseDiscountOverride({
+      role: 'admin',
+      featurePermissions: {
+        discounts: {
+          canApplyBillDiscounts: true,
+          canApplyProductDiscounts: true,
+          unlimitedDiscounts: true,
+        },
+      },
+    })).toBe(true);
+    expect(canUseDiscountOverride({
+      role: 'admin',
+      discountPermissions: {
+        canApplyDiscounts: true,
+        unlimitedDiscounts: true,
+      },
+    })).toBe(true);
+    expect(canUseDiscountOverride({
+      role: 'admin',
+      featurePermissions: {
+        discounts: {
+          canApplyBillDiscounts: true,
+          maxDiscountPercent: 50,
+          unlimitedDiscounts: false,
+        },
+      },
+    })).toBe(false);
+  });
+
   it('allows gift only on positive product/fixed-blend charge lines', () => {
     expect(isGiftEligibleItem(productLine)).toBe(true);
     expect(isGiftEligibleItem({ ...productLine, itemType: 'fixed_blend' })).toBe(true);

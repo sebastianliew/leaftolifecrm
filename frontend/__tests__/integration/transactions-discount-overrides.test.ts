@@ -1,4 +1,5 @@
 import {
+  canUseDiscountOverride,
   getAdditionalDiscountBase,
   getInvoiceItemDiscountLabel,
   isGiftEligibleItem,
@@ -25,6 +26,29 @@ const baseItem: TransactionItem = {
 }
 
 describe('transaction discount override utilities', () => {
+  it('allows override UI for super admins and explicit unlimited discount users', () => {
+    expect(canUseDiscountOverride({ role: 'super_admin' })).toBe(true)
+    expect(canUseDiscountOverride({
+      role: 'admin',
+      featurePermissions: {
+        discounts: {
+          canApplyBillDiscounts: true,
+          canApplyProductDiscounts: true,
+          unlimitedDiscounts: true,
+        },
+      },
+    })).toBe(true)
+    expect(canUseDiscountOverride({
+      role: 'admin',
+      featurePermissions: {
+        discounts: {
+          canApplyBillDiscounts: true,
+          unlimitedDiscounts: false,
+        },
+      },
+    })).toBe(false)
+  })
+
   it('normalizes gifted lines as free and keeps quantity changes free', () => {
     const gifted = normalizeManualDiscount({
       ...baseItem,

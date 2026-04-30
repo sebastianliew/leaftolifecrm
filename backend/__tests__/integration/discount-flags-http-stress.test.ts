@@ -63,13 +63,17 @@ function buildApp(): Express {
 }
 const app = buildApp();
 
-async function makeToken(role: 'super_admin' | 'admin' | 'manager' | 'staff' = 'admin') {
+async function makeToken(
+  role: 'super_admin' | 'admin' | 'manager' | 'staff' = 'admin',
+  featurePermissions?: Record<string, Record<string, boolean | number>>
+) {
   const u = await User.create({
     email: `${role}-${Date.now()}-${Math.random()}@test.local`,
     username: `${role}-${Date.now()}-${Math.random()}`,
     name: `${role} test`,
     password: 'x',
     role,
+    featurePermissions,
     isActive: true,
   });
   return jwt.sign({ userId: String(u._id), role }, process.env.JWT_SECRET!, { expiresIn: '1h' });
@@ -77,6 +81,16 @@ async function makeToken(role: 'super_admin' | 'admin' | 'manager' | 'staff' = '
 
 const makeAdminToken = () => makeToken('admin');
 const makeSuperAdminToken = () => makeToken('super_admin');
+const makeUnlimitedDiscountToken = () => makeToken('admin', {
+  discounts: {
+    canApplyDiscounts: true,
+    canApplyProductDiscounts: true,
+    canApplyBillDiscounts: true,
+    unlimitedDiscounts: true,
+    maxDiscountPercent: 100,
+    maxDiscountAmount: 999999,
+  },
+});
 
 async function seedProduct(overrides: Parameters<typeof createTestProduct>[0] = {}, flags?: { discountableForAll?: boolean; discountableForMembers?: boolean; discountableInBlends?: boolean }) {
   const unit = await createTestUnit({ name: `unit-${Date.now()}-${Math.random()}` });
@@ -226,6 +240,95 @@ describe('SMOKE — discountFlags at the HTTP boundary', () => {
     expect(res.status).toBe(201);
     expect(res.body.totalAmount).toBe(0);
     expect(res.body.discountAmount).toBe(175);
+    expect((await Product.findById(blocked._id))!.currentStock).toBe(9);
+  });
+
+  it('explicit unlimited discount user can complete a draft with bill discount across credit, consultation, custom blend, and blocked product lines', async () => {
+    const token = await makeUnlimitedDiscountToken();
+    const blocked = await seedProduct(
+      { name: 'Virita Fennel Tab', sellingPrice: 660, currentStock: 10 },
+      { discountableForAll: false }
+    );
+    const unitId = String((blocked as any).unitOfMeasurement);
+    const items = [
+      {
+        productId: `credit_${Date.now()}`,
+        name: 'Credit: Credit',
+        description: 'Complimentary books 3 pcs',
+        quantity: 1,
+        convertedQuantity: 1,
+        unitOfMeasurementId: unitId,
+        baseUnit: 'unit',
+        itemType: 'miscellaneous' as const,
+        miscellaneousCategory: 'credit',
+        saleType: 'quantity' as const,
+        unitPrice: -75,
+        totalPrice: -75,
+        discountAmount: 0,
+      },
+      buildItem(blocked as any, 1),
+      {
+        productId: `custom_blend_${Date.now()}`,
+        name: 'herb dampness',
+        quantity: 1,
+        convertedQuantity: 1,
+        unitOfMeasurementId: unitId,
+        baseUnit: 'Milliliter',
+        itemType: 'custom_blend' as const,
+        saleType: 'quantity' as const,
+        unitPrice: 31.25,
+        totalPrice: 31.25,
+        discountAmount: 0,
+      },
+      {
+        productId: 'consultation-fee',
+        name: 'Consultation Fee',
+        quantity: 1,
+        convertedQuantity: 1,
+        unitOfMeasurementId: unitId,
+        baseUnit: 'unit',
+        itemType: 'consultation' as const,
+        saleType: 'quantity' as const,
+        unitPrice: 80,
+        totalPrice: 80,
+        discountAmount: 0,
+        isService: true,
+      },
+    ];
+
+    const draft = await request(app)
+      .post('/api/transactions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        customerName: 'Walk-in',
+        items,
+        discountAmount: 0,
+        paymentMethod: 'cash',
+        paymentStatus: 'pending',
+        paidAmount: 0,
+        status: 'draft',
+      });
+
+    expect(draft.status).toBe(201);
+
+    const completed = await request(app)
+      .put(`/api/transactions/${draft.body._id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        items,
+        discountAmount: 69.63,
+        subtotal: 696.25,
+        totalAmount: 626.62,
+        paymentMethod: 'cash',
+        paymentStatus: 'paid',
+        paidAmount: 626.62,
+        status: 'completed',
+      });
+
+    expect(completed.status).toBe(200);
+    expect(completed.body.status).toBe('completed');
+    expect(completed.body.discountAmount).toBe(69.63);
+    expect(completed.body.totalAmount).toBe(626.62);
     expect((await Product.findById(blocked._id))!.currentStock).toBe(9);
   });
 
